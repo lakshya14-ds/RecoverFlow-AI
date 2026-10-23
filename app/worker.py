@@ -10,6 +10,9 @@ from app.api.invoices import process_invoice_pipeline
 from app.database import models
 from app.database.db_manager import SessionLocal, init_db
 from app.services.receivables import balance_cents, opening_cents
+from app.services.policy_scheduler import create_due_drafts
+from app.services import shopify
+from app.services.controlled_agent import scan_enabled
 
 LEASE = timedelta(minutes=15)
 
@@ -88,10 +91,35 @@ def main() -> None:
     args = parser.parse_args()
     init_db()
     last_snapshot = None
+    last_policy_tick = None
+    last_shopify_tick = None
+    last_agent_tick = None
     while True:
         if last_snapshot != date.today():
             refresh_dso_snapshots()
             last_snapshot = date.today()
+        policy_tick = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+        if policy_tick != last_policy_tick:
+            with SessionLocal() as db:
+                create_due_drafts(db)
+            last_policy_tick = policy_tick
+        shopify_tick = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:") + str(datetime.now(timezone.utc).minute // 5)
+        if shopify.configured() and shopify_tick != last_shopify_tick:
+            try:
+                with SessionLocal() as db:
+                    shopify.import_orders(db, "local", max_pages=1)
+                    shopify.process_queued_events(db, "local")
+            except Exception:
+                logging.exception("Shopify sync failed; no receivable changes were committed")
+            last_shopify_tick = shopify_tick
+        agent_tick = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H")
+        if agent_tick != last_agent_tick:
+            try:
+                with SessionLocal() as db:
+                    scan_enabled(db)
+            except Exception:
+                logging.exception("Controlled agent scan failed")
+            last_agent_tick = agent_tick
         worked = run_once()
         if args.once:
             break

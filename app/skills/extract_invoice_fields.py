@@ -48,9 +48,24 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
     fields = InvoiceFields()
 
     try:
-        pytesseract.pytesseract.tesseract_cmd = settings.TESSERACT_CMD
-        
-        images = pdf2image.convert_from_path(pdf_path, dpi=settings.OCR_DPI)
+        import os
+        tesseract_cmd = settings.TESSERACT_CMD
+        local_tess = settings.BASE_DIR / "bin" / "tesseract" / "tesseract.exe"
+        if (not tesseract_cmd or tesseract_cmd == "tesseract") and local_tess.exists():
+            tesseract_cmd = str(local_tess)
+            os.environ.setdefault("TESSDATA_PREFIX", str(settings.BASE_DIR / "bin" / "tesseract" / "tessdata"))
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
+        poppler_kwargs = {}
+        poppler_path = getattr(settings, "POPPLER_PATH", "")
+        if not poppler_path:
+            local_poppler = settings.BASE_DIR / "bin" / "poppler" / "poppler-24.08.0" / "Library" / "bin"
+            if local_poppler.exists():
+                poppler_path = str(local_poppler)
+        if poppler_path:
+            poppler_kwargs["poppler_path"] = poppler_path
+
+        images = pdf2image.convert_from_path(pdf_path, dpi=settings.OCR_DPI, **poppler_kwargs)
         raw_text = ""
         for img in images:
             raw_text += pytesseract.image_to_string(img, lang=settings.OCR_LANG)

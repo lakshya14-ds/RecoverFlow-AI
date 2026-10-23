@@ -46,8 +46,10 @@ def _summary(db: Session, invoice: models.Invoice) -> dict:
     return {
         "invoice_id": invoice.id, "invoice_number": invoice.invoice_number,
         "customer": invoice.counterparty_name, "email": invoice.counterparty_email,
+        "phone": invoice.counterparty_phone,
         "currency": invoice.currency or "USD", "due_date": invoice.due_date.isoformat(),
         "status": invoice.status, "balance_cents": balance_cents(db, invoice),
+        "source_system": invoice.source_system,
         "contact_suppressed": bool(invoice.contact_suppressed),
         "contact_opt_out": bool(invoice.contact_opt_out),
         "dispute_open": bool(invoice.dispute_open),
@@ -73,6 +75,8 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.CustomerMessage.id).all()
     result["campaigns"] = db.query(models.DunningCampaign).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.DunningCampaign.id).all()
+    result["agent_notes"] = db.query(models.AgentCaseNote).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.AgentCaseNote.id).all()
     return result
 
 
@@ -92,6 +96,10 @@ def record_entry(invoice_id: int, payload: BalanceAdjustment, db: Session = Depe
         db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
                                  action="receivable_" + payload.kind, entity_type="invoice",
                                  entity_id=str(invoice_id), details=payload.reference))
+        for link in db.query(models.PaymentLink).filter_by(
+                tenant_id=identity.tenant_id, invoice_id=invoice_id).filter(
+                models.PaymentLink.status.in_(("open", "partially_paid"))).all():
+            link.status = "needs_review"
     db.commit()
     return {"entry_id": entry.id, "balance_cents": balance_cents(db, invoice)}
 
@@ -149,6 +157,8 @@ def resume_case(invoice_id: int, payload: ResumeCase, db: Session = Depends(get_
     if identity.role != "admin":
         raise HTTPException(status_code=403, detail="Admin approval required")
     invoice = _invoice(db, invoice_id, identity)
+    if invoice.requires_human_review:
+        raise HTTPException(status_code=409, detail="Complete case review before resuming contact")
     if invoice.contact_opt_out and not payload.consent_restored:
         raise HTTPException(status_code=409, detail="Document restored contact permission before resuming")
     invoice.contact_suppressed = False

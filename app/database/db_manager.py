@@ -49,8 +49,10 @@ def init_db() -> None:
         new_columns = {
             "invoices": {
                 "face_amount_cents": "INTEGER",
+                "counterparty_phone": "TEXT",
                 "source_system": "TEXT",
                 "source_record_id": "TEXT",
+                "source_order_id": "TEXT",
                 "contact_suppressed": "INTEGER NOT NULL DEFAULT 0",
                 "contact_opt_out": "INTEGER NOT NULL DEFAULT 0",
                 "dispute_open": "INTEGER NOT NULL DEFAULT 0",
@@ -67,6 +69,11 @@ def init_db() -> None:
                 "invoice_type": "TEXT NOT NULL DEFAULT 'AP'",
                 "attempts": "INTEGER NOT NULL DEFAULT 0",
                 "locked_until": "DATETIME",
+            },
+            "provider_events": {
+                "resource_id": "TEXT",
+                "resolution_note": "TEXT",
+                "resolved_by": "TEXT",
             },
         }
         for table, additions in new_columns.items():

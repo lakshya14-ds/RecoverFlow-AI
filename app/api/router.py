@@ -15,6 +15,10 @@ from .sync import router as sync_router
 from .webhooks import router as webhooks_router
 from .cases import router as cases_router
 from .imports import router as imports_router
+from .policies import router as policies_router
+from .messages import router as messages_router
+from .integrations import router as integrations_router
+from .controlled_agent import router as controlled_agent_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -30,3 +34,7 @@ api_router.include_router(sync_router)
 api_router.include_router(webhooks_router)
 api_router.include_router(cases_router)
 api_router.include_router(imports_router)
+api_router.include_router(policies_router)
+api_router.include_router(messages_router)
+api_router.include_router(integrations_router)
+api_router.include_router(controlled_agent_router)

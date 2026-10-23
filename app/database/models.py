@@ -18,6 +18,7 @@ class Invoice(Base):
     invoice_type = Column(String, nullable=False) # 'AP' or 'AR'
     counterparty_name = Column(String, nullable=False, index=True)
     counterparty_email = Column(String)
+    counterparty_phone = Column(String)
     counterparty_tax_id = Column(String)
     issue_date = Column(Date, nullable=False)
     due_date = Column(Date, nullable=False, index=True)
@@ -33,6 +34,7 @@ class Invoice(Base):
     source = Column(String, default="manual")
     source_system = Column(String)
     source_record_id = Column(String)
+    source_order_id = Column(String)
     source_filename = Column(String)
     source_path = Column(String)
     ocr_confidence = Column(Float, default=0.0)
@@ -237,4 +239,166 @@ class CustomerMessage(Base):
     category = Column(String, nullable=False)
     body = Column(Text, nullable=False)
     actor = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class IntegrationConnection(Base):
+    """Public connection state. Credentials stay in provider-specific secret storage."""
+    __tablename__ = "integration_connections"
+    __table_args__ = (UniqueConstraint("tenant_id", "kind"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    provider = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="disabled")
+    external_account_id = Column(String)
+    cursor = Column(String)
+    last_sync_at = Column(DateTime)
+    last_error = Column(Text)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class PaymentLink(Base):
+    __tablename__ = "payment_links"
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),
+                      UniqueConstraint("tenant_id", "provider", "provider_link_id"))
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    provider = Column(String, nullable=False)
+    provider_link_id = Column(String)
+    idempotency_key = Column(String, nullable=False)
+    url = Column(Text)
+    amount_cents = Column(Integer, nullable=False)
+    currency = Column(String(3), nullable=False)
+    status = Column(String, nullable=False, default="open")
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ProviderEvent(Base):
+    """Deduplicated verified webhook with processing outcome, excluding raw PII."""
+    __tablename__ = "provider_events"
+    __table_args__ = (UniqueConstraint("tenant_id", "kind", "provider", "event_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    kind = Column(String, nullable=False)
+    provider = Column(String, nullable=False)
+    event_id = Column(String, nullable=False)
+    resource_id = Column(String)
+    body_sha256 = Column(String(64), nullable=False)
+    status = Column(String, nullable=False)
+    error = Column(Text)
+    resolution_note = Column(Text)
+    resolved_by = Column(String)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    processed_at = Column(DateTime)
+
+
+class CollectionPolicy(Base):
+    """Tenant-controlled schedule for draft creation only; sending still needs approval."""
+    __tablename__ = "collection_policies"
+    tenant_id = Column(String, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    timezone = Column(String, nullable=False, default="UTC")
+    run_hour = Column(Integer, nullable=False, default=9)
+    stage1_days = Column(Integer, nullable=False, default=7)
+    stage2_days = Column(Integer, nullable=False, default=15)
+    stage3_days = Column(Integer, nullable=False, default=30)
+    stage4_days = Column(Integer, nullable=False, default=45)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class InboundMessage(Base):
+    __tablename__ = "inbound_messages"
+    __table_args__ = (UniqueConstraint("tenant_id", "provider", "external_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    provider = Column(String, nullable=False)
+    external_id = Column(String, nullable=False)
+    sender = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), index=True)
+    status = Column(String, nullable=False, default="unassigned")
+    received_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class OutboundMessage(Base):
+    __tablename__ = "outbound_messages"
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    inbound_id = Column(Integer, ForeignKey("inbound_messages.id"), nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    idempotency_key = Column(String, nullable=False)
+    provider = Column(String, nullable=False)
+    provider_message_id = Column(String)
+    recipient = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    status = Column(String, nullable=False, default="sending")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AgentPolicy(Base):
+    """Tenant opt-in and hard limits for the controlled agent."""
+    __tablename__ = "agent_policies"
+    tenant_id = Column(String, primary_key=True)
+    enabled = Column(Boolean, nullable=False, default=False)
+    auto_assess = Column(Boolean, nullable=False, default=False)
+    auto_execute_internal = Column(Boolean, nullable=False, default=False)
+    max_assessments_per_day = Column(Integer, nullable=False, default=20)
+    max_internal_actions_per_day = Column(Integer, nullable=False, default=5)
+    max_balance_cents = Column(Integer, nullable=False, default=100000)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AgentProposal(Base):
+    """One immutable assessment snapshot and its controlled action state."""
+    __tablename__ = "agent_proposals"
+    __table_args__ = (UniqueConstraint("tenant_id", "invoice_id", "context_hash"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    inbound_id = Column(Integer, ForeignKey("inbound_messages.id"))
+    context_hash = Column(String(64), nullable=False)
+    engine = Column(String, nullable=False)
+    summary = Column(Text, nullable=False)
+    rationale = Column(Text, nullable=False)
+    action = Column(String, nullable=False)
+    draft_text = Column(Text)
+    status = Column(String, nullable=False, default="proposed")
+    risk_flags = Column(Text, nullable=False, default="[]")
+    balance_cents_at_proposal = Column(Integer, nullable=False)
+    reviewed_by = Column(String)
+    review_note = Column(Text)
+    executed_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AgentCaseNote(Base):
+    """The only action the pilot agent can execute on its own."""
+    __tablename__ = "agent_case_notes"
+    __table_args__ = (UniqueConstraint("tenant_id", "proposal_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    proposal_id = Column(Integer, ForeignKey("agent_proposals.id"), nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AgentExecution(Base):
+    """Idempotent record of each bounded internal action."""
+    __tablename__ = "agent_executions"
+    __table_args__ = (UniqueConstraint("tenant_id", "proposal_id", "action"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    proposal_id = Column(Integer, ForeignKey("agent_proposals.id"), nullable=False)
+    action = Column(String, nullable=False)
+    actor = Column(String, nullable=False)
+    result_id = Column(Integer)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

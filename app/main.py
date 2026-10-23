@@ -17,12 +17,17 @@ logging.basicConfig(level=settings.LOG_LEVEL, format="%(asctime)s [%(levelname)s
 app = FastAPI(
     title="RecoverFlow",
     description="Invoice processing, reconciliation, collections, and receivables insights.",
-    version="1.2.0"
+    version="1.3.0"
 )
 
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
     if request.url.path.startswith("/api/v1/") and request.url.path != "/api/v1/system/health":
+        # Public callbacks perform their own raw-body provider signature verification.
+        if (request.url.path.startswith("/api/v1/webhooks/razorpay/") or
+                request.url.path.startswith("/api/v1/webhooks/meta-whatsapp/") or
+                request.url.path.startswith("/api/v1/webhooks/shopify/")):
+            return await call_next(request)
         if not configured_keys():
             return JSONResponse({"detail": "Set RECOVERFLOW_API_KEY before using the API"}, status_code=503)
         identity = authenticate(request.headers.get("X-RECOVERFLOW-API-KEY")

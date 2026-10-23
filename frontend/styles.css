@@ -199,6 +199,7 @@ th {
 .data-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .data-form.hidden { display: none; }
 .data-form input, .data-form select { padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 140px; }
+.data-form input[type="checkbox"] { min-width: 0; width: auto; padding: 0; }
 .data-form label { display: flex; align-items: center; gap: 6px; }
 .card p { margin: 8px 0 14px; line-height: 1.5; }
 .card h4 { margin: 20px 0 10px; }
@@ -212,6 +213,15 @@ th {
 .campaign-edit textarea { min-height: 120px; }
 .manual-contact { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .manual-contact input { flex: 1; min-width: 160px; }
+#agent-policy-form label { width: 100%; flex-wrap: wrap; }
+#agent-policy-form .agent-toggle { flex-wrap: nowrap; align-items: flex-start; }
+#agent-policy-form .agent-toggle span { flex: 1; min-width: 0; }
+#agent-policy-form input[type="number"] { width: 100%; min-width: 0; }
+.agent-reply-form { margin-top: 12px; }
+.agent-reply-form textarea { width: 100%; min-height: 90px; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+#agent-proposals .subcard { overflow-wrap: anywhere; }
+.table-container { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.btn:disabled { cursor: not-allowed; opacity: 0.55; }
 .mobile-hint { display: none; }
 @media (max-width: 700px) {
     .app-container { flex-direction: column; }
@@ -221,8 +231,10 @@ th {
     .sidebar .nav-item { flex: 0 0 auto; padding: 8px 10px; margin-bottom: 0; white-space: nowrap; }
     .content { width: 100%; padding: 18px; }
     header { gap: 12px; align-items: flex-start; }
-    .card { overflow-x: auto; }
-    .mobile-hint { display: block; color: var(--color-text-muted); font-size: 13px; }
+    .card { overflow-x: hidden; }
+    .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { min-width: 460px; }
+    .mobile-hint { display: block; color: var(--color-text-muted); font-size: 13px; margin-bottom: 6px; }
 }
 /* RecoverFlow application styles */
 

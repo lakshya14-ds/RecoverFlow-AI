@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "claude-3-5-sonnet-20241022"
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.3            # controlled variation for collection drafts
+    GEMINI_API_KEY: str = ""
+    AGENT_MODEL: str = "gemini-3.8-flash"
 
     # OCR (Tesseract)
     TESSERACT_CMD: str = "tesseract"        # path to the Tesseract executable
@@ -27,6 +29,7 @@ class Settings(BaseSettings):
     ML_MODELS_PATH: str = "app/ml/models"
     FRAUD_CONTAMINATION: float = 0.05       # assumed anomaly rate for Isolation Forest
     FRAUD_ALERT_THRESHOLD: float = 0.65     # scores above this level create an alert
+    DSO_TARGET_DAYS: int = 30               # target DSO in days
     DSO_FORECAST_HORIZON: int = 90          # DSO forecast horizon in days
 
     # Reconciliation
@@ -59,9 +62,26 @@ class Settings(BaseSettings):
     RECOVERFLOW_API_KEY: str = ""
     RECOVERFLOW_API_KEYS_JSON: str = ""
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
+    POPPLER_PATH: str = ""
+
+    # Release 2 providers. No provider call is enabled without its own credentials.
+    SHOPIFY_SHOP_DOMAIN: str = ""
+    SHOPIFY_ADMIN_ACCESS_TOKEN: str = ""
+    SHOPIFY_API_VERSION: str = "2026-07"
+    SHOPIFY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_MODE: str = "test"
+    META_WHATSAPP_ACCESS_TOKEN: str = ""
+    META_WHATSAPP_PHONE_NUMBER_ID: str = ""
+    META_WHATSAPP_APP_SECRET: str = ""
+    META_WHATSAPP_VERIFY_TOKEN: str = ""
+    META_GRAPH_API_VERSION: str = ""
 
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 settings = Settings()

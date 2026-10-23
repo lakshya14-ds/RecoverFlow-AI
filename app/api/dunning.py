@@ -69,8 +69,12 @@ def trigger_dunning_stage(invoice_id: int, stage: int, db: Session = Depends(get
     days_overdue = (datetime.now(timezone.utc).date() - invoice.due_date).days
     if days_overdue <= 0:
         raise HTTPException(status_code=409, detail="Invoice is not overdue")
-    threshold = (settings.DUNNING_STAGE1_DAYS, settings.DUNNING_STAGE2_DAYS,
-                 settings.DUNNING_STAGE3_DAYS, settings.DUNNING_STAGE4_DAYS)[stage - 1]
+    policy = db.get(models.CollectionPolicy, identity.tenant_id)
+    thresholds = ((policy.stage1_days, policy.stage2_days,
+                   policy.stage3_days, policy.stage4_days) if policy and policy.enabled else
+                  (settings.DUNNING_STAGE1_DAYS, settings.DUNNING_STAGE2_DAYS,
+                   settings.DUNNING_STAGE3_DAYS, settings.DUNNING_STAGE4_DAYS))
+    threshold = thresholds[stage - 1]
     if days_overdue < threshold:
         raise HTTPException(status_code=409, detail="Invoice has not reached this stage")
     existing = db.query(models.DunningCampaign).filter_by(
