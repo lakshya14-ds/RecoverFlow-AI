@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecoverFlow | Receivables and Collections</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <h1>RecoverFlow</h1>
+                <span class="badge">Assisted Collections</span>
+            </div>
+            <nav>
+                <a href="#" class="nav-item active" data-view="dashboard">Dashboard</a>
+                <a href="#" class="nav-item" data-view="upload">Invoices</a>
+                <a href="#" class="nav-item" data-view="cases">Cases</a>
+                <a href="#" class="nav-item" data-view="reconciliation">Reconciliation</a>
+                <a href="#" class="nav-item" data-view="dunning">Collections</a>
+                <a href="#" class="nav-item" data-view="fraud">Review Alerts</a>
+            </nav>
+        </aside>
+        
+        <main class="content">
+            <header>
+                <h2>Overview</h2>
+                <div class="system-status">
+                    <span class="status-indicator" id="status-indicator"></span>
+                    <span id="system-status-text">Enter API key</span>
+                </div>
+            </header>
+            <form id="auth-form" class="card">
+                <label for="api-key">RecoverFlow API key</label>
+                <input id="api-key" type="password" autocomplete="off" required>
+                <button type="submit" class="btn btn-primary">Connect</button>
+                <button type="button" id="forget-key" class="btn">Forget key</button>
+            </form>
+            
+            <div id="view-dashboard" class="view active">
+                <div class="cards-grid">
+                    <div class="card">
+                        <h3>Current DSO</h3>
+                        <div class="value" id="dso-value">—</div>
+                    </div>
+                    <div class="card">
+                        <h3>Pending Reconciliations</h3>
+                        <div class="value" id="pending-value">—</div>
+                    </div>
+                    <div class="card">
+                        <h3>Open Review Alerts</h3>
+                        <div class="value warning" id="fraud-value">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-upload" class="view hidden">
+                <div class="card">
+                    <h3>Import Retail Receivables</h3>
+                    <p>Upload a UTF-8 CSV with external_id, invoice_number, customer_name, issue_date, due_date, and amount. Optional: customer_email and currency.</p>
+                    <form id="import-form">
+                        <input type="file" id="import-file" accept=".csv,text/csv" required>
+                        <button type="submit" class="btn btn-primary">Import CSV</button>
+                    </form>
+                    <p id="import-result"></p>
+                </div>
+                <div class="card">
+                    <h3>Upload an Invoice PDF</h3>
+                    <form id="upload-form">
+                        <input type="file" id="invoice-file" accept="application/pdf" required>
+                        <select id="invoice-type" aria-label="Invoice type"><option value="AR">Receivable (AR)</option><option value="AP">Payable (AP)</option></select>
+                        <button type="submit" class="btn btn-primary">Process Invoice</button>
+                    </form>
+                    <div id="upload-result"></div>
+                </div>
+                <div class="card">
+                    <h3>Add receivable manually</h3>
+                    <form id="manual-invoice-form" class="data-form">
+                        <input name="invoice_number" placeholder="Invoice number" required>
+                        <input name="counterparty_name" placeholder="Customer name" required>
+                        <input name="counterparty_email" type="email" placeholder="Customer email">
+                        <label>Issue date <input name="issue_date" type="date" required></label>
+                        <label>Due date <input name="due_date" type="date" required></label>
+                        <input name="total_amount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+                        <input name="currency" value="USD" maxlength="3" aria-label="Currency code" required>
+                        <button type="submit" class="btn btn-primary">Save receivable</button>
+                    </form>
+                    <p id="manual-invoice-result"></p>
+                </div>
+                <div class="card">
+                    <h3>Invoices Awaiting Review</h3>
+                    <div id="review-list">Open this tab to load invoices.</div>
+                </div>
+            </div>
+
+            <div id="view-cases" class="view hidden">
+                <div class="card">
+                    <h3>Receivable Cases</h3>
+                    <div id="case-list">Open this tab to load cases.</div>
+                </div>
+                <div id="case-detail" class="card hidden">
+                    <h3>Case Details</h3>
+                    <div id="case-summary"></div>
+                    <h4>Record a payment or credit</h4>
+                    <form id="entry-form" class="data-form">
+                        <select name="kind"><option value="payment">Payment</option><option value="credit">Credit</option></select>
+                        <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
+                        <input name="reference" placeholder="Unique receipt or reference" required>
+                        <button type="submit" class="btn btn-primary">Record entry</button>
+                    </form>
+                    <p id="entry-result"></p>
+                    <h4>Record a customer reply</h4>
+                    <form id="reply-form" class="data-form">
+                        <select name="category"><option value="question">Question</option><option value="needs_time">Needs time</option><option value="paid_claim">Already paid</option><option value="dispute">Dispute</option><option value="opt_out">Opt out</option><option value="other">Other</option></select>
+                        <input name="body" placeholder="Customer's message" required>
+                        <button type="submit" class="btn btn-primary">Record reply</button>
+                    </form>
+                    <p id="reply-result"></p>
+                    <form id="resume-form" class="data-form hidden">
+                        <input name="reason" placeholder="Reason contact may resume" required minlength="3">
+                        <label><input name="consent_restored" type="checkbox"> Contact permission restored if the customer opted out</label>
+                        <button type="submit" class="btn">Resume contact (admin)</button>
+                    </form>
+                    <p id="resume-result"></p>
+                    <div id="case-history"></div>
+                </div>
+            </div>
+
+            <div id="view-reconciliation" class="view hidden">
+                <div class="card">
+                    <h3>Reconciliations Awaiting Review</h3>
+                    <div id="reconciliation-list">Loading...</div>
+                </div>
+            </div>
+
+            <div id="view-dunning" class="view hidden">
+                <div class="card">
+                    <h3>Collection Campaigns</h3>
+                    <form id="draft-form" class="data-form">
+                        <input name="invoice_id" type="number" min="1" placeholder="Invoice ID" required>
+                        <select name="stage">
+                            <option value="1">Stage 1</option>
+                            <option value="2">Stage 2</option>
+                            <option value="3">Stage 3</option>
+                            <option value="4">Stage 4</option>
+                        </select>
+                        <button type="submit" class="btn btn-primary">Create draft</button>
+                    </form>
+                    <p id="draft-result"></p>
+                    <div id="dunning-list">Loading...</div>
+                </div>
+            </div>
+
+            <div id="view-fraud" class="view hidden">
+                <div class="card">
+                    <h3>Review Alerts</h3>
+                    <div id="fraud-list">Loading...</div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
+<!-- RecoverFlow dashboard -->
+

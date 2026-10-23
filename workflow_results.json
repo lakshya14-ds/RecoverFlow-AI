@@ -1,0 +1,126 @@
+{
+  "workflow": {
+    "csv_import": {
+      "status": 200,
+      "data": {
+        "imported": 1,
+        "skipped": 0
+      }
+    },
+    "receivable_review": {
+      "invoice_id": 1,
+      "balance_cents": 25000
+    },
+    "payment_recording": {
+      "status": 201,
+      "new_balance_cents": 15000
+    },
+    "draft_creation": {
+      "status": 200,
+      "email_data": {
+        "subject": "Friendly Reminder \u2014 Invoice INV-WF-001",
+        "body": "Hi Workflow Corp,\n\nJust a quick note that Invoice INV-WF-001 for USD 150.00 was due on 2026-10-13.\nIf you've already sent payment, please disregard this message.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\nAccounts Receivable",
+        "tone": "friendly",
+        "stage": 1
+      }
+    },
+    "staff_approval": {
+      "status": 200
+    },
+    "manual_contact": {
+      "status": 200
+    },
+    "opt_out": {
+      "status": 201
+    }
+  },
+  "failure_cases": {
+    "csv_missing_header": {
+      "status": 422,
+      "detail": "CSV must include: amount, customer_name, due_date, external_id, invoice_number, issue_date"
+    },
+    "csv_due_before_issue": {
+      "status": 422,
+      "detail": "Row 2: due date precedes issue date"
+    },
+    "csv_invalid_currency": {
+      "status": 422,
+      "detail": "Row 2: currency must be a three-letter code"
+    },
+    "csv_amount_precision": {
+      "status": 422,
+      "detail": "Amount must be positive with at most two decimal places"
+    },
+    "csv_duplicate_skip": {
+      "status": 200,
+      "data": {
+        "imported": 0,
+        "skipped": 1
+      }
+    },
+    "csv_conflicting_external_id": {
+      "status": 422,
+      "detail": "Row 2: external ID has conflicting invoice data"
+    },
+    "payment_zero": {
+      "status": 422
+    },
+    "payment_negative": {
+      "status": 422
+    },
+    "payment_decimals": {
+      "status": 422
+    },
+    "payment_exceeding_balance": {
+      "status": 409,
+      "detail": "Amount exceeds the outstanding balance"
+    },
+    "send_unapproved_draft": {
+      "status": 409,
+      "detail": "A staff member must approve the draft before sending"
+    },
+    "send_dry_run": {
+      "status": 503,
+      "detail": "Email dry run is enabled; nothing was sent"
+    },
+    "dunning_after_opt_out": {
+      "status": 409,
+      "detail": "Contact is paused pending review or customer request"
+    },
+    "resume_without_consent": {
+      "status": 409,
+      "detail": "Document restored contact permission before resuming"
+    }
+  },
+  "logs": [
+    "=== TESTING STAFF WORKFLOW END-TO-END ===",
+    "1. CSV Import: Status 200, Body: {\"imported\":1,\"skipped\":0}",
+    "2. List Cases: Status 200, Count: 1",
+    "   Found Invoice ID 1, Balance: 25000 cents",
+    "3. Record Payment: Status 201, Body: {\"entry_id\":1,\"balance_cents\":15000}",
+    "   Case balance updated to 15000 cents, status=partially_matched",
+    "4. Trigger Collection Draft: Status 200, Body: {\"status\":\"success\",\"campaign_stage\":1,\"email_data\":{\"subject\":\"Friendly Reminder \u2014 Invoice INV-WF-001\",\"body\":\"Hi Workflow Corp,\\n\\nJust a quick note that Invoice INV-WF-001 for USD 150.00 was due on...",
+    "   Campaign ID 1 created in draft status",
+    "5. Approve Draft: Status 200, Body: {\"status\":\"approved\",\"campaign_id\":1}",
+    "6. Record Manual Contact: Status 200, Body: {\"status\":\"contacted_manually\",\"campaign_id\":1}",
+    "7. Record Opt-Out Reply: Status 201, Body: {\"message_id\":1,\"contact_suppressed\":true}",
+    "   Case contact_suppressed=True, contact_opt_out=True",
+    "\n=== TESTING FAILURE CASES ===",
+    "1a. Missing CSV headers: Status 422, Detail: {\"detail\":\"CSV must include: amount, customer_name, due_date, external_id, invoice_number, issue_date\"}",
+    "1b. Due date before issue date: Status 422, Detail: {\"detail\":\"Row 2: due date precedes issue date\"}",
+    "1c. Invalid currency: Status 422, Detail: {\"detail\":\"Row 2: currency must be a three-letter code\"}",
+    "1d. Amount >2 decimals: Status 422, Detail: {\"detail\":\"Amount must be positive with at most two decimal places\"}",
+    "2a. Duplicate identical CSV: Status 200, Body: {\"imported\":0,\"skipped\":1}",
+    "2b. Conflicting external ID: Status 422, Detail: {\"detail\":\"Row 2: external ID has conflicting invoice data\"}",
+    "3a. Zero payment: Status 422, Detail: {\"detail\":[{\"type\":\"greater_than\",\"loc\":[\"body\",\"amount\"],\"msg\":\"Input should be greater than 0\",\"input\":\"0.00\",\"ctx\":{\"gt\":0}}]}",
+    "3b. Negative payment: Status 422, Detail: {\"detail\":[{\"type\":\"greater_than\",\"loc\":[\"body\",\"amount\"],\"msg\":\"Input should be greater than 0\",\"input\":\"-10.00\",\"ctx\":{\"gt\":0}}]}",
+    "3c. 3 decimal places payment: Status 422, Detail: {\"detail\":[{\"type\":\"decimal_max_places\",\"loc\":[\"body\",\"amount\"],\"msg\":\"Decimal input should have no more than 2 decimal places\",\"input\":\"10.555\",\"ctx\":{\"decimal_places\":2}}]}",
+    "3d. Payment exceeding balance: Status 409, Detail: {\"detail\":\"Amount exceeds the outstanding balance\"}",
+    "4. Send unapproved draft: Status 409, Detail: {\"detail\":\"A staff member must approve the draft before sending\"}",
+    "5. Send approved draft with no provider/dry run: Status 503, Detail: {\"detail\":\"Email dry run is enabled; nothing was sent\"}",
+    "6a. Trigger dunning on opted-out invoice: Status 409, Detail: {\"detail\":\"Contact is paused pending review or customer request\"}",
+    "6b. Resume without consent restored: Status 409, Detail: {\"detail\":\"Document restored contact permission before resuming\"}",
+    "7a. Record contact on campaign 2: Status 200",
+    "7b. Record second contact on already contacted campaign: Status 409, Detail: {\"detail\":\"Approve the draft before recording contact\"}"
+  ]
+}

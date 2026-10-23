@@ -1,0 +1,8 @@
+{
+  "id": "29a8f7b1-45a4-40be-b82e-0d8c084a09ce",
+  "status": "needs_review",
+  "invoice_id": null,
+  "invoice_type": "AR",
+  "attempts": 1,
+  "error": "Missing extracted fields: invoice_number, counterparty_name, issue_date, due_date, total_amount; OCR Error: PDF OCR requires pdf2image and pytesseract; install requirements.txt"
+}
