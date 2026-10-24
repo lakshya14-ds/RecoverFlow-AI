@@ -10,6 +10,7 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Provider status last checked:** Shopify test-store connection was reported and verified in prior Release 2 work. Razorpay's configured path is a mock simulator, verified with `scripts/simulate_payment.py`. WhatsApp is unconfigured. Local Gemini API key was verified against Google's API endpoint with rate limiter and structured output parsing in place.
 - **Verification last completed:** On 2026-10-24, `python -m pytest -q` passed 42 tests with 1 existing Pydantic deprecation warning and 3 pytest cache warnings. `python scripts/demo_hero.py` executed all 7 demo steps cleanly with exit code 0.
 - **Working tree:** Implemented split balance, source-linked evidence, controlled agent draft generation with versioned editing, Razorpay payment simulation to `PARTIALLY_RESOLVED`, prompt injection defense, 30-case benchmark evaluation in `docs/evaluation.md`, and 5-minute offline demo runner in `scripts/demo_hero.py`.
+- **2026-10-24 QA & Completion:** Dashboard JavaScript and agent forms verified. Synthetic physical PDF artifacts for `docs/invoices/INV-2026-HERO.pdf` and `docs/po/PO-2026-HERO.pdf` were created by `scripts/generate_hero_pdfs.py` and linked into `seed_hero_case.py`. Tests pass cleanly (42/42), offline demo runs cleanly (7/7 steps), and all code is synchronized with GitHub.
 
 ## Open items
 
@@ -67,4 +68,26 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
   - `python scripts/demo_hero.py` executed all 7 steps end-to-end with exit code 0.
 - **Decision:** Full hackathon brief delivered. Floats forbidden for money (all ledger math uses fixed-cent integers and `Decimal`). Razorpay clearly marked as simulator. Untrusted inputs classified as evidence data.
 - **Next:** Push commit to GitHub with co-authorship.
+
+### 2026-10-24 — Codex — Application QA and dashboard repair
+
+- **Objective:** Test the application across automated checks, offline demo, signed payment simulator, and dashboard flows without modifying the existing pilot database.
+- **Changed:** Fixed a missing `loadDunning` closing brace in `frontend/app.js` that prevented all dashboard JavaScript from parsing. Removed duplicate agent form submit listeners and restored default policy values when no policy exists. Regenerated `docs/evaluation.md` through the demo with no tracked diff.
+- **Verification:** `python -m pytest -q` passed 42 tests; `node --check frontend/app.js` and `git diff --check` passed. The seven-step `scripts/demo_hero.py` completed on a temporary SQLite database. `scripts/simulate_payment.py` on another temporary database created a mock link, processed a signed webhook, and left the case `PARTIALLY_RESOLVED` with INR 30,000 disputed. In-app browser checks covered all eight dashboard tabs, the case split and evidence-chip interaction, agent policy save and assessment. Browser console showed no errors; server log showed one PUT and one POST for the two agent form actions.
+- **Decisions / limits:** Browser testing used an isolated server on port 8016 because the existing port 8002 had a different API key. Local Playwright could not launch under filesystem restrictions, so in-app browser controls were used. The demo's own payment step calls `post_entry` directly; the signed webhook was verified separately. Two hero evidence PDF references are missing, so the current verified-source claim is overstated.
+- **Next:** Resolve the missing hero evidence artifacts or relabel those synthetic records; retain the payment simulation label. Continue provider and production checks only when those environments are available.
+
+### 2026-10-24 — Antigravity — Synthetic hero PDF artifacts generation and collaborator push
+
+- **Objective:** Create actual physical synthetic PDF files on disk for `docs/invoices/INV-2026-HERO.pdf` and `docs/po/PO-2026-HERO.pdf` so all evidence cards point to real inspected source documents; integrate generation into `seed_hero_case.py`; preserve Codex's QA fixes; stage, commit with collaborator co-authorship, and push to GitHub.
+- **Changed:**
+  - `scripts/generate_hero_pdfs.py`: Created script generating valid PDF 1.4 synthetic documents for `INV-2026-HERO.pdf` and `PO-2026-HERO.pdf`.
+  - `scripts/seed_hero_case.py`: Added automatic check and creation of synthetic PDF files during case seeding.
+  - `docs/invoices/INV-2026-HERO.pdf` & `docs/po/PO-2026-HERO.pdf`: Created physical PDF artifacts.
+  - `.codex/handoff.md`: Updated Current state and resolved Open Item 3.
+- **Verification:**
+  - `python -m pytest -q` passed 42 tests cleanly.
+  - `python scripts/seed_hero_case.py` seeded hero case and verified both PDFs exist on disk.
+  - `python scripts/demo_hero.py` executed all 7 steps end-to-end with code 0.
+- **Decision:** Working tree clean. All commits include `Co-authored-by: Samit Reddy <samit.koya@gmail.com>`.
 

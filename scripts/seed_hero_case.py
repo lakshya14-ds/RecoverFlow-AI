@@ -17,10 +17,49 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from app.database import models
 from app.database.db_manager import SessionLocal, init_db
 from app.services.receivables import split_balance
+from scripts.generate_hero_pdfs import create_simple_pdf
 
 
 def seed_hero_case() -> models.Invoice:
     init_db()
+    
+    # Ensure physical evidence PDF files exist on disk
+    if not Path("docs/invoices/INV-2026-HERO.pdf").exists():
+        create_simple_pdf(
+            "docs/invoices/INV-2026-HERO.pdf",
+            "COMMERCIAL TAX INVOICE - INV-2026-HERO",
+            [
+                "Invoice Number: INV-2026-HERO",
+                "Date: 2026-09-09 | Due Date: 2026-10-09",
+                "Customer: Apex Enterprises Pvt Ltd",
+                "GSTIN: 27AABCA1234D1Z8",
+                "----------------------------------------------------------------------",
+                "Item: Precision Valve Sets (SKU: PVS-100)",
+                "Quantity: 80 Units",
+                "Unit Price: INR 3,000.00",
+                "----------------------------------------------------------------------",
+                "Subtotal: INR 2,40,000.00",
+                "Total Invoiced Amount: INR 2,40,000.00",
+                "Payment Terms: Net 30 Days via RTGS / Bank Transfer"
+            ]
+        )
+    if not Path("docs/po/PO-2026-HERO.pdf").exists():
+        create_simple_pdf(
+            "docs/po/PO-2026-HERO.pdf",
+            "PURCHASE ORDER - PO-2026-HERO",
+            [
+                "PO Reference: PO-2026-HERO",
+                "PO Date: 2026-09-01",
+                "Buyer: Apex Enterprises Pvt Ltd (Procurement Dept)",
+                "Delivery Location: Warehouse Unit 4, Industrial Area Phase II",
+                "----------------------------------------------------------------------",
+                "Authorized Items:",
+                "- 80 Units x Precision Valve Sets @ INR 3,000.00 = INR 2,40,000.00",
+                "Payment Terms: Net 30 Days from invoice date",
+                "Authorized Signature: Procurement Manager, Apex Enterprises Pvt Ltd"
+            ]
+        )
+
     db = SessionLocal()
     tenant_id = "local"
     inv_num = "INV-2026-HERO"

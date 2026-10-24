@@ -457,40 +457,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await Promise.all([loadPaymentLinks(), loadMessageInbox(), loadProviderEvents()]);
     }
 
-    document.getElementById('agent-policy-form').addEventListener('submit', async event => {
-        event.preventDefault();
-        const form = event.currentTarget;
-        const values = Object.fromEntries(new FormData(form));
-        const payload = {
-            enabled: form.elements.enabled.checked,
-            auto_assess: form.elements.auto_assess.checked,
-            auto_execute_internal: form.elements.auto_execute_internal.checked,
-            max_assessments_per_day: Number(values.max_assessments_per_day),
-            max_internal_actions_per_day: Number(values.max_internal_actions_per_day),
-            max_balance_cents: Math.round(Number(values.max_balance_cents) * 100)
-        };
-        const result = document.getElementById('agent-policy-result');
-        try {
-            await apiFetch('/api/v1/agent/policy', {method: 'PUT',
-                headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
-            result.textContent = 'Agent limits saved.';
-            loadAgent();
-        } catch (error) { result.textContent = error.message; }
-    });
-
-    document.getElementById('agent-assess-form').addEventListener('submit', async event => {
-        event.preventDefault();
-        const id = Number(new FormData(event.currentTarget).get('invoice_id'));
-        const result = document.getElementById('agent-assess-result');
-        result.textContent = 'Assessing case...';
-        try {
-            const proposal = await (await apiFetch(`/api/v1/agent/cases/${id}/assess`,
-                {method: 'POST'})).json();
-            result.textContent = `Proposal ${proposal.id}: ${proposal.action}. Review it below.`;
-            loadAgentProposals();
-        } catch (error) { result.textContent = error.message; }
-    });
-
     async function loadAgent() {
         const status = document.getElementById('agent-status');
         try {
@@ -752,17 +718,19 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
 
             // Populate policy form
-            const pol = statusData.policy;
-            if (pol) {
-                const form = document.getElementById('agent-policy-form');
-                if (form) {
-                    form.elements['enabled'].checked = Boolean(pol.enabled);
-                    form.elements['auto_assess'].checked = Boolean(pol.auto_assess);
-                    form.elements['auto_execute_internal'].checked = Boolean(pol.auto_execute_internal);
-                    form.elements['max_assessments_per_day'].value = pol.max_assessments_per_day || 20;
-                    form.elements['max_internal_actions_per_day'].value = pol.max_internal_actions_per_day || 5;
-                    form.elements['max_balance_cents'].value = pol.max_balance_cents ? (pol.max_balance_cents / 100).toFixed(2) : '1000.00';
-                }
+            const pol = statusData.policy || {
+                enabled: false, auto_assess: false, auto_execute_internal: false,
+                max_assessments_per_day: 20, max_internal_actions_per_day: 5,
+                max_balance_cents: 100000
+            };
+            const form = document.getElementById('agent-policy-form');
+            if (form) {
+                form.elements['enabled'].checked = Boolean(pol.enabled);
+                form.elements['auto_assess'].checked = Boolean(pol.auto_assess);
+                form.elements['auto_execute_internal'].checked = Boolean(pol.auto_execute_internal);
+                form.elements['max_assessments_per_day'].value = pol.max_assessments_per_day;
+                form.elements['max_internal_actions_per_day'].value = pol.max_internal_actions_per_day;
+                form.elements['max_balance_cents'].value = (pol.max_balance_cents / 100).toFixed(2);
             }
 
             // Load proposals
