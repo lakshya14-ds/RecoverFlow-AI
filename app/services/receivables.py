@@ -32,6 +32,32 @@ def balance_cents(db: Session, invoice: models.Invoice) -> int:
     return opening_cents(invoice) + int(adjustments or 0)
 
 
+def split_balance(db: Session, invoice: models.Invoice) -> dict:
+    """Returns fixed-cent and Decimal breakdown for invoice case."""
+    opening = opening_cents(invoice)
+    adjustments = db.query(func.coalesce(func.sum(models.ReceivableEntry.amount_cents), 0)).filter(
+        models.ReceivableEntry.tenant_id == invoice.tenant_id,
+        models.ReceivableEntry.invoice_id == invoice.id,
+    ).scalar() or 0
+    # Ledger adjustments are negative for payments/credits
+    received = -int(adjustments) if adjustments < 0 else 0
+    outstanding = max(0, opening + int(adjustments))
+    disputed = int(getattr(invoice, "disputed_cents", 0) or 0)
+    undisputed = max(0, outstanding - disputed)
+    return {
+        "invoice_total_cents": opening,
+        "received_cents": received,
+        "outstanding_cents": outstanding,
+        "disputed_cents": disputed,
+        "undisputed_cents": undisputed,
+        "invoice_total": Decimal(opening) / Decimal(100),
+        "received": Decimal(received) / Decimal(100),
+        "outstanding": Decimal(outstanding) / Decimal(100),
+        "disputed": Decimal(disputed) / Decimal(100),
+        "undisputed": Decimal(undisputed) / Decimal(100),
+    }
+
+
 def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: object,
                source: str, reference: str, actor: str, note: str = "") -> models.ReceivableEntry:
     if invoice.invoice_type != "AR":
@@ -59,7 +85,15 @@ def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: objec
     db.add(entry)
     db.flush()
     remaining = balance + signed
-    if not invoice.requires_human_review and not invoice.dispute_open:
-        invoice.status = "paid" if remaining == 0 else (
-            "partially_matched" if remaining < opening_cents(invoice) else "pending")
+    disputed = int(getattr(invoice, "disputed_cents", 0) or 0)
+    if not invoice.requires_human_review:
+        if remaining == 0:
+            invoice.status = "paid"
+        elif disputed > 0 and remaining <= disputed:
+            invoice.status = "PARTIALLY_RESOLVED"
+        elif remaining < opening_cents(invoice):
+            invoice.status = "partially_matched"
+        else:
+            invoice.status = "pending"
     return entry
+

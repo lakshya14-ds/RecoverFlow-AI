@@ -11,7 +11,7 @@ from app.auth import Identity
 from app.config import settings
 from app.database import models
 from app.services import gemini_agent
-from app.services.receivables import balance_cents
+from app.services.receivables import balance_cents, split_balance
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,16 @@ def _conversation(db: Session, invoice: models.Invoice) -> tuple[list[dict], mod
 def snapshot(db: Session, invoice: models.Invoice) -> tuple[dict, str, models.InboundMessage | None]:
     messages, latest = _conversation(db, invoice)
     balance = balance_cents(db, invoice)
+    split = split_balance(db, invoice)
     facts = {
         "invoice_id": invoice.id, "invoice_number": invoice.invoice_number[:80],
+        "customer_name": invoice.counterparty_name,
         "status": invoice.status, "balance_cents": balance,
+        "invoice_total_cents": split["invoice_total_cents"],
+        "received_cents": split["received_cents"],
+        "outstanding_cents": split["outstanding_cents"],
+        "disputed_cents": split["disputed_cents"],
+        "undisputed_cents": split["undisputed_cents"],
         "currency": invoice.currency, "due_date": invoice.due_date.isoformat(),
         "source_system": invoice.source_system,
         "contact_suppressed": bool(invoice.contact_suppressed),
@@ -76,18 +83,30 @@ def snapshot(db: Session, invoice: models.Invoice) -> tuple[dict, str, models.In
 def _choice(db: Session, invoice: models.Invoice, facts: dict,
             latest: models.InboundMessage | None) -> tuple[str, list[str]]:
     flags = []
-    if facts["balance_cents"] <= 0 or invoice.status == "paid":
+    if facts["balance_cents"] <= 0 or invoice.status in ("paid", "RESOLVED_PAID"):
         flags.append("no_outstanding_balance")
     if invoice.contact_opt_out:
         flags.append("customer_opted_out")
-    if invoice.dispute_open or invoice.status == "disputed":
-        flags.append("open_dispute")
     if invoice.requires_human_review:
         flags.append("case_review_required")
     if invoice.contact_suppressed:
         flags.append("contact_paused")
     if invoice.source_system == "shopify" and settings.RAZORPAY_KEY_ID.startswith("rzp_test_mock"):
         flags.append("mock_payment_environment")
+
+    disputed_cents = facts.get("disputed_cents", 0)
+    undisputed_cents = facts.get("undisputed_cents", 0)
+    if (invoice.dispute_open or invoice.status == "disputed") and disputed_cents > 0:
+        if undisputed_cents > 0:
+            flags.append("split_balance_active")
+            if not invoice.contact_suppressed and not invoice.contact_opt_out and not invoice.requires_human_review:
+                return "split_balance_draft", flags
+            return "staff_review", flags
+        flags.append("entire_balance_disputed")
+        return "staff_review", flags
+    elif invoice.dispute_open or invoice.status == "disputed":
+        flags.append("open_dispute")
+
     blocking = {"no_outstanding_balance", "customer_opted_out", "open_dispute",
                 "case_review_required"}
     if set(flags) & blocking:
@@ -134,6 +153,30 @@ def _eligible_collection_stage(db: Session, invoice: models.Invoice) -> int | No
 
 
 def _fallback(facts: dict, action: str) -> tuple[str, str, str]:
+    if action == "split_balance_draft":
+        undisputed_str = f"{facts['currency']} {facts.get('undisputed_cents', 0) / 100:,.2f}"
+        disputed_str = f"{facts['currency']} {facts.get('disputed_cents', 0) / 100:,.2f}"
+        received_str = f"{facts['currency']} {facts.get('received_cents', 0) / 100:,.2f}"
+        total_str = f"{facts['currency']} {facts.get('invoice_total_cents', facts['balance_cents']) / 100:,.2f}"
+        summary = (
+            f"Invoice {facts['invoice_number']} total is {total_str} with {received_str} received. "
+            f"Of the remaining {facts['currency']} {facts['balance_cents'] / 100:,.2f} balance, {disputed_str} is disputed "
+            f"(shortfall under review) and {undisputed_str} is undisputed and overdue."
+        )
+        rationale = (
+            f"RecoverFlow policy: Chase only undisputed funds ({undisputed_str}). "
+            f"Explicitly acknowledge the {disputed_str} dispute without waiving or misstating it."
+        )
+        draft = (
+            f"Dear {facts.get('customer_name') or 'Customer'},\n\n"
+            f"Thank you for your partial payment of {received_str} against invoice {facts['invoice_number']}.\n\n"
+            f"We acknowledge your open dispute regarding the delivery shortfall of {disputed_str}, which our operations "
+            f"team is actively reviewing.\n\n"
+            f"In the meantime, the remaining undisputed balance of {undisputed_str} is now overdue. Please arrange payment "
+            f"for this undisputed portion at your earliest convenience."
+        )
+        return summary, rationale, draft
+
     balance = f"{facts['currency']} {facts['balance_cents'] / 100:.2f}"
     lines = [f"Invoice {facts['invoice_number']} has a ledger balance of {balance} and is {facts['status']}."]
     if facts["messages"]:
@@ -198,6 +241,18 @@ def assess(db: Session, tenant_id: str, invoice_id: int, actor: str,
         risk_flags=json.dumps(flags), balance_cents_at_proposal=facts["balance_cents"])
     db.add(proposal)
     db.flush()
+    if proposal.draft_text:
+        v_hash = hashlib.sha256(proposal.draft_text.encode("utf-8")).hexdigest()
+        db.add(models.ProposalDraftVersion(
+            tenant_id=tenant_id,
+            proposal_id=proposal.id,
+            version_number=1,
+            body=proposal.draft_text,
+            edited_by="agent",
+            change_reason="Initial agent generated draft",
+            version_hash=v_hash,
+            status="draft",
+        ))
     db.add(models.AuditEvent(tenant_id=tenant_id, actor=actor,
                              action="agent_assessed", entity_type="agent_proposal",
                              entity_id=str(proposal.id), details=f"{engine}:{action}"))

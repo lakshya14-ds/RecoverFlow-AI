@@ -47,6 +47,7 @@ class Invoice(Base):
     contact_suppressed = Column(Boolean, nullable=False, default=False)
     contact_opt_out = Column(Boolean, nullable=False, default=False)
     dispute_open = Column(Boolean, nullable=False, default=False)
+    disputed_cents = Column(Integer, nullable=False, default=0)
     afis_transaction_id = Column(Integer)
     axis_classified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -239,6 +240,8 @@ class CustomerMessage(Base):
     category = Column(String, nullable=False)
     body = Column(Text, nullable=False)
     actor = Column(String, nullable=False)
+    is_injection = Column(Boolean, nullable=False, default=False)
+    rejection_reason = Column(Text)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -401,4 +404,39 @@ class AgentExecution(Base):
     action = Column(String, nullable=False)
     actor = Column(String, nullable=False)
     result_id = Column(Integer)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class CaseEvidence(Base):
+    """Source-linked evidence verifying amounts, POs, dispute claims, or bank entries."""
+    __tablename__ = "case_evidence"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, default="local", index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    claim_type = Column(String, nullable=False)  # invoice_total, received_payment, dispute_item, undisputed_balance, purchase_order
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=False)
+    source_type = Column(String, nullable=False)  # invoice_pdf, bank_receipt, po_document, customer_email, reconciliation_math
+    source_reference = Column(String, nullable=False)
+    source_snippet = Column(Text)
+    amount_cents = Column(Integer)
+    verified = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ProposalDraftVersion(Base):
+    """Immutable versioned revisions of an agent draft."""
+    __tablename__ = "proposal_draft_versions"
+    __table_args__ = (UniqueConstraint("tenant_id", "proposal_id", "version_number"),)
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    proposal_id = Column(Integer, ForeignKey("agent_proposals.id"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False, default=1)
+    body = Column(Text, nullable=False)
+    edited_by = Column(String, nullable=False)
+    change_reason = Column(Text)
+    version_hash = Column(String(64), nullable=False)
+    status = Column(String, nullable=False, default="draft")  # draft, approved, rejected
+    approved_by = Column(String)
+    approved_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

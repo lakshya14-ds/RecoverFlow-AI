@@ -219,17 +219,105 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await (await apiFetch(`/api/v1/cases/${id}`)).json();
             selectedCaseId = id;
             detail.classList.remove('hidden');
-            document.getElementById('case-summary').textContent = `${data.customer} • ${data.invoice_number} • ${data.currency} ${(data.balance_cents / 100).toFixed(2)} outstanding${data.contact_suppressed ? ' • Contact paused' : ''}`;
-            document.getElementById('create-payment-link').disabled = data.currency !== 'INR' || data.balance_cents <= 0 || data.requires_human_review || data.dispute_open;
+
+            const injectionMsg = (data.messages || []).find(m => m.is_injection);
+            const injectionHtml = injectionMsg ? `
+                <div class="injection-alert">
+                    <span class="shield-icon">🛡️</span>
+                    <div>
+                        <strong>Security Policy Defense: Adversarial Prompt Injection Blocked</strong>
+                        <p style="margin:2px 0 0;font-size:12px;">Customer attempted unauthorized instruction override ("${escapeHtml(injectionMsg.body)}"). Message classified strictly as untrusted evidence. Action denied.</p>
+                    </div>
+                </div>` : '';
+
+            const splitHtml = `
+                ${injectionHtml}
+                <div style="margin-bottom:8px;">
+                    <strong>${escapeHtml(data.customer)}</strong> • Invoice <strong>${escapeHtml(data.invoice_number)}</strong> • Status: <span class="badge">${escapeHtml(data.status)}</span>${data.contact_suppressed ? ' • <span style="color:var(--color-error);font-weight:600;">Contact Paused</span>' : ''}
+                </div>
+                <div class="split-balance-grid">
+                    <div class="split-metric-card">
+                        <span class="label">1. Invoice Total</span>
+                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.invoice_total).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.invoice_total_cents / 100).toFixed(2)}</span>
+                        <span class="source-chip" data-claim="invoice_total">🔍 Source: Invoice Doc</span>
+                    </div>
+                    <div class="split-metric-card received">
+                        <span class="label">2. Received</span>
+                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.received).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.received_cents / 100).toFixed(2)}</span>
+                        <span class="source-chip" data-claim="received_payment">🔍 Source: Bank Receipt</span>
+                    </div>
+                    <div class="split-metric-card">
+                        <span class="label">3. Outstanding</span>
+                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.outstanding).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.outstanding_cents / 100).toFixed(2)}</span>
+                        <span class="source-chip" data-claim="undisputed_balance">🔍 Source: Ledger Math</span>
+                    </div>
+                    <div class="split-metric-card disputed">
+                        <span class="label">4. Disputed (Shortfall)</span>
+                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.disputed).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.disputed_cents / 100).toFixed(2)}</span>
+                        <span class="source-chip" data-claim="dispute_item">🔍 Source: Customer Dispute</span>
+                    </div>
+                    <div class="split-metric-card undisputed">
+                        <span class="label">5. Undisputed (Actionable)</span>
+                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.undisputed).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.undisputed_cents / 100).toFixed(2)}</span>
+                        <span class="source-chip" data-claim="undisputed_balance">🔍 Source: Verified Owed</span>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('case-summary').innerHTML = splitHtml;
+
+            // Handle source-chip clicks to highlight matching evidence
+            document.querySelectorAll('.source-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const claim = chip.getAttribute('data-claim');
+                    document.querySelectorAll('.evidence-card').forEach(c => c.classList.remove('highlighted'));
+                    const target = document.getElementById(`evidence-claim-${claim}`);
+                    if (target) {
+                        target.classList.add('highlighted');
+                        target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                });
+            });
+
+            document.getElementById('create-payment-link').disabled = data.currency !== 'INR' || data.balance_cents <= 0 || data.requires_human_review;
             document.getElementById('payment-link-result').textContent = '';
             document.getElementById('resume-form').classList.toggle('hidden', !data.contact_suppressed);
             document.getElementById('shopify-confirm-form').classList.toggle('hidden', !(data.source_system === 'shopify' && data.requires_human_review));
-            document.getElementById('case-history').innerHTML = `<h4>Activity</h4><div class="stack">${[
-                ...data.entries.map(item => `<div class="subcard">${escapeHtml(item.kind)}: ${escapeHtml(item.currency)} ${(Math.abs(item.amount_cents) / 100).toFixed(2)} • ${escapeHtml(item.reference)}${item.amount_cents < 0 ? ` <button type="button" class="btn reverse-entry" data-id="${Number(item.id)}">Reverse (admin)</button>` : ''}</div>`),
-                ...data.messages.map(item => `<div class="subcard">${escapeHtml(item.category)}: ${escapeHtml(item.body)}</div>`),
-                ...data.campaigns.map(item => `<div class="subcard">Collection draft ${escapeHtml(item.campaign_stage)}: ${escapeHtml(displayStatus(item.status))}</div>`),
-                ...(data.agent_notes || []).map(item => `<div class="subcard">Agent note: ${escapeHtml(item.body)}</div>`)
-            ].join('') || '<p>No activity yet.</p>'}</div>`;
+
+            // Evidence Investigation Cards
+            const evidenceHtml = `
+                <h4>Investigation: Source-Linked Evidence</h4>
+                <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:8px;">Every claim above is linked to a verified source below. Unsupported claims are never displayed.</p>
+                <div class="evidence-list">
+                    ${(data.evidence || []).map(ev => `
+                        <div class="evidence-card" id="evidence-claim-${escapeHtml(ev.claim_type)}" data-claim="${escapeHtml(ev.claim_type)}">
+                            <div class="evidence-header">
+                                <strong>${escapeHtml(ev.title)}</strong>
+                                <span class="source-tag">${escapeHtml(ev.source_type)} ${ev.verified ? '✓ Verified' : '⚠️ Untrusted'}</span>
+                            </div>
+                            <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
+                                <span class="evidence-ref">Source: ${escapeHtml(ev.source_reference)}</span>
+                                ${ev.amount_cents ? `<strong>${escapeHtml(data.currency)} ${(ev.amount_cents / 100).toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong>` : ''}
+                            </div>
+                            ${ev.source_snippet ? `<div class="snippet-box">"${escapeHtml(ev.source_snippet)}"</div>` : ''}
+                        </div>
+                    `).join('') || '<p>No linked evidence items yet.</p>'}
+                </div>
+            `;
+
+            document.getElementById('case-history').innerHTML = `
+                ${evidenceHtml}
+                <h4>Ledger Entries & Activity History</h4>
+                <div class="stack">${[
+                    ...data.entries.map(item => `<div class="subcard">${escapeHtml(item.kind)}: ${escapeHtml(item.currency)} ${(Math.abs(item.amount_cents) / 100).toFixed(2)} • ${escapeHtml(item.reference)}${item.amount_cents < 0 ? ` <button type="button" class="btn reverse-entry" data-id="${Number(item.id)}">Reverse (admin)</button>` : ''}</div>`),
+                    ...data.messages.map(item => `<div class="subcard">${escapeHtml(item.category)}: ${escapeHtml(item.body)}${item.is_injection ? ' <span class="badge" style="background:#dc2626;">INJECTION BLOCKED</span>' : ''}</div>`),
+                    ...data.campaigns.map(item => `<div class="subcard">Collection draft stage ${escapeHtml(item.campaign_stage)}: ${escapeHtml(displayStatus(item.status))}</div>`),
+                    ...(data.agent_notes || []).map(item => `<div class="subcard">Agent note: ${escapeHtml(item.body)}</div>`)
+                ].join('') || '<p>No activity yet.</p>'}</div>
+            `;
+
             detail.querySelectorAll('.reverse-entry').forEach(button => button.addEventListener('click', async () => {
                 const reason = prompt('Why is this receipt or credit being reversed?');
                 if (!reason) return;
@@ -649,7 +737,217 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             container.textContent = e.message;
         }
+    async function loadAgent() {
+        const statusEl = document.getElementById('agent-status');
+        const proposalsEl = document.getElementById('agent-proposals');
+        try {
+            const statusData = await (await apiFetch('/api/v1/agent/status')).json();
+            const rl = statusData.rate_limits || {};
+            statusEl.innerHTML = `
+                <strong>Active Model:</strong> <code>${escapeHtml(statusData.model)}</code> • 
+                <strong>Configured:</strong> ${statusData.model_configured ? '<span style="color:var(--color-success);font-weight:600;">Yes</span>' : '<span style="color:var(--color-text-muted);">Rules Fallback</span>'} • 
+                <strong>Rate Limits:</strong> RPM: ${rl.rpm_remaining !== undefined ? rl.rpm_remaining : '—'}/${rl.rpm_limit || 15} remaining | RPD: ${rl.rpd_remaining !== undefined ? rl.rpd_remaining : '—'}/${rl.rpd_limit || 1500} remaining
+            `;
+
+            // Populate policy form
+            const pol = statusData.policy;
+            if (pol) {
+                const form = document.getElementById('agent-policy-form');
+                if (form) {
+                    form.elements['enabled'].checked = Boolean(pol.enabled);
+                    form.elements['auto_assess'].checked = Boolean(pol.auto_assess);
+                    form.elements['auto_execute_internal'].checked = Boolean(pol.auto_execute_internal);
+                    form.elements['max_assessments_per_day'].value = pol.max_assessments_per_day || 20;
+                    form.elements['max_internal_actions_per_day'].value = pol.max_internal_actions_per_day || 5;
+                    form.elements['max_balance_cents'].value = pol.max_balance_cents ? (pol.max_balance_cents / 100).toFixed(2) : '1000.00';
+                }
+            }
+
+            // Load proposals
+            const proposals = await (await apiFetch('/api/v1/agent/proposals')).json();
+            if (!proposals.length) {
+                proposalsEl.innerHTML = '<p>No agent proposals generated yet. Use the form above to assess a case.</p>';
+                return;
+            }
+
+            proposalsEl.innerHTML = `<div class="stack">${await Promise.all(proposals.map(async item => {
+                let versions = [];
+                try {
+                    versions = await (await apiFetch(`/api/v1/agent/proposals/${item.id}/versions`)).json();
+                } catch (_) {}
+                const latestVersion = versions.length ? versions[versions.length - 1] : null;
+                const isApproved = latestVersion && latestVersion.status === 'approved';
+
+                return `
+                    <div class="subcard" style="border-left: 4px solid var(--color-primary);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+                            <strong>Proposal #${item.id} • Case ${item.invoice_id}</strong>
+                            <div>
+                                <span class="badge" style="background:${item.status === 'approved' ? '#15803d' : '#f59e0b'};">${escapeHtml(item.status.toUpperCase())}</span>
+                                <span class="badge" style="background:#334155;">${escapeHtml(item.action)}</span>
+                                <span class="badge" style="background:#475569;">${escapeHtml(item.engine)}</span>
+                            </div>
+                        </div>
+                        <p style="margin:8px 0 4px;font-size:13px;"><strong>Summary:</strong> ${escapeHtml(item.summary)}</p>
+                        <p style="margin:4px 0 8px;font-size:13px;color:var(--color-text-muted);"><strong>Rationale:</strong> ${escapeHtml(item.rationale)}</p>
+                        
+                        ${item.draft_text ? `
+                            <div style="background:#ffffff;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px;margin:10px 0;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                                    <strong>Message Draft</strong>
+                                    ${latestVersion ? `
+                                        <div>
+                                            <span class="version-badge ${isApproved ? 'approved' : ''}">v${latestVersion.version_number} (${escapeHtml(latestVersion.status)})</span>
+                                            <span class="hash-pill" title="Immutable SHA-256 Digest">#${latestVersion.version_hash.slice(0, 10)}</span>
+                                        </div>` : ''}
+                                </div>
+                                <div class="snippet-box" style="margin-bottom:10px;">${escapeHtml(item.draft_text)}</div>
+                                
+                                ${isApproved ? `
+                                    <div style="color:#15803d;font-size:12px;font-weight:600;margin-bottom:8px;">
+                                        ✓ Approved by ${escapeHtml(latestVersion.approved_by || 'staff')} on ${latestVersion.approved_at ? new Date(latestVersion.approved_at).toLocaleString() : 'record'}.
+                                    </div>` : `
+                                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                                        <button type="button" class="btn btn-primary approve-draft-btn" data-proposal-id="${item.id}" data-version-num="${latestVersion ? latestVersion.version_number : 1}" data-version-hash="${latestVersion ? latestVersion.version_hash : ''}">Approve Version ${latestVersion ? latestVersion.version_number : 1}</button>
+                                        <button type="button" class="btn reject-proposal-btn" data-proposal-id="${item.id}">Reject Proposal</button>
+                                    </div>
+                                    <details style="margin-top:8px;">
+                                        <summary style="font-size:12px;color:#0284c7;cursor:pointer;">✏️ Edit Draft (Creates immutable new version)</summary>
+                                        <form class="edit-draft-form" data-proposal-id="${item.id}" style="display:grid;gap:8px;margin-top:8px;">
+                                            <textarea name="body" style="width:100%;min-height:90px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);" required>${escapeHtml(item.draft_text)}</textarea>
+                                            <input name="change_reason" placeholder="Reason for edit (e.g. adjusted wording for courtesy)" style="padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);" required>
+                                            <button type="submit" class="btn">Save as New Version</button>
+                                        </form>
+                                    </details>
+                                `}
+
+                                ${versions.length > 1 ? `
+                                    <details style="margin-top:8px;">
+                                        <summary style="font-size:11px;color:var(--color-text-muted);cursor:pointer;">📜 Version History (${versions.length} revisions)</summary>
+                                        <div style="margin-top:6px;display:grid;gap:6px;">
+                                            ${versions.map(v => `
+                                                <div class="draft-version-item">
+                                                    <div style="display:flex;justify-content:space-between;font-size:11px;">
+                                                        <strong>v${v.version_number} by ${escapeHtml(v.edited_by)}</strong>
+                                                        <span class="hash-pill">${v.version_hash.slice(0, 10)}</span>
+                                                    </div>
+                                                    <p style="margin:3px 0;font-size:11px;color:var(--color-text-muted);">${escapeHtml(v.change_reason || 'Initial draft')}</p>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </details>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }))}</div>`;
+
+            // Attach Approve button listeners
+            proposalsEl.querySelectorAll('.approve-draft-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const proposalId = btn.dataset.proposalId;
+                    const versionNum = Number(btn.dataset.versionNum);
+                    const versionHash = btn.dataset.versionHash;
+                    try {
+                        await apiFetch(`/api/v1/agent/proposals/${proposalId}/approve`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({version_number: versionNum, version_hash: versionHash})
+                        });
+                        alert(`Draft Version ${versionNum} approved successfully! Approval recorded immutably.`);
+                        loadAgent();
+                    } catch (err) { alert(err.message); }
+                });
+            });
+
+            // Attach Reject button listeners
+            proposalsEl.querySelectorAll('.reject-proposal-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const proposalId = btn.dataset.proposalId;
+                    const reason = prompt('Reason for rejecting proposal:');
+                    if (!reason) return;
+                    try {
+                        await apiFetch(`/api/v1/agent/proposals/${proposalId}/reject`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({reason})
+                        });
+                        loadAgent();
+                    } catch (err) { alert(err.message); }
+                });
+            });
+
+            // Attach Edit draft form listeners
+            proposalsEl.querySelectorAll('.edit-draft-form').forEach(form => {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const proposalId = form.dataset.proposalId;
+                    const body = form.elements['body'].value;
+                    const change_reason = form.elements['change_reason'].value;
+                    try {
+                        const res = await apiFetch(`/api/v1/agent/proposals/${proposalId}/edit-draft`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({body, change_reason})
+                        });
+                        const updatedVer = await res.json();
+                        alert(`Created new draft revision v${updatedVer.version_number}! Review and approve when ready.`);
+                        loadAgent();
+                    } catch (err) { alert(err.message); }
+                });
+            });
+
+        } catch (e) {
+            proposalsEl.textContent = e.message;
+        }
     }
+
+    // Agent Policy Form Listener
+    const agentPolicyForm = document.getElementById('agent-policy-form');
+    if (agentPolicyForm) {
+        agentPolicyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const resEl = document.getElementById('agent-policy-result');
+            resEl.textContent = 'Saving policy limits...';
+            try {
+                const payload = {
+                    enabled: agentPolicyForm.elements['enabled'].checked,
+                    auto_assess: agentPolicyForm.elements['auto_assess'].checked,
+                    auto_execute_internal: agentPolicyForm.elements['auto_execute_internal'].checked,
+                    max_assessments_per_day: Number(agentPolicyForm.elements['max_assessments_per_day'].value),
+                    max_internal_actions_per_day: Number(agentPolicyForm.elements['max_internal_actions_per_day'].value),
+                    max_balance_cents: Math.round(Number(agentPolicyForm.elements['max_balance_cents'].value) * 100),
+                };
+                await apiFetch('/api/v1/agent/policy', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                resEl.textContent = 'Agent policy saved successfully.';
+                loadAgent();
+            } catch (err) { resEl.textContent = err.message; }
+        });
+    }
+
+    // Assess Case Form Listener
+    const agentAssessForm = document.getElementById('agent-assess-form');
+    if (agentAssessForm) {
+        agentAssessForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const invoiceId = agentAssessForm.elements['invoice_id'].value;
+            const resEl = document.getElementById('agent-assess-result');
+            resEl.textContent = 'Running assessment...';
+            try {
+                const res = await apiFetch(`/api/v1/agent/cases/${invoiceId}/assess`, {method: 'POST'});
+                const prop = await res.json();
+                resEl.textContent = `Assessment complete: Proposal #${prop.id} created with action "${prop.action}" via ${prop.engine}.`;
+                agentAssessForm.reset();
+                loadAgent();
+            } catch (err) { resEl.textContent = err.message; }
+        });
+    }
+
 
     // Exported globals for inline onclick
     window.approveRecon = async (id) => {

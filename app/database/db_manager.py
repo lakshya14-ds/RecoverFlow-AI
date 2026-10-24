@@ -56,6 +56,11 @@ def init_db() -> None:
                 "contact_suppressed": "INTEGER NOT NULL DEFAULT 0",
                 "contact_opt_out": "INTEGER NOT NULL DEFAULT 0",
                 "dispute_open": "INTEGER NOT NULL DEFAULT 0",
+                "disputed_cents": "INTEGER NOT NULL DEFAULT 0",
+            },
+            "customer_messages": {
+                "is_injection": "INTEGER NOT NULL DEFAULT 0",
+                "rejection_reason": "TEXT",
             },
             "dunning_campaigns": {
                 "approved_by": "TEXT",

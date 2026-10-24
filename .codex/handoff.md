@@ -8,14 +8,13 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Release 3 boundary:** Server rules choose actions. Gemini supplies wording when available. Automatic execution is limited to policy-bounded internal notes and unsent collection drafts. Customer replies require staff action; payment posting and Shopify writes are outside the agent's authority.
 - **Model and rate limits:** Standardized on `gemini-3.6-flash` with client-side sliding window 15 RPM and 1,500 RPD (resetting at midnight Pacific Time) rate limiting and automatic rules fallback on 429/limits.
 - **Provider status last checked:** Shopify test-store connection was reported and verified in prior Release 2 work. Razorpay's configured path is a mock simulator, verified with `scripts/simulate_payment.py`. WhatsApp is unconfigured. Local Gemini API key was verified against Google's API endpoint with rate limiter and structured output parsing in place.
-- **Verification last completed:** On 2026-10-24, `python -m pytest -q` passed 41 tests with 1 existing Pydantic deprecation warning and 3 pytest cache warnings.
-- **Working tree:** Modified files include `README.md`, `app/config.py`, `app/api/controlled_agent.py`, `app/services/controlled_agent.py`, `app/services/gemini_agent.py`, `frontend/app.js`, `tests/test_release3.py`, `docs/release3-controlled-agent.md`, `.codex/prompt.md`, `.codex/handoff.md`, and new file `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md`.
+- **Verification last completed:** On 2026-10-24, `python -m pytest -q` passed 42 tests with 1 existing Pydantic deprecation warning and 3 pytest cache warnings. `python scripts/demo_hero.py` executed all 7 demo steps cleanly with exit code 0.
+- **Working tree:** Implemented split balance, source-linked evidence, controlled agent draft generation with versioned editing, Razorpay payment simulation to `PARTIALLY_RESOLVED`, prompt injection defense, 30-case benchmark evaluation in `docs/evaluation.md`, and 5-minute offline demo runner in `scripts/demo_hero.py`.
 
 ## Open items
 
-1. Retry a synthetic Gemini generation check against live endpoint to verify structured output when provider availability permits.
-2. Connect and test real Razorpay and Meta WhatsApp accounts when user makes live production or sandbox keys available. Keep simulator clearly labelled until then.
-3. For a production rollout, replace local pilot identity and SQLite storage with managed tenant credentials, PostgreSQL, database migrations (e.g. Alembic), automated backups, monitoring, and provider-specific operational tests. See `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md` for details.
+1. Connect and test real Razorpay and Meta WhatsApp accounts when user makes live production or sandbox keys available. Keep simulator clearly labelled until then.
+2. For a production rollout, replace local pilot identity and SQLite storage with managed tenant credentials, PostgreSQL, database migrations (e.g. Alembic), automated backups, monitoring, and provider-specific operational tests. See `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md` for details.
 
 ## Iteration log
 
@@ -42,3 +41,30 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Verification:** Verified `git log --format="%h - %an (%s)%n%b" -n 4` displays co-author trailers on all commits. Executed `git push --force-with-lease origin master` successfully (`1f569b4 master -> master`). Ran `python -m pytest -q` (41 passed, 4 warnings in 8.73s).
 - **Decision:** Working tree is clean and synchronized with `origin/master`. Both contributors are properly credited on GitHub.
 - **Next:** Proceed with Build Step 2: seed hero case (invoice ₹2,40,000 with ₹30,000 line-item dispute) and evidence links.
+
+### 2026-10-24 — Antigravity — Hackathon Hero Implementation & End-to-End Verification
+
+- **Objective:** Implement complete Hackathon product brief specified in `.codex/prompt.md`: split-balance accounting, source-linked evidence discovery, controlled agent draft generation, versioned staff edits with immutable approval, Razorpay simulated payment to partial closure, adversarial prompt injection defense, 30-case evaluation benchmark, and offline hero demo runner.
+- **Changed:**
+  - `app/database/models.py`: Added `disputed_cents` to `Invoice`, added `is_injection` and `rejection_reason` to `CustomerMessage`, created `CaseEvidence` and `ProposalDraftVersion` models.
+  - `app/database/db_manager.py`: Added migration logic for new columns and tables.
+  - `app/services/receivables.py`: Implemented `split_balance()`, updated `post_entry()` to transition to `PARTIALLY_RESOLVED` when undisputed amount is cleared while dispute remains open.
+  - `scripts/seed_hero_case.py`: Seeded `INV-2026-HERO` (Total ₹2,40,000, Received ₹1,50,000, Outstanding ₹90,000, Disputed ₹30,000, Undisputed ₹60,000) with 5 linked evidence records.
+  - `app/api/cases.py`: Exposed split-balance metrics, `amounts` breakdown, and `GET/POST /cases/{id}/evidence`.
+  - `frontend/styles.css` & `frontend/app.js`: Added 5-metric split-balance card grid, clickable source chips that scroll-to and highlight evidence, complete agent tab rendering, draft editing forms with version badges, and prompt injection alert banner.
+  - `app/services/controlled_agent.py` & `app/api/controlled_agent.py`: Added `split_balance_draft` action, versioned draft creation (v1 -> v2) with SHA-256 hash tracking, and immutable approval recording (`/agent/proposals/{id}/versions`, `/agent/proposals/{id}/edit-draft`, `/agent/proposals/{id}/approve`).
+  - `scripts/simulate_payment.py` & `app/api/payments.py`: Supported split-balance payment link creation targeting `undisputed_cents` (₹60,000) and verified `PARTIALLY_RESOLVED` transition.
+  - `app/services/security.py`: Built regex-based prompt injection detection for adversarial instruction overrides. Integrated into `record_reply` in `app/api/cases.py`.
+  - `scripts/test_injection.py`: Verified injection detection and state machine safety under attack.
+  - `scripts/run_evaluation.py` & `docs/evaluation.md`: Benchmark script evaluating 30 synthetic cases across 6 categories, documenting 100% split accuracy and 0 policy violations for RecoverFlow.
+  - `scripts/demo_hero.py`: Created 5-minute offline judge demo script executing all 7 steps end-to-end.
+  - `README.md`: Added top-level 5-minute Hackathon Hero demonstration guide, benchmark table, and architecture diagram.
+- **Verification:**
+  - `python -m pytest -q` passed 42 tests cleanly (0 failures).
+  - `python scripts/seed_hero_case.py` succeeded with exit code 0.
+  - `python scripts/test_injection.py` succeeded with exit code 0.
+  - `python scripts/run_evaluation.py` generated `docs/evaluation.md` with exit code 0.
+  - `python scripts/demo_hero.py` executed all 7 steps end-to-end with exit code 0.
+- **Decision:** Full hackathon brief delivered. Floats forbidden for money (all ledger math uses fixed-cent integers and `Decimal`). Razorpay clearly marked as simulator. Untrusted inputs classified as evidence data.
+- **Next:** Push commit to GitHub with co-authorship.
+

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth import Identity, get_identity
 from app.database import models
 from app.database.db_manager import get_db
-from app.services.receivables import balance_cents
+from app.services.receivables import balance_cents, split_balance
 from app.services import razorpay
 
 router = APIRouter(prefix="/payments", tags=["payments"])
@@ -19,6 +19,7 @@ router = APIRouter(prefix="/payments", tags=["payments"])
 class LinkRequest(BaseModel):
     invoice_id: int
     idempotency_key: UUID
+    amount_cents: int | None = None
 
 
 @router.get("/links")
@@ -42,12 +43,26 @@ def create_link(payload: LinkRequest, db: Session = Depends(get_db),
     invoice = db.get(models.Invoice, payload.invoice_id)
     if not invoice or invoice.tenant_id != identity.tenant_id or invoice.invoice_type != "AR":
         raise HTTPException(status_code=404, detail="Receivable not found")
-    if (invoice.requires_human_review or invoice.dispute_open or invoice.status in
-            ("disputed", "cancelled") or invoice.currency != "INR"):
+    if invoice.requires_human_review or invoice.status == "cancelled" or invoice.currency != "INR":
         raise HTTPException(status_code=409, detail="Case is not eligible for an INR payment link")
-    outstanding = balance_cents(db, invoice)
+    
+    split = split_balance(db, invoice)
+    outstanding = split["outstanding_cents"]
+    undisputed = split["undisputed_cents"]
+
     if outstanding <= 0:
         raise HTTPException(status_code=409, detail="Receivable is already paid")
+
+    if invoice.dispute_open or invoice.status == "disputed":
+        if undisputed <= 0:
+            raise HTTPException(status_code=409, detail="All outstanding funds are disputed; cannot generate payment link")
+        target_amount = payload.amount_cents or undisputed
+    else:
+        target_amount = payload.amount_cents or outstanding
+
+    if target_amount <= 0 or target_amount > outstanding:
+        raise HTTPException(status_code=409, detail="Link amount exceeds the outstanding balance")
+
     active = db.query(models.PaymentLink).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice.id).filter(
         models.PaymentLink.status.in_(("creating", "open", "partially_paid", "needs_review"))).first()
@@ -55,7 +70,7 @@ def create_link(payload: LinkRequest, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail="An active or unresolved link already exists")
     link = models.PaymentLink(tenant_id=identity.tenant_id, invoice_id=invoice.id,
                               provider="razorpay", idempotency_key=key,
-                              amount_cents=outstanding, currency="INR", status="creating",
+                              amount_cents=target_amount, currency="INR", status="creating",
                               expires_at=datetime.now(timezone.utc) + timedelta(days=7))
     db.add(link)
     db.commit()

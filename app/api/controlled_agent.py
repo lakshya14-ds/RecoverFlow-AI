@@ -1,4 +1,4 @@
-"""Staff controls for proposals, internal actions and reviewed customer replies."""
+import hashlib
 from typing import Literal
 from uuid import NAMESPACE_URL, uuid5
 
@@ -30,6 +30,16 @@ class RejectInput(BaseModel):
 
 class SendInput(BaseModel):
     body: str = Field(min_length=1, max_length=500)
+
+
+class EditDraftInput(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    change_reason: str = Field(default="Staff edit", max_length=500)
+
+
+class ApproveDraftInput(BaseModel):
+    version_number: int = Field(ge=1)
+    version_hash: str = Field(min_length=32, max_length=64)
 
 
 def _proposal(db: Session, proposal_id: int, identity: Identity) -> models.AgentProposal:
@@ -145,3 +155,100 @@ def send_reviewed_reply(proposal_id: int, payload: SendInput,
     db.commit()
     db.refresh(outbound)
     return outbound
+
+
+@router.get("/proposals/{proposal_id}/versions")
+def list_draft_versions(proposal_id: int, db: Session = Depends(get_db),
+                        identity: Identity = Depends(get_identity)):
+    _proposal(db, proposal_id, identity)
+    return db.query(models.ProposalDraftVersion).filter_by(
+        tenant_id=identity.tenant_id, proposal_id=proposal_id
+    ).order_by(models.ProposalDraftVersion.version_number.asc()).all()
+
+
+@router.post("/proposals/{proposal_id}/edit-draft")
+def edit_proposal_draft(proposal_id: int, payload: EditDraftInput,
+                        db: Session = Depends(get_db),
+                        identity: Identity = Depends(get_identity)):
+    proposal = _proposal(db, proposal_id, identity)
+    if proposal.status in ("sent", "closed", "rejected"):
+        raise HTTPException(status_code=409, detail=f"Cannot edit draft when proposal is {proposal.status}")
+
+    latest_ver = db.query(models.ProposalDraftVersion).filter_by(
+        tenant_id=identity.tenant_id, proposal_id=proposal_id
+    ).order_by(models.ProposalDraftVersion.version_number.desc()).first()
+
+    next_num = (latest_ver.version_number + 1) if latest_ver else 1
+    v_hash = hashlib.sha256(payload.body.encode("utf-8")).hexdigest()
+
+    version = models.ProposalDraftVersion(
+        tenant_id=identity.tenant_id,
+        proposal_id=proposal_id,
+        version_number=next_num,
+        body=payload.body,
+        edited_by=identity.actor,
+        change_reason=payload.change_reason,
+        version_hash=v_hash,
+        status="draft",
+    )
+    db.add(version)
+
+    proposal.draft_text = payload.body
+    proposal.status = "proposed"
+    proposal.review_note = f"Draft edited to v{next_num}: {payload.change_reason}"
+    db.add(models.AuditEvent(
+        tenant_id=identity.tenant_id,
+        actor=identity.actor,
+        action="agent_draft_edited",
+        entity_type="proposal_draft_version",
+        entity_id=str(version.id),
+        details=f"v{next_num}:{v_hash[:12]}",
+    ))
+    db.commit()
+    db.refresh(version)
+    return version
+
+
+@router.post("/proposals/{proposal_id}/approve")
+def approve_proposal_draft(proposal_id: int, payload: ApproveDraftInput,
+                           db: Session = Depends(get_db),
+                           identity: Identity = Depends(get_identity)):
+    proposal = _proposal(db, proposal_id, identity)
+    version = db.query(models.ProposalDraftVersion).filter_by(
+        tenant_id=identity.tenant_id,
+        proposal_id=proposal_id,
+        version_number=payload.version_number,
+    ).first()
+
+    if not version:
+        raise HTTPException(status_code=404, detail=f"Draft version {payload.version_number} not found")
+
+    if version.version_hash != payload.version_hash:
+        raise HTTPException(status_code=409, detail="Version hash mismatch; draft was modified after display")
+
+    version.status = "approved"
+    version.approved_by = identity.actor
+    version.approved_at = controlled_agent.utc_naive()
+
+    proposal.status = "approved"
+    proposal.reviewed_by = identity.actor
+    proposal.review_note = f"Approved draft v{version.version_number} (hash: {version.version_hash[:12]})"
+
+    db.add(models.AuditEvent(
+        tenant_id=identity.tenant_id,
+        actor=identity.actor,
+        action="agent_draft_approved",
+        entity_type="proposal_draft_version",
+        entity_id=str(version.id),
+        details=f"v{version.version_number}:{version.version_hash[:12]}",
+    ))
+    db.commit()
+    return {
+        "status": "approved",
+        "proposal_id": proposal.id,
+        "version_number": version.version_number,
+        "version_hash": version.version_hash,
+        "approved_by": version.approved_by,
+        "approved_at": version.approved_at.isoformat(),
+    }
+
