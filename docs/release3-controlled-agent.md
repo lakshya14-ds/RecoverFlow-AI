@@ -19,6 +19,15 @@ RecoverFlow can now propose a next action, summarize recent case messages, prepa
 3. In **Controlled Agent**, enable the policy with small daily limits. First use manual assessments, inspect summaries and proposed actions, and reject incorrect ones. Then enable the hourly scan. Only enable automatic internal actions after reviewing sample outputs and the retailer's collection rules.
 4. Test a paid case, an opted-out case, an open dispute, a Shopify balance mismatch, a recent customer question, an overdue receivable, and a changed balance after an assessment. Confirm that no customer message is sent and no payment entry is posted by the agent.
 
+## API HTTP Status Codes and Error Semantics
+
+- **`HTTP 409 Conflict`**: Policy disabled (`Controlled agent is not enabled`), case state changed after proposal snapshot (`Case changed; request a new agent assessment`), unapproved draft send attempt, or proposal not eligible for execution/rejection.
+- **`HTTP 429 Too Many Requests`**: Daily agent budget exceeded (`Daily agent assessment limit reached` or `Daily internal action limit reached`). The hourly worker automatically backs off on 429.
+- **`HTTP 403 Forbidden`**: Role write restriction (viewer role attempting policy updates or case assessments).
+- **`HTTP 404 Not Found`**: Case or proposal not found in current tenant (strict tenant isolation).
+- **`HTTP 422 Unprocessable Entity`**: Policy limit validation failure (`max_assessments_per_day` or `max_internal_actions_per_day` must be between 1 and 100).
+- **`HTTP 503 Service Unavailable`**: Provider unconfigured (e.g., Meta WhatsApp unconfigured when staff attempts to send reply).
+
 ## Known limits before production
 
 - The local key was verified against the Gemini model endpoint. A synthetic generation request reached the provider but returned HTTP 503 during temporary high demand; retry a live sandbox generation check before claiming model-generated summaries work. Fake-provider tests verify request shape, structured parsing, and server-side action controls. A failed model call disables automatic execution for that assessment.

@@ -20,7 +20,7 @@ class PolicyInput(BaseModel):
     auto_assess: bool = False
     auto_execute_internal: bool = False
     max_assessments_per_day: int = Field(default=20, ge=1, le=100)
-    max_internal_actions_per_day: int = Field(default=5, ge=1, le=25)
+    max_internal_actions_per_day: int = Field(default=5, ge=1, le=100)
     max_balance_cents: int = Field(default=100000, ge=100, le=100000000)
 
 

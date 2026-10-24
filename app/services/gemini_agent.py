@@ -22,7 +22,6 @@ SCHEMA = {
         "reply_draft": {"type": "string"},
     },
     "required": ["summary", "rationale", "reply_draft"],
-    "additionalProperties": False,
 }
 
 
@@ -54,7 +53,7 @@ def generate(context: dict, action: str) -> AgentWording:
             "mimeType": "APPLICATION_JSON", "schema": SCHEMA}},
             "thinkingConfig": {"thinkingLevel": "LOW"}},
     }
-    with httpx.Client(timeout=25) as client:
+    with httpx.Client(timeout=10) as client:
         response = client.post(
             f"https://generativelanguage.googleapis.com/v1beta/models/{settings.AGENT_MODEL}:generateContent",
             headers={"x-goog-api-key": settings.GEMINI_API_KEY,

@@ -242,3 +242,30 @@ def test_agent_respects_retailer_stage_threshold(monkeypatch):
             assert db.query(models.DunningCampaign).count() == 0
     finally:
         app.dependency_overrides.clear()
+
+
+def test_agent_daily_limits_and_schema_validation(monkeypatch):
+    client, factory = setup(monkeypatch)
+    try:
+        # Schema test: max_internal_actions_per_day can be up to 100
+        r_ok = client.put("/api/v1/agent/policy", headers={"X-RECOVERFLOW-API-KEY": "test-key"},
+                          json={"enabled": True, "max_internal_actions_per_day": 100, "max_assessments_per_day": 100})
+        assert r_ok.status_code == 200
+        # Exceeding 100 returns 422
+        r_exceed = client.put("/api/v1/agent/policy", headers={"X-RECOVERFLOW-API-KEY": "test-key"},
+                              json={"enabled": True, "max_internal_actions_per_day": 101})
+        assert r_exceed.status_code == 422
+
+        # Daily assessment limit test: set limit = 1
+        client.put("/api/v1/agent/policy", headers={"X-RECOVERFLOW-API-KEY": "test-key"},
+                   json={"enabled": True, "max_assessments_per_day": 1, "max_internal_actions_per_day": 1})
+        c1 = add_case(factory, amount=100)
+        c2 = add_case(factory, amount=200)
+        r_a1 = client.post(f"/api/v1/agent/cases/{c1}/assess", headers={"X-RECOVERFLOW-API-KEY": "test-key"})
+        assert r_a1.status_code == 201
+        r_a2 = client.post(f"/api/v1/agent/cases/{c2}/assess", headers={"X-RECOVERFLOW-API-KEY": "test-key"})
+        assert r_a2.status_code == 429
+        assert "limit" in r_a2.json()["detail"].lower()
+    finally:
+        app.dependency_overrides.clear()
+
