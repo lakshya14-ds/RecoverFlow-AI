@@ -737,6 +737,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             container.textContent = e.message;
         }
+    }
+
     async function loadAgent() {
         const statusEl = document.getElementById('agent-status');
         const proposalsEl = document.getElementById('agent-proposals');
