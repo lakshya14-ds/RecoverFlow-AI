@@ -1,5 +1,6 @@
 """Controlled agent boundaries: opt-in, stale context, role isolation, no autonomous send."""
 from datetime import date, datetime, timedelta, timezone
+import json
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -199,6 +200,7 @@ def test_gemini_request_uses_structured_output_and_validates_reply(monkeypatch):
     captured = {}
     monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-test-key")
     class Response:
+        status_code = 200
         def raise_for_status(self):
             pass
         def json(self):
@@ -218,7 +220,7 @@ def test_gemini_request_uses_structured_output_and_validates_reply(monkeypatch):
             return Response()
     monkeypatch.setattr(gemini_agent.httpx, "Client", Client)
     result = gemini_agent.generate({"balance_cents": 10000, "messages": []}, "reply_draft")
-    assert captured["url"].endswith("/gemini-3.8-flash:generateContent")
+    assert captured["url"].endswith("/gemini-3.6-flash:generateContent")
     assert captured["json"]["generationConfig"]["responseFormat"]["text"]["schema"]["required"] == ["summary", "rationale", "reply_draft"]
     assert result.summary == "Question received"
     assert gemini_agent.safe_reply(result.reply_draft)
@@ -267,5 +269,60 @@ def test_agent_daily_limits_and_schema_validation(monkeypatch):
         assert r_a2.status_code == 429
         assert "limit" in r_a2.json()["detail"].lower()
     finally:
+        app.dependency_overrides.clear()
+
+
+def test_gemini_rate_limiter_rpm_and_rpd(monkeypatch):
+    gemini_agent.rate_limiter.reset()
+    try:
+        monkeypatch.setattr(settings, "GEMINI_RPM_LIMIT", 2)
+        monkeypatch.setattr(settings, "GEMINI_RPD_LIMIT", 3)
+
+        # 1st and 2nd calls succeed within RPM budget
+        gemini_agent.rate_limiter.acquire(auto_wait_max=0)
+        gemini_agent.rate_limiter.acquire(auto_wait_max=0)
+        status = gemini_agent.get_rate_limit_status()
+        assert status["rpm_used"] == 2
+        assert status["rpm_remaining"] == 0
+        assert status["rpd_used"] == 2
+
+        # 3rd call immediately exceeds RPM limit (wait_needed > auto_wait_max)
+        import pytest
+        with pytest.raises(gemini_agent.GeminiRateLimitError) as exc_rpm:
+            gemini_agent.rate_limiter.acquire(auto_wait_max=0)
+        assert "RPM limit reached" in str(exc_rpm.value)
+
+        # Reset RPM sliding window but set daily count to RPD limit
+        gemini_agent.rate_limiter.reset()
+        pt_today = gemini_agent.rate_limiter._pacific_today()
+        gemini_agent.rate_limiter._daily_counts[pt_today] = 3
+        with pytest.raises(gemini_agent.GeminiRateLimitError) as exc_rpd:
+            gemini_agent.rate_limiter.acquire(auto_wait_max=0)
+        assert "RPD limit reached" in str(exc_rpd.value)
+    finally:
+        gemini_agent.rate_limiter.reset()
+
+
+def test_gemini_rate_limit_fallback_in_assessment(monkeypatch):
+    client, factory = setup(monkeypatch)
+    gemini_agent.rate_limiter.reset()
+    monkeypatch.setattr(gemini_agent, "configured", lambda: True)
+
+    def mock_generate_rate_limited(*_):
+        raise gemini_agent.GeminiRateLimitError("Minute limit of 15 requests (RPM) exceeded.")
+
+    monkeypatch.setattr(gemini_agent, "generate", mock_generate_rate_limited)
+    try:
+        case_id = add_case(factory)
+        enable(client)
+        res = client.post(f"/api/v1/agent/cases/{case_id}/assess",
+                          headers={"X-RECOVERFLOW-API-KEY": "test-key"})
+        assert res.status_code == 201
+        data = res.json()
+        assert data["engine"] == "rules_fallback"
+        flags = json.loads(data["risk_flags"]) if isinstance(data["risk_flags"], str) else data["risk_flags"]
+        assert "model_rate_limited" in flags
+    finally:
+        gemini_agent.rate_limiter.reset()
         app.dependency_overrides.clear()
 

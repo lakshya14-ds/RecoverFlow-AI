@@ -43,7 +43,9 @@ def _proposal(db: Session, proposal_id: int, identity: Identity) -> models.Agent
 def status(db: Session = Depends(get_db), identity: Identity = Depends(get_identity)):
     policy = db.get(models.AgentPolicy, identity.tenant_id)
     return {"model": settings.AGENT_MODEL if gemini_agent.configured() else "rules_only",
-            "model_configured": gemini_agent.configured(), "policy": policy}
+            "model_configured": gemini_agent.configured(),
+            "rate_limits": gemini_agent.get_rate_limit_status(),
+            "policy": policy}
 
 
 @router.put("/policy")

@@ -407,7 +407,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const status = document.getElementById('agent-status');
         try {
             const data = await (await apiFetch('/api/v1/agent/status')).json();
-            status.textContent = `AI wording: ${data.model_configured ? data.model : 'rules-only; add Gemini API key to enable AI'} • Agent: ${data.policy?.enabled ? 'enabled' : 'off'}`;
+            const rl = data.rate_limits;
+            const modelText = data.model_configured
+                ? (rl ? `${data.model} (RPM: ${rl.rpm_used}/${rl.rpm_limit}, RPD: ${rl.rpd_used}/${rl.rpd_limit})` : data.model)
+                : 'rules-only; add Gemini API key to enable AI';
+            status.textContent = `AI wording: ${modelText} • Agent: ${data.policy?.enabled ? 'enabled' : 'off'}`;
             const policy = data.policy || {enabled: false, auto_assess: false,
                 auto_execute_internal: false, max_assessments_per_day: 20,
                 max_internal_actions_per_day: 5, max_balance_cents: 100000};

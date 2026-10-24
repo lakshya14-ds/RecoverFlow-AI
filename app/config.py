@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.3            # controlled variation for collection drafts
     GEMINI_API_KEY: str = ""
-    AGENT_MODEL: str = "gemini-3.8-flash"
+    AGENT_MODEL: str = "gemini-3.6-flash"
+    GEMINI_RPM_LIMIT: int = 15              # Official AI Studio free tier limit: 15 RPM
+    GEMINI_RPD_LIMIT: int = 1500            # Official AI Studio free tier limit: 1,500 RPD
 
     # OCR (Tesseract)
     TESSERACT_CMD: str = "tesseract"        # path to the Tesseract executable

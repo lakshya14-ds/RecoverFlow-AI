@@ -98,8 +98,7 @@ For a new installation, startup creates the ORM tables. After pulling changes in
 | `EMAIL_DRY_RUN`, SMTP fields | Keep dry run on until approved email delivery is tested |
 | `SHOPIFY_SHOP_DOMAIN`, `SHOPIFY_ADMIN_ACCESS_TOKEN`, `SHOPIFY_WEBHOOK_SECRET` | Read-only store sync and signed order callbacks |
 | `RAZORPAY_MODE`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | Test/live payment links and signed payment callbacks; `rzp_test_mock...` selects the local **simulator**, not Razorpay's real API |
-| `META_WHATSAPP_ACCESS_TOKEN`, `META_WHATSAPP_PHONE_NUMBER_ID`, `META_WHATSAPP_APP_SECRET`, `META_WHATSAPP_VERIFY_TOKEN` | Signed inbound WhatsApp messages and staff-reviewed replies |
-| `GEMINI_API_KEY`, `AGENT_MODEL` | Optional model wording for the controlled agent; default model ID is `gemini-3.8-flash` |
+| `GEMINI_API_KEY`, `AGENT_MODEL`, `GEMINI_RPM_LIMIT`, `GEMINI_RPD_LIMIT` | Optional model wording for the controlled agent; default model ID is `gemini-3.6-flash` with rate limits enforced (15 RPM, 1500 RPD) |
 
 The public webhook paths for the local pilot tenant are `/api/v1/webhooks/shopify/local`, `/api/v1/webhooks/razorpay/local`, and `/api/v1/webhooks/meta-whatsapp/local`. Provider callbacks need a public HTTPS address and their own signature secrets; the staff API key does not authenticate them. Follow the [Release 2 guide](docs/release2-connected-recovery.md) for account scopes, subscriptions, and a sandbox verification sequence.
 

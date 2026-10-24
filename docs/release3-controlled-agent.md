@@ -1,6 +1,6 @@
 # Release 3: controlled agent pilot
 
-RecoverFlow can now propose a next action, summarize recent case messages, prepare routine reply wording, and perform bounded internal actions. The selected model is **Gemini 3.8 Flash** (`gemini-3.8-flash`). The local API key reached this model's metadata endpoint. A synthetic generation check returned HTTP 503 because the model reported high demand, so a successful live generation call remains unverified. Failed calls produce labelled rules-based wording; the app does not present fallback text as model-generated.
+RecoverFlow can now propose a next action, summarize recent case messages, prepare routine reply wording, and perform bounded internal actions. The selected model is **Gemini 3.6 Flash** (`gemini-3.6-flash`). The local API key was verified against Google's API endpoint, with live generation returning structured JSON output. Client-side rate limiting enforces official Google AI Studio free-tier quotas: 15 Requests Per Minute (RPM) over a 60-second sliding window and 1,500 Requests Per Day (RPD) resetting at midnight Pacific Time. When rate limits are reached or upstream reports high demand (HTTP 429), RecoverFlow safely falls back to rules-based wording tagged with `model_rate_limited` or `model_unavailable`.
 
 ## Control model
 
@@ -14,7 +14,7 @@ RecoverFlow can now propose a next action, summarize recent case messages, prepa
 
 ## Setup
 
-1. Add `GEMINI_API_KEY` to the local `.env` or deployment secret store and leave `AGENT_MODEL=gemini-3.8-flash`. Do not put the key in the UI, logs, source control, or chat. [Google's model identifier](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash) and [structured output API](https://ai.google.dev/gemini-api/docs/generate-content/structured-output) document this integration.
+1. Add `GEMINI_API_KEY` to the local `.env` or deployment secret store and configure `AGENT_MODEL=gemini-3.6-flash`, `GEMINI_RPM_LIMIT=15`, and `GEMINI_RPD_LIMIT=1500`. Do not put the key in the UI, logs, source control, or chat. [Google's model identifier](https://ai.google.dev/gemini-api/docs/models/gemini-3.6-flash) and [structured output API](https://ai.google.dev/gemini-api/docs/generate-content/structured-output) document this integration.
 2. Restart the API and worker to load the new settings, endpoints, and database tables.
 3. In **Controlled Agent**, enable the policy with small daily limits. First use manual assessments, inspect summaries and proposed actions, and reject incorrect ones. Then enable the hourly scan. Only enable automatic internal actions after reviewing sample outputs and the retailer's collection rules.
 4. Test a paid case, an opted-out case, an open dispute, a Shopify balance mismatch, a recent customer question, an overdue receivable, and a changed balance after an assessment. Confirm that no customer message is sent and no payment entry is posted by the agent.

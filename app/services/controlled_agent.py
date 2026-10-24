@@ -181,6 +181,10 @@ def assess(db: Session, tenant_id: str, invoice_id: int, actor: str,
             if action == "reply_draft" and gemini_agent.safe_reply(wording.reply_draft):
                 reply = wording.reply_draft
             engine = settings.AGENT_MODEL
+        except gemini_agent.GeminiRateLimitError as exc:
+            logger.warning("Gemini rate limit reached (%s) for invoice %s; using rules-only wording", exc, invoice_id)
+            flags.append("model_rate_limited")
+            engine = "rules_fallback"
         except Exception:
             logger.exception("Gemini assessment failed for invoice %s; using rules-only wording", invoice_id)
             flags.append("model_unavailable")
