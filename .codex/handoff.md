@@ -33,4 +33,12 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Changed:** Updated `.codex/prompt.md` to reflect `gemini-3.6-flash` with 15 RPM / 1,500 RPD rate limiting. Updated `.codex/handoff.md` Current state and Open items. Created `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md`.
 - **Verification:** Ran `python -m pytest -q` (41 passed, 4 warnings in 9.55s). Verified all routes, services, database models, frontend views, and background worker loops.
 - **Decision:** Standardized on `gemini-3.6-flash` with client-side sliding window rate limiting. Documented entire codebase architecture, data flow, active features, mock/simulator boundaries, and pending production roadmap in `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md`.
-- **Next:** Share `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md` with incoming agents; conduct live Gemini synthetic text generation test if desired.
+- **Next:** Advance Build Step 2: seed hero case (invoice ₹2.40L, received ₹1.50L, outstanding ₹90k, disputed ₹30k, undisputed ₹60k) with linked evidence.
+
+### 2026-10-24 — Antigravity — GitHub push with co-authorship
+
+- **Objective:** Stage all working tree changes, update all 4 historical commits to include collaborator Samit Reddy (`samitkoya`) as co-author, and push the master branch to GitHub.
+- **Changed:** Rewrote commit messages across all 4 commits in the repository to include `Co-authored-by: Samit Reddy <samit.koya@gmail.com>`.
+- **Verification:** Verified `git log --format="%h - %an (%s)%n%b" -n 4` displays co-author trailers on all commits. Executed `git push --force-with-lease origin master` successfully (`1f569b4 master -> master`). Ran `python -m pytest -q` (41 passed, 4 warnings in 8.73s).
+- **Decision:** Working tree is clean and synchronized with `origin/master`. Both contributors are properly credited on GitHub.
+- **Next:** Proceed with Build Step 2: seed hero case (invoice ₹2,40,000 with ₹30,000 line-item dispute) and evidence links.
