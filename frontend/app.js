@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     let apiKey = sessionStorage.getItem('recoverflowApiKey') || sessionStorage.getItem('apexApiKey') || '';
     let selectedCaseId = null;
+    let caseRows = [];
     if (apiKey) {
         sessionStorage.setItem('recoverflowApiKey', apiKey);
         sessionStorage.removeItem('apexApiKey');
@@ -11,8 +12,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const displayStatus = value => ({
         pending: 'Open', partially_matched: 'Partially paid', paid: 'Paid',
         draft: 'Draft', approved: 'Approved', sent: 'Sent',
-        contacted_manually: 'Contact recorded', disputed: 'Disputed'
+        contacted_manually: 'Contact recorded', disputed: 'Disputed',
+        PARTIALLY_RESOLVED: 'Partially resolved', RESOLVED_PAID: 'Resolved · paid'
     }[value] || String(value || 'Unknown'));
+    const formatCents = cents => {
+        const value = BigInt(cents || 0);
+        const whole = (value < 0n ? -value : value) / 100n;
+        const fraction = ((value < 0n ? -value : value) % 100n).toString().padStart(2, '0');
+        return `${value < 0n ? '-' : ''}${whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction}`;
+    };
+    const money = (currency, cents) => `${currency === 'INR' ? '₹' : escapeHtml(currency) + ' '}${formatCents(cents)}`;
+    const localEvidence = new Map([
+        ['docs/invoices/INV-2026-HERO.pdf', '/evidence/INV-2026-HERO.pdf'],
+        ['docs/po/PO-2026-HERO.pdf', '/evidence/PO-2026-HERO.pdf']
+    ]);
     async function apiFetch(url, options = {}) {
         if (!apiKey) throw new Error('Enter your API key first.');
         const headers = new Headers(options.headers || {});
@@ -34,10 +47,30 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('fraud-value').textContent = data.open_fraud_alerts;
             status.textContent = 'Connected';
             document.getElementById('status-indicator').classList.add('online');
+            document.getElementById('auth-form').classList.add('connected');
+            loadOverview();
         } catch (error) {
             status.textContent = error.message;
             document.getElementById('status-indicator').classList.remove('online');
         }
+    }
+    async function loadOverview() {
+        const queue = document.getElementById('overview-queue');
+        const activity = document.getElementById('overview-activity');
+        queue.textContent = 'Loading cases…';
+        activity.textContent = 'Loading ledger activity…';
+        try {
+            const rows = await (await apiFetch('/api/v1/cases')).json();
+            const open = rows.filter(row => row.outstanding_cents > 0).slice(0, 5);
+            queue.innerHTML = open.length ? open.map(row => `<div class="queue-row"><div><strong class="mono">${escapeHtml(row.invoice_number)}</strong><small>${escapeHtml(row.customer)} · Due ${escapeHtml(row.due_date)}</small></div><div><strong>${money(row.currency, row.undisputed_cents)}</strong><small>${row.contact_suppressed ? 'Contact paused' : 'Undisputed'}</small><button type="button" class="btn overview-case" data-id="${Number(row.invoice_id)}">Open file</button></div></div>`).join('') : '<p class="empty-state">No open receivable cases.</p>';
+            queue.querySelectorAll('.overview-case').forEach(button => button.addEventListener('click', () => navigate('cases', button.dataset.id)));
+            const details = await Promise.all(rows.slice(0, 3).map(row => apiFetch(`/api/v1/cases/${row.invoice_id}`).then(res => res.json())));
+            const events = details.flatMap(row => [
+                ...(row.entries || []).map(item => ({label: `${displayStatus(item.kind)} · ${money(item.currency, item.amount_cents < 0 ? -item.amount_cents : item.amount_cents)}`, meta: `${row.invoice_number} · ${item.reference}`})),
+                ...(row.messages || []).map(item => ({label: item.is_injection ? 'Blocked untrusted message' : `Customer message · ${displayStatus(item.category)}`, meta: row.invoice_number}))
+            ]).slice(-5).reverse();
+            activity.innerHTML = events.length ? events.map(item => `<div class="activity-row"><span>${escapeHtml(item.label)}<small>${escapeHtml(item.meta)}</small></span></div>`).join('') : '<p class="empty-state">No ledger activity in the first three cases.</p>';
+        } catch (error) { queue.textContent = error.message; activity.textContent = 'Activity unavailable.'; }
     }
     document.getElementById('auth-form').addEventListener('submit', event => {
         event.preventDefault();
@@ -52,16 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
         sessionStorage.removeItem('apexApiKey');
         document.getElementById('system-status-text').textContent = 'Enter API key';
         document.getElementById('status-indicator').classList.remove('online');
+        document.getElementById('auth-form').classList.remove('connected');
+        window.location.reload();
     });
     if (apiKey) loadSummary();
     // Navigational Logic
     const navItems = document.querySelectorAll('.nav-item');
     const views = document.querySelectorAll('.view');
 
-    navItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetView = item.getAttribute('data-view');
+    function navigate(targetView, caseId = null) {
+            const item = document.querySelector(`.nav-item[data-view="${targetView}"]`);
             
             navItems.forEach(n => n.classList.remove('active'));
             views.forEach(v => v.classList.remove('active'));
@@ -69,6 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
             document.getElementById(`view-${targetView}`).classList.add('active');
             document.querySelector('main header h2').textContent = targetView === 'dashboard' ? 'Overview' : item.textContent;
+            const descriptions = {dashboard:'The work that needs a decision today.',upload:'Bring receivables into review.',cases:'One balance, one evidence trail, one decision at a time.',reconciliation:'Check payment matches before posting.',dunning:'Review collection wording and contact records.',connected:'Provider status and controlled schedules.',agent:'Assess, edit, and approve exact draft versions.',fraud:'Resolve exceptions with a recorded reason.'};
+            document.getElementById('view-description').textContent = descriptions[targetView];
 
             // Load data when view is opened
             if(targetView === 'reconciliation') loadReconciliations();
@@ -79,8 +114,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if(targetView === 'dashboard') loadSummary();
             if(targetView === 'connected') loadConnected();
             if(targetView === 'agent') loadAgent();
+            if (caseId) openCase(caseId);
+    }
+    navItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            navigate(item.dataset.view);
         });
     });
+    document.getElementById('overview-open-cases').addEventListener('click', () => navigate('cases'));
+    document.getElementById('case-close').addEventListener('click', () => { document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; });
+    document.getElementById('case-search').addEventListener('input', event => renderCases(event.target.value));
 
     // Upload Form
     const uploadForm = document.getElementById('upload-form');
@@ -201,16 +245,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadCases() {
         const container = document.getElementById('case-list');
+        container.textContent = 'Loading cases…';
         try {
-            const cases = await (await apiFetch('/api/v1/cases')).json();
-            if (!cases.length) { container.textContent = 'No receivable cases yet.'; return; }
-            container.innerHTML = `<p class="mobile-hint">Swipe the table to see each case action →</p><div class="table-container"><table><tr><th>Invoice</th><th>Customer</th><th>Due</th><th>Balance</th><th>Status</th><th>Action</th></tr>${cases.map(item => `
-                <tr><td>${escapeHtml(item.invoice_number)}</td><td>${escapeHtml(item.customer)}</td>
-                <td>${escapeHtml(item.due_date)}</td><td>${escapeHtml(item.currency)} ${(item.balance_cents / 100).toFixed(2)}</td>
-                <td>${escapeHtml(item.contact_suppressed ? 'Contact paused' : displayStatus(item.status))}</td>
-                <td><button type="button" class="btn case-open" data-id="${Number(item.invoice_id)}">Open</button></td></tr>`).join('')}</table></div>`;
-            container.querySelectorAll('.case-open').forEach(button => button.addEventListener('click', () => openCase(button.dataset.id)));
+            caseRows = await (await apiFetch('/api/v1/cases')).json();
+            renderCases(document.getElementById('case-search').value);
         } catch (error) { container.textContent = error.message; }
+    }
+    function renderCases(query = '') {
+        const container = document.getElementById('case-list');
+        const search = query.trim().toLocaleLowerCase();
+        const rows = caseRows.filter(item => `${item.invoice_number} ${item.customer}`.toLocaleLowerCase().includes(search));
+        container.innerHTML = rows.length ? `<p class="mobile-hint">Swipe the table to see each case action →</p><div class="table-container"><table><thead><tr><th scope="col">Invoice</th><th scope="col">Customer</th><th scope="col">Due</th><th scope="col">Outstanding</th><th scope="col">Undisputed</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>${rows.map(item => `
+            <tr><td class="mono">${escapeHtml(item.invoice_number)}</td><td>${escapeHtml(item.customer)}</td><td>${escapeHtml(item.due_date)}</td><td>${money(item.currency, item.outstanding_cents)}</td><td>${money(item.currency, item.undisputed_cents)}</td><td><span class="state-text">${escapeHtml(displayStatus(item.status))}</span>${item.contact_suppressed ? '<br><span class="state-text blocked">Contact paused</span>' : ''}</td><td><button type="button" class="btn case-open" data-id="${Number(item.invoice_id)}">Open file</button></td></tr>`).join('')}</tbody></table></div>` : `<p class="empty-state">${caseRows.length ? 'No cases match this search.' : 'No receivable cases yet.'}</p>`;
+        container.querySelectorAll('.case-open').forEach(button => button.addEventListener('click', () => openCase(button.dataset.id)));
     }
 
     async function openCase(id) {
@@ -223,56 +270,42 @@ document.addEventListener('DOMContentLoaded', () => {
             const injectionMsg = (data.messages || []).find(m => m.is_injection);
             const injectionHtml = injectionMsg ? `
                 <div class="injection-alert">
-                    <span class="shield-icon">🛡️</span>
                     <div>
-                        <strong>Security Policy Defense: Adversarial Prompt Injection Blocked</strong>
-                        <p style="margin:2px 0 0;font-size:12px;">Customer attempted unauthorized instruction override ("${escapeHtml(injectionMsg.body)}"). Message classified strictly as untrusted evidence. Action denied.</p>
+                        <strong>Blocked policy event · Untrusted customer message</strong>
+                        <p>The message was retained as evidence; its instruction was not followed. ${escapeHtml(injectionMsg.rejection_reason || '')}</p>
                     </div>
                 </div>` : '';
 
+            const sourceFor = (claim, cents) => {
+                const evidence = (data.evidence || []).find(ev => ev.claim_type === claim && ev.amount_cents === cents);
+                if (evidence) return `<button type="button" class="source-chip" data-claim="${escapeHtml(claim)}">Source · ${escapeHtml(evidence.title)}</button>`;
+                if (cents === 0) return '<span class="source-unavailable">No amount currently due</span>';
+                return '<button type="button" class="source-chip" data-claim="ledger">Source · Current ledger activity</button>';
+            };
+            const metric = (label, cents, claim, className = '') => `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${sourceFor(claim, cents)}</div>`;
+            const leaf = (label, cents, claim, className) => `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${sourceFor(claim, cents)}</div>`;
+
             const splitHtml = `
                 ${injectionHtml}
-                <div style="margin-bottom:8px;">
-                    <strong>${escapeHtml(data.customer)}</strong> • Invoice <strong>${escapeHtml(data.invoice_number)}</strong> • Status: <span class="badge">${escapeHtml(data.status)}</span>${data.contact_suppressed ? ' • <span style="color:var(--color-error);font-weight:600;">Contact Paused</span>' : ''}
-                </div>
-                <div class="split-balance-grid">
-                    <div class="split-metric-card">
-                        <span class="label">1. Invoice Total</span>
-                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.invoice_total).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.invoice_total_cents / 100).toFixed(2)}</span>
-                        <span class="source-chip" data-claim="invoice_total">🔍 Source: Invoice Doc</span>
-                    </div>
-                    <div class="split-metric-card received">
-                        <span class="label">2. Received</span>
-                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.received).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.received_cents / 100).toFixed(2)}</span>
-                        <span class="source-chip" data-claim="received_payment">🔍 Source: Bank Receipt</span>
-                    </div>
-                    <div class="split-metric-card">
-                        <span class="label">3. Outstanding</span>
-                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.outstanding).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.outstanding_cents / 100).toFixed(2)}</span>
-                        <span class="source-chip" data-claim="undisputed_balance">🔍 Source: Ledger Math</span>
-                    </div>
-                    <div class="split-metric-card disputed">
-                        <span class="label">4. Disputed (Shortfall)</span>
-                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.disputed).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.disputed_cents / 100).toFixed(2)}</span>
-                        <span class="source-chip" data-claim="dispute_item">🔍 Source: Customer Dispute</span>
-                    </div>
-                    <div class="split-metric-card undisputed">
-                        <span class="label">5. Undisputed (Actionable)</span>
-                        <span class="val">${escapeHtml(data.currency)} ${data.amounts ? Number(data.amounts.undisputed).toLocaleString('en-IN', {minimumFractionDigits: 2}) : (data.undisputed_cents / 100).toFixed(2)}</span>
-                        <span class="source-chip" data-claim="undisputed_balance">🔍 Source: Verified Owed</span>
-                    </div>
+                <div class="case-heading"><h3 class="mono">${escapeHtml(data.invoice_number)}</h3><p>${escapeHtml(data.customer)}</p></div>
+                <div class="case-meta"><span>Due <strong>${escapeHtml(data.due_date)}</strong></span><span>Status <strong>${escapeHtml(displayStatus(data.status))}</strong></span><span>${data.contact_suppressed ? 'Contact paused' : 'Contact eligible under policy'}</span></div>
+                <div class="balance-story">
+                    ${metric('Invoice total', data.invoice_total_cents, 'invoice_total')}
+                    ${metric('Received', data.received_cents, 'received_payment', 'received')}
+                    ${metric('Outstanding', data.outstanding_cents, 'undisputed_balance')}
+                    <div class="balance-split">${leaf('Disputed · on hold', data.disputed_cents, 'dispute_item', 'disputed')}${leaf('Undisputed · eligible', data.undisputed_cents, 'undisputed_balance', 'undisputed')}</div>
                 </div>
             `;
 
             document.getElementById('case-summary').innerHTML = splitHtml;
 
-            // Handle source-chip clicks to highlight matching evidence
-            document.querySelectorAll('.source-chip').forEach(chip => {
+            // Source controls point to the exact evidence record rendered below.
+            document.getElementById('case-summary').querySelectorAll('.source-chip').forEach(chip => {
                 chip.addEventListener('click', (e) => {
                     e.preventDefault();
                     const claim = chip.getAttribute('data-claim');
                     document.querySelectorAll('.evidence-card').forEach(c => c.classList.remove('highlighted'));
-                    const target = document.getElementById(`evidence-claim-${claim}`);
+                    const target = claim === 'ledger' ? document.getElementById('ledger-activity') : [...document.querySelectorAll('.evidence-card')].find(card => card.dataset.claim === claim);
                     if (target) {
                         target.classList.add('highlighted');
                         target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -280,26 +313,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            document.getElementById('create-payment-link').disabled = data.currency !== 'INR' || data.balance_cents <= 0 || data.requires_human_review;
+            document.getElementById('create-payment-link').disabled = data.currency !== 'INR' || data.undisputed_cents <= 0 || data.requires_human_review;
             document.getElementById('payment-link-result').textContent = '';
             document.getElementById('resume-form').classList.toggle('hidden', !data.contact_suppressed);
             document.getElementById('shopify-confirm-form').classList.toggle('hidden', !(data.source_system === 'shopify' && data.requires_human_review));
 
             // Evidence Investigation Cards
             const evidenceHtml = `
-                <h4>Investigation: Source-Linked Evidence</h4>
-                <p style="font-size:12px;color:var(--color-text-muted);margin-bottom:8px;">Every claim above is linked to a verified source below. Unsupported claims are never displayed.</p>
+                <h4>Evidence &amp; activity</h4>
+                <p>Linked records support the balance story. Unverified material is labeled.</p>
                 <div class="evidence-list">
                     ${(data.evidence || []).map(ev => `
-                        <div class="evidence-card" id="evidence-claim-${escapeHtml(ev.claim_type)}" data-claim="${escapeHtml(ev.claim_type)}">
+                        <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
-                                <strong>${escapeHtml(ev.title)}</strong>
-                                <span class="source-tag">${escapeHtml(ev.source_type)} ${ev.verified ? '✓ Verified' : '⚠️ Untrusted'}</span>
+                                <strong>${localEvidence.has(ev.source_reference) ? `<a class="document-link" href="${localEvidence.get(ev.source_reference)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.title)} · Open PDF</a>` : escapeHtml(ev.title)}</strong>
+                                <span class="source-tag">${escapeHtml(ev.source_type)} · ${ev.verified ? 'Marked verified' : 'Not verified'}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
                                 <span class="evidence-ref">Source: ${escapeHtml(ev.source_reference)}</span>
-                                ${ev.amount_cents ? `<strong>${escapeHtml(data.currency)} ${(ev.amount_cents / 100).toLocaleString('en-IN', {minimumFractionDigits: 2})}</strong>` : ''}
+                                ${ev.amount_cents != null ? `<strong>${money(data.currency, ev.amount_cents)}</strong>` : ''}
                             </div>
                             ${ev.source_snippet ? `<div class="snippet-box">"${escapeHtml(ev.source_snippet)}"</div>` : ''}
                         </div>
@@ -309,10 +342,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             document.getElementById('case-history').innerHTML = `
                 ${evidenceHtml}
-                <h4>Ledger Entries & Activity History</h4>
+                <h4 id="ledger-activity">Current ledger entries &amp; activity</h4>
                 <div class="stack">${[
-                    ...data.entries.map(item => `<div class="subcard">${escapeHtml(item.kind)}: ${escapeHtml(item.currency)} ${(Math.abs(item.amount_cents) / 100).toFixed(2)} • ${escapeHtml(item.reference)}${item.amount_cents < 0 ? ` <button type="button" class="btn reverse-entry" data-id="${Number(item.id)}">Reverse (admin)</button>` : ''}</div>`),
-                    ...data.messages.map(item => `<div class="subcard">${escapeHtml(item.category)}: ${escapeHtml(item.body)}${item.is_injection ? ' <span class="badge" style="background:#dc2626;">INJECTION BLOCKED</span>' : ''}</div>`),
+                    ...data.entries.map(item => `<div class="subcard">${escapeHtml(item.kind)}: ${money(item.currency, item.amount_cents < 0 ? -item.amount_cents : item.amount_cents)} · <span class="mono">${escapeHtml(item.reference)}</span>${item.amount_cents < 0 ? ` <button type="button" class="btn reverse-entry" data-id="${Number(item.id)}">Reverse (admin)</button>` : ''}</div>`),
+                    ...data.messages.map(item => `<div class="subcard">${escapeHtml(item.category)}: ${escapeHtml(item.body)}${item.is_injection ? ' <span class="state-text blocked">Blocked instruction</span>' : ''}</div>`),
                     ...data.campaigns.map(item => `<div class="subcard">Collection draft stage ${escapeHtml(item.campaign_stage)}: ${escapeHtml(displayStatus(item.status))}</div>`),
                     ...(data.agent_notes || []).map(item => `<div class="subcard">Agent note: ${escapeHtml(item.body)}</div>`)
                 ].join('') || '<p>No activity yet.</p>'}</div>
@@ -329,6 +362,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     openCase(id); loadCases();
                 } catch (error) { alert(error.message); }
             }));
+            loadCases();
+            detail.scrollIntoView({behavior: 'smooth', block: 'start'});
         } catch (error) { detail.classList.remove('hidden'); document.getElementById('case-summary').textContent = error.message; }
     }
 
@@ -459,8 +494,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadAgent() {
         const status = document.getElementById('agent-status');
+        let agentStatus = null;
         try {
             const data = await (await apiFetch('/api/v1/agent/status')).json();
+            agentStatus = data;
             const rl = data.rate_limits;
             const modelText = data.model_configured
                 ? (rl ? `${data.model} (RPM: ${rl.rpm_used}/${rl.rpm_limit}, RPD: ${rl.rpd_used}/${rl.rpd_limit})` : data.model)
@@ -476,7 +513,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 form.elements[key].value = policy[key];
             form.elements.max_balance_cents.value = (policy.max_balance_cents / 100).toFixed(2);
         } catch (error) { status.textContent = error.message; }
-        await loadAgentProposals();
+        const proposals = await loadAgentProposals();
+        await loadAgentVersions(proposals, agentStatus);
     }
 
     async function loadAgentProposals() {
@@ -522,6 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 try { await post(form.dataset.id, 'send-reply', {body: new FormData(form).get('body')}); }
                 catch (error) { alert(error.message); }
             }));
+            return rows;
         } catch (error) { container.textContent = error.message; }
     }
 
@@ -705,11 +744,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function loadAgent() {
+    async function loadAgentVersions(proposals = null, statusData = null) {
         const statusEl = document.getElementById('agent-status');
-        const proposalsEl = document.getElementById('agent-proposals');
+        const proposalsEl = document.getElementById('agent-versions');
         try {
-            const statusData = await (await apiFetch('/api/v1/agent/status')).json();
+            statusData = statusData || await (await apiFetch('/api/v1/agent/status')).json();
             const rl = statusData.rate_limits || {};
             statusEl.innerHTML = `
                 <strong>Active Model:</strong> <code>${escapeHtml(statusData.model)}</code> • 
@@ -734,36 +773,40 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Load proposals
-            const proposals = await (await apiFetch('/api/v1/agent/proposals')).json();
+            proposals = proposals || await (await apiFetch('/api/v1/agent/proposals')).json();
             if (!proposals.length) {
                 proposalsEl.innerHTML = '<p>No agent proposals generated yet. Use the form above to assess a case.</p>';
                 return;
             }
+            const currentCases = await (await apiFetch('/api/v1/cases')).json();
+            const caseById = new Map(currentCases.map(row => [row.invoice_id, row]));
 
-            proposalsEl.innerHTML = `<div class="stack">${await Promise.all(proposals.map(async item => {
+            proposalsEl.innerHTML = `<div class="stack">${(await Promise.all(proposals.map(async item => {
                 let versions = [];
                 try {
                     versions = await (await apiFetch(`/api/v1/agent/proposals/${item.id}/versions`)).json();
                 } catch (_) {}
                 const latestVersion = versions.length ? versions[versions.length - 1] : null;
                 const isApproved = latestVersion && latestVersion.status === 'approved';
+                const currentCase = caseById.get(item.invoice_id);
+                const staleBalance = item.action === 'split_balance_draft' && currentCase && currentCase.undisputed_cents <= 0;
 
                 return `
-                    <div class="subcard" style="border-left: 4px solid var(--color-primary);">
-                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
-                            <strong>Proposal #${item.id} • Case ${item.invoice_id}</strong>
-                            <div>
-                                <span class="badge" style="background:${item.status === 'approved' ? '#15803d' : '#f59e0b'};">${escapeHtml(item.status.toUpperCase())}</span>
-                                <span class="badge" style="background:#334155;">${escapeHtml(item.action)}</span>
-                                <span class="badge" style="background:#475569;">${escapeHtml(item.engine)}</span>
+                    <div class="subcard">
+                        <div class="proposal-heading">
+                            <strong>Proposal #${item.id} · Case ${item.invoice_id}</strong>
+                            <div class="proposal-meta">
+                                <span class="state-text ${item.status === 'approved' ? 'received' : ''}">${escapeHtml(item.status)}</span>
+                                <span>${escapeHtml(item.action)}</span>
+                                <span class="mono">${escapeHtml(item.engine)}</span>
                             </div>
                         </div>
-                        <p style="margin:8px 0 4px;font-size:13px;"><strong>Summary:</strong> ${escapeHtml(item.summary)}</p>
-                        <p style="margin:4px 0 8px;font-size:13px;color:var(--color-text-muted);"><strong>Rationale:</strong> ${escapeHtml(item.rationale)}</p>
+                        <button type="button" class="source-chip agent-case-source" data-invoice-id="${Number(item.invoice_id)}">Open case sources</button>
+                        ${staleBalance ? '<p class="stale-warning">Balance changed: no undisputed amount remains. This draft is an audit record; reassess the case for a current action.</p>' : ''}
                         
                         ${item.draft_text ? `
-                            <div style="background:#ffffff;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px;margin:10px 0;">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                            <div class="proposal-draft">
+                                <div class="proposal-heading">
                                     <strong>Message Draft</strong>
                                     ${latestVersion ? `
                                         <div>
@@ -771,18 +814,18 @@ document.addEventListener('DOMContentLoaded', () => {
                                             <span class="hash-pill" title="Immutable SHA-256 Digest">#${latestVersion.version_hash.slice(0, 10)}</span>
                                         </div>` : ''}
                                 </div>
-                                <div class="snippet-box" style="margin-bottom:10px;">${escapeHtml(item.draft_text)}</div>
+                                <div class="snippet-box">${escapeHtml(item.draft_text)}</div>
                                 
                                 ${isApproved ? `
-                                    <div style="color:#15803d;font-size:12px;font-weight:600;margin-bottom:8px;">
-                                        ✓ Approved by ${escapeHtml(latestVersion.approved_by || 'staff')} on ${latestVersion.approved_at ? new Date(latestVersion.approved_at).toLocaleString() : 'record'}.
+                                    <div class="state-text received" style="margin-bottom:8px;">
+                                        Approved by ${escapeHtml(latestVersion.approved_by || 'staff')} on ${latestVersion.approved_at ? new Date(latestVersion.approved_at).toLocaleString() : 'record'}.
                                     </div>` : `
-                                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                                        <button type="button" class="btn btn-primary approve-draft-btn" data-proposal-id="${item.id}" data-version-num="${latestVersion ? latestVersion.version_number : 1}" data-version-hash="${latestVersion ? latestVersion.version_hash : ''}">Approve Version ${latestVersion ? latestVersion.version_number : 1}</button>
+                                    <div class="proposal-actions">
+                                        <button type="button" class="btn btn-primary approve-draft-btn" data-proposal-id="${item.id}" data-version-num="${latestVersion ? latestVersion.version_number : 1}" data-version-hash="${latestVersion ? latestVersion.version_hash : ''}" ${staleBalance ? 'disabled title="Case balance changed"' : ''}>Approve Version ${latestVersion ? latestVersion.version_number : 1}</button>
                                         <button type="button" class="btn reject-proposal-btn" data-proposal-id="${item.id}">Reject Proposal</button>
                                     </div>
                                     <details style="margin-top:8px;">
-                                        <summary style="font-size:12px;color:#0284c7;cursor:pointer;">✏️ Edit Draft (Creates immutable new version)</summary>
+                                        <summary>Edit draft · creates a new version</summary>
                                         <form class="edit-draft-form" data-proposal-id="${item.id}" style="display:grid;gap:8px;margin-top:8px;">
                                             <textarea name="body" style="width:100%;min-height:90px;padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);" required>${escapeHtml(item.draft_text)}</textarea>
                                             <input name="change_reason" placeholder="Reason for edit (e.g. adjusted wording for courtesy)" style="padding:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);" required>
@@ -793,7 +836,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 ${versions.length > 1 ? `
                                     <details style="margin-top:8px;">
-                                        <summary style="font-size:11px;color:var(--color-text-muted);cursor:pointer;">📜 Version History (${versions.length} revisions)</summary>
+                                        <summary>Version history (${versions.length} revisions)</summary>
                                         <div style="margin-top:6px;display:grid;gap:6px;">
                                             ${versions.map(v => `
                                                 <div class="draft-version-item">
@@ -811,9 +854,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         ` : ''}
                     </div>
                 `;
-            }))}</div>`;
+            }))).join('')}</div>`;
 
             // Attach Approve button listeners
+            proposalsEl.querySelectorAll('.agent-case-source').forEach(button => button.addEventListener('click', () => navigate('cases', button.dataset.invoiceId)));
             proposalsEl.querySelectorAll('.approve-draft-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const proposalId = btn.dataset.proposalId;

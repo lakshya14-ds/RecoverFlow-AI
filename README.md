@@ -73,7 +73,7 @@ flowchart LR
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 
-# 2. Run the automated test suite (42 passed)
+# 2. Run the isolated automated test suite
 python -m pytest -q
 
 # 3. Seed the Hero Case
@@ -84,6 +84,8 @@ python run.py
 ```
 
 Open `http://127.0.0.1:8002` in your browser and enter the configured API key (`RECOVERFLOW_API_KEY` from `.env`).
+
+The staff workbench includes an actionable overview, searchable cases, source-linked balance split, versioned agent review, and the eight existing operational areas. The Razorpay path is **SIMULATED**; use `python scripts/simulate_payment.py` against the running local server to demonstrate the signed payment event. See [the frontend endpoint inventory](docs/frontend-endpoint-inventory.md) for each control's API and permission requirements. `scripts/test_injection.py` is a stateful demo against a seeded database; the isolated pytest suite covers injection behavior separately.
 
 ---
 

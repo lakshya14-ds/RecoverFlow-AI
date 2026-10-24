@@ -4,18 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RecoverFlow | Receivables and Collections</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="styles.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="app-container">
         <aside class="sidebar">
-            <div class="logo">
-                <h1>RecoverFlow</h1>
-                <span class="badge">Controlled Agent Pilot</span>
-            </div>
-            <nav>
-                <a href="#" class="nav-item active" data-view="dashboard">Dashboard</a>
+            <div class="logo"><span class="brand-mark" aria-hidden="true">R</span><div><h1>RecoverFlow</h1><span>Credit operations</span></div></div>
+            <nav aria-label="Main navigation">
+                <a href="#" class="nav-item active" data-view="dashboard">Overview</a>
                 <a href="#" class="nav-item" data-view="upload">Invoices</a>
                 <a href="#" class="nav-item" data-view="cases">Cases</a>
                 <a href="#" class="nav-item" data-view="reconciliation">Reconciliation</a>
@@ -24,17 +21,18 @@
                 <a href="#" class="nav-item" data-view="agent">Controlled Agent</a>
                 <a href="#" class="nav-item" data-view="fraud">Review Alerts</a>
             </nav>
+            <p class="sidebar-note">Human-supervised recovery<br>Local pilot · India</p>
         </aside>
         
         <main class="content">
-            <header>
-                <h2>Overview</h2>
+            <header class="page-header">
+                <div><p class="eyebrow">RecoverFlow / Workbench</p><h2>Overview</h2><p id="view-description" class="page-description">The work that needs a decision today.</p></div>
                 <div class="system-status">
                     <span class="status-indicator" id="status-indicator"></span>
                     <span id="system-status-text">Enter API key</span>
                 </div>
             </header>
-            <form id="auth-form" class="card">
+            <form id="auth-form" class="auth-strip">
                 <label for="api-key">RecoverFlow API key</label>
                 <input id="api-key" type="password" autocomplete="off" required>
                 <button type="submit" class="btn btn-primary">Connect</button>
@@ -42,20 +40,13 @@
             </form>
             
             <div id="view-dashboard" class="view active">
-                <div class="cards-grid">
-                    <div class="card">
-                        <h3>Current DSO</h3>
-                        <div class="value" id="dso-value">—</div>
-                    </div>
-                    <div class="card">
-                        <h3>Pending Reconciliations</h3>
-                        <div class="value" id="pending-value">—</div>
-                    </div>
-                    <div class="card">
-                        <h3>Open Review Alerts</h3>
-                        <div class="value warning" id="fraud-value">—</div>
-                    </div>
+                <div class="overview-intro"><div><h3>Make the next decision clear.</h3><p>Review evidence, approve the exact message, and keep disputed balances on hold.</p></div><button type="button" class="btn btn-primary" id="overview-open-cases">Open cases</button></div>
+                <div class="metric-strip">
+                    <div><span>Current DSO</span><strong id="dso-value">—</strong></div>
+                    <div><span>Pending reconciliations</span><strong id="pending-value">—</strong></div>
+                    <div><span>Open review alerts</span><strong id="fraud-value">—</strong></div>
                 </div>
+                <div class="overview-columns"><section class="paper-panel"><div class="section-heading"><h3>Actionable cases</h3><span>Open a file to inspect its sources</span></div><div id="overview-queue" aria-live="polite">Connect to load the queue.</div></section><section class="paper-panel"><div class="section-heading"><h3>Recent case activity</h3><span>From the receivables ledger</span></div><div id="overview-activity" aria-live="polite">Connect to load activity.</div></section></div>
             </div>
 
             <div id="view-upload" class="view hidden">
@@ -98,13 +89,14 @@
             </div>
 
             <div id="view-cases" class="view hidden">
-                <div class="card">
-                    <h3>Receivable Cases</h3>
+                <div class="paper-panel">
+                    <div class="section-heading"><div><h3>Receivable cases</h3><p>Search by invoice or customer. Open a file for the balance and evidence.</p></div><label class="search-field">Search cases<input id="case-search" type="search" placeholder="Invoice or customer" autocomplete="off"></label></div>
                     <div id="case-list">Open this tab to load cases.</div>
                 </div>
-                <div id="case-detail" class="card hidden">
-                    <h3>Case Details</h3>
+                <div id="case-detail" class="case-workspace hidden">
+                    <div class="section-heading"><div><p class="eyebrow">Case file</p><h3>Balance &amp; evidence</h3></div><button type="button" id="case-close" class="btn">Close file</button></div>
                     <div id="case-summary"></div>
+                    <div class="case-columns"><section class="case-evidence"><div id="case-history"></div></section><section class="case-actions"><h4>Staff actions</h4><p class="muted">Record only verified ledger activity. Customer-facing messages require staff approval.</p>
                     <h4>Record a payment or credit</h4>
                     <form id="entry-form" class="data-form">
                         <select name="kind"><option value="payment">Payment</option><option value="credit">Credit</option></select>
@@ -132,11 +124,11 @@
                         <button type="submit" class="btn">Confirm Shopify case (admin)</button>
                     </form>
                     <p id="shopify-confirm-result"></p>
-                    <h4>Razorpay payment link</h4>
-                    <p>Create a link for the full outstanding INR balance. The customer receives it only when staff shares it.</p>
+                    <h4>Razorpay SIMULATED payment link</h4>
+                    <p>Creates a simulated payment link for the eligible INR balance. Staff decide whether to share it.</p>
                     <button type="button" id="create-payment-link" class="btn">Create payment link</button>
                     <p id="payment-link-result"></p>
-                    <div id="case-history"></div>
+                    </section></div>
                 </div>
             </div>
 
@@ -195,11 +187,11 @@
                     <p id="policy-result"></p>
                 </div>
                 <div class="card">
-                    <h3>Payment links</h3>
+                    <h3>SIMULATED payment links</h3>
                     <div id="payment-link-list">Open this tab to load payment links.</div>
                 </div>
                 <div class="card">
-                    <h3>WhatsApp inbox</h3>
+                    <h3>WhatsApp inbox / sandbox</h3>
                     <p>Signed inbound messages pause matching cases until staff reviews them. Replies require a recent customer message.</p>
                     <div id="message-inbox">Open this tab to load messages.</div>
                 </div>
@@ -227,7 +219,7 @@
                 <div class="card">
                     <h3>Assess a case</h3>
                     <form id="agent-assess-form" class="data-form">
-                        <input name="invoice_id" type="number" min="1" placeholder="Case ID" required>
+                        <input name="invoice_id" type="number" min="1" placeholder="Case ID" aria-label="Case ID" required>
                         <button type="submit" class="btn btn-primary">Propose next action</button>
                     </form>
                     <p id="agent-assess-result"></p>
@@ -235,6 +227,11 @@
                 <div class="card">
                     <h3>Agent proposals</h3>
                     <div id="agent-proposals">Open this tab to load proposals.</div>
+                </div>
+                <div class="card">
+                    <h3>Draft versions &amp; approval</h3>
+                    <p>Editing creates a new version. Approval records the exact version and hash.</p>
+                    <div id="agent-versions">Open this tab to review draft versions.</div>
                 </div>
             </div>
         </main>

@@ -9,6 +9,9 @@ Verifies:
 4. Audit log records injection attempt blocked
 5. Invoice balance remains untouched and NOT cancelled
 """
+# This is a stateful demo script that operates on the configured pilot database.
+# The isolated pytest suite covers injection behavior in tests/test_release3.py.
+__test__ = False
 import sys
 from pathlib import Path
 

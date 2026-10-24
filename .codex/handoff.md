@@ -11,6 +11,7 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Verification last completed:** On 2026-10-24, `python -m pytest -q` passed 42 tests with 1 existing Pydantic deprecation warning and 3 pytest cache warnings. `python scripts/demo_hero.py` executed all 7 demo steps cleanly with exit code 0.
 - **Working tree:** Implemented split balance, source-linked evidence, controlled agent draft generation with versioned editing, Razorpay payment simulation to `PARTIALLY_RESOLVED`, prompt injection defense, 30-case benchmark evaluation in `docs/evaluation.md`, and 5-minute offline demo runner in `scripts/demo_hero.py`.
 - **2026-10-24 QA & Completion:** Dashboard JavaScript and agent forms verified. Synthetic physical PDF artifacts for `docs/invoices/INV-2026-HERO.pdf` and `docs/po/PO-2026-HERO.pdf` were created by `scripts/generate_hero_pdfs.py` and linked into `seed_hero_case.py`. Tests pass cleanly (42/42), offline demo runs cleanly (7/7 steps), and all code is synchronized with GitHub.
+- **2026-10-24 frontend redesign complete locally:** Codex redesigned the eight-area dashboard and case workspace in `frontend/`, fixed the shadowed agent version UI, and verified the rendered hero flow on isolated SQLite databases. The current working tree contains uncommitted, unpushed changes; the latest clean-database suite passed 41 tests after excluding the stateful injection demo from pytest collection.
 
 ## Open items
 
@@ -90,4 +91,20 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
   - `python scripts/seed_hero_case.py` seeded hero case and verified both PDFs exist on disk.
   - `python scripts/demo_hero.py` executed all 7 steps end-to-end with code 0.
 - **Decision:** Working tree clean. All commits include `Co-authored-by: Samit Reddy <samit.koya@gmail.com>`.
+
+### 2026-10-24 — Codex — Frontend studio redesign and first rendered QA pass
+
+- **Objective:** Implement the requested complete frontend redesign while preserving the existing API and payment/provider boundaries.
+- **Changed:** Updated `frontend/index.html`, `frontend/styles.css`, and `frontend/app.js` with a restrained credit-operations design, actionable overview, searchable case table, evidence-linked split balance, responsive case file, explicit simulator labels, and a visible versioned agent review area. Removed the duplicate `loadAgent` name that hid draft versions. Current balance amounts now point to ledger activity when seeded evidence describes an older balance.
+- **Verification:** Baseline `python -m pytest -q --disable-warnings` passed 42 tests. In-app browser loaded all eight navigation areas without console errors on an isolated database and tested assessment, draft v2 edit, exact-version approval, simulated link creation, signed simulated webhook to `PARTIALLY_RESOLVED` with INR 30,000 disputed, and blocked customer injection. Browser checks covered 1440, 1280, 768, and 390 widths; tablet page overflow found and corrected.
+- **Decisions / limits:** Browser payment test used the existing `scripts/simulate_payment.py` and mock link. No real money moved or customer message was sent. Seeded evidence is labeled as records marked verified by the backend; current ledger values no longer cite stale seed amounts.
+- **Next:** Finish the endpoint inventory and remaining frontend QA, rerun tests, and record final verification and untested provider paths.
+
+### 2026-10-24 — Codex — Frontend completion and clean-database verification
+
+- **Objective:** Complete evidence access, endpoint inventory, and final application QA for the redesign.
+- **Changed:** Added bundled synthetic PDF copies in `frontend/evidence/` and linked them from the seeded case; added current-balance source fallback, stale agent-draft warning, and proposal-to-case navigation in `frontend/app.js`; refined responsive layout and review styling in `frontend/styles.css`; documented all staff controls in `docs/frontend-endpoint-inventory.md` and updated `README.md`. Marked `scripts/test_injection.py` as a stateful demo so pytest does not collect a test that depends on a preseeded pilot database. Isolated injection coverage remains in `tests/test_release3.py`.
+- **Verification:** Fresh SQLite database: `python -m pytest -q --disable-warnings` passed 41 tests with 1 existing pytest-asyncio warning; `node --check frontend/app.js` and `git diff --check` passed. `python scripts/demo_hero.py` passed all seven steps on a separate temporary database. Browser QA verified all eight views, case search, PDF navigation, version edit and approval, signed SIMULATED payment to `PARTIALLY_RESOLVED`, blocked injection, invalid-key feedback, no console errors, and no page overflow at 1440, 1280, 768, or 390 pixels. Screenshots are in the task visualizations directory outside the repo.
+- **Decisions / limits:** No backend API, provider configuration, real send, or real-money behavior changed. Provider-backed Shopify/WhatsApp and admin-only resolution actions were mapped and smoke viewed but not exercised against live services. The browser test used a temporary server and synthetic API key; the user pilot database was not changed.
+- **Next:** Review the local diff and commit or push when desired. Production provider checks remain separate from this offline frontend QA.
 
