@@ -22,18 +22,33 @@ app = FastAPI(
 
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
-    if request.url.path.startswith("/api/v1/") and request.url.path != "/api/v1/system/health":
+    # Public endpoints that do not require authentication
+    public_paths = (
+        "/api/v1/system/health",
+        "/api/v1/auth/login",
+    )
+    if request.url.path.startswith("/api/v1/") and request.url.path not in public_paths:
         # Public callbacks perform their own raw-body provider signature verification.
         if (request.url.path.startswith("/api/v1/webhooks/razorpay/") or
                 request.url.path.startswith("/api/v1/webhooks/meta-whatsapp/") or
                 request.url.path.startswith("/api/v1/webhooks/shopify/")):
             return await call_next(request)
-        if not configured_keys():
-            return JSONResponse({"detail": "Set RECOVERFLOW_API_KEY before using the API"}, status_code=503)
-        identity = authenticate(request.headers.get("X-RECOVERFLOW-API-KEY")
-                                or request.headers.get("X-APEX-API-KEY", ""))
+        
+        # Extract credentials from X-API-KEY headers or Authorization: Bearer <token>
+        raw_key = (
+            request.headers.get("X-RECOVERFLOW-API-KEY")
+            or request.headers.get("X-APEX-API-KEY", "")
+        )
+        if not raw_key:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                raw_key = auth_header[7:].strip()
+
+        identity = authenticate(raw_key)
         if not identity:
-            return JSONResponse({"detail": "Invalid API key"}, status_code=401)
+            if not configured_keys() and not raw_key:
+                return JSONResponse({"detail": "Set RECOVERFLOW_API_KEY before using the API"}, status_code=503)
+            return JSONResponse({"detail": "Invalid or expired credentials"}, status_code=401)
         if request.method not in ("GET", "HEAD", "OPTIONS") and identity.role == "viewer":
             return JSONResponse({"detail": "Read-only account"}, status_code=403)
         request.state.identity = identity

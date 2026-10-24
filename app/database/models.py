@@ -440,3 +440,45 @@ class ProposalDraftVersion(Base):
     approved_by = Column(String)
     approved_at = Column(DateTime)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class User(Base):
+    """Database-backed staff and API users with PBKDF2 password hashing."""
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, default="local", index=True)
+    email = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False)
+    password_hash = Column(String, nullable=False)
+    role = Column(String, nullable=False, default="editor")  # admin, editor, viewer
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_login_at = Column(DateTime, nullable=True)
+
+
+class UserApiKey(Base):
+    """Database-backed API keys with SHA-256 hash storage."""
+    __tablename__ = "user_api_keys"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, default="local", index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    name = Column(String, nullable=False)
+    key_prefix = Column(String(16), nullable=False)
+    key_hash = Column(String(64), nullable=False, unique=True, index=True)
+    role = Column(String, nullable=False, default="editor")  # admin, editor, viewer
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+
+
+class UserSession(Base):
+    """Active user authentication tokens and web sessions."""
+    __tablename__ = "user_sessions"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    expires_at = Column(DateTime, nullable=False)
+    is_revoked = Column(Boolean, nullable=False, default=False)

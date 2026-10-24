@@ -5,12 +5,17 @@ from pydantic_settings import BaseSettings
 from pathlib import Path
 
 class Settings(BaseSettings):
-    # Paths
+    # Paths & Database
     BASE_DIR: Path = Path(__file__).parent.parent
+    DATABASE_URL: str = ""                           # If set (e.g. postgresql://...), overrides APEX_DB_PATH
     APEX_DB_PATH: str = "apex_ar.db"
+    DB_POOL_SIZE: int = 5
+    DB_MAX_OVERFLOW: int = 10
+    DB_POOL_TIMEOUT: int = 30
     AFIS_DB_PATH: str = "../AFIS/afis_finance.db"   # path relative to the parent project
     AXIS_DB_PATH: str = "../AXIS/axis_tax.db"        # reads payment classifications
     PDF_STORAGE_PATH: str = "data/invoices"          # local invoice storage
+    AUTH_TOKEN_EXPIRE_HOURS: int = 24
 
     # LLM
     ANTHROPIC_API_KEY: str = ""

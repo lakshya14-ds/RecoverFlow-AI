@@ -108,3 +108,21 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Decisions / limits:** No backend API, provider configuration, real send, or real-money behavior changed. Provider-backed Shopify/WhatsApp and admin-only resolution actions were mapped and smoke viewed but not exercised against live services. The browser test used a temporary server and synthetic API key; the user pilot database was not changed.
 - **Next:** Review the local diff and commit or push when desired. Production provider checks remain separate from this offline frontend QA.
 
+### 2026-10-24 — Antigravity — Enterprise Database & Authentication Implementation
+
+- **Objective:** Complete the database connection engine and authentication architecture as explicitly requested by the user, supporting configurable `DATABASE_URL` (PostgreSQL / SQLite), database-backed User and API key models, PBKDF2-HMAC-SHA256 password hashing, RBAC permissions, and `/api/v1/auth` endpoints.
+- **Changed:**
+  - `app/config.py`: Added `DATABASE_URL`, connection pool configurations (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `DB_POOL_TIMEOUT`), and `AUTH_TOKEN_EXPIRE_HOURS`.
+  - `app/database/models.py`: Added `User` (email, password_hash, role, is_active, last_login_at), `UserApiKey` (name, key_prefix, key_hash, role, expires_at), and `UserSession` (token_hash, expires_at, is_revoked).
+  - `app/database/db_manager.py`: Configured multi-engine support (SQLite with WAL mode pragma vs PostgreSQL connection pooling), automatic schema table creation, and bootstrapping of the initial admin user (`admin@recoverflow.in`).
+  - `app/services/auth_security.py`: Built cryptographic service using Python's standard library `hashlib` and `secrets` for PBKDF2-HMAC-SHA256 password hashing, constant-time verification, random API key generation (`rf_...`), and SHA-256 key hashing.
+  - `app/auth.py`: Updated `authenticate()` to check static environment keys first (backward compatibility), then validate database API keys and active session tokens. Added RBAC dependencies (`require_admin`, `require_editor`, `require_viewer`).
+  - `app/main.py`: Updated `protect_api` middleware to support `Authorization: Bearer <token>` in addition to `X-RECOVERFLOW-API-KEY`, while allowing the `/api/v1/auth/login` endpoint without prior authentication.
+  - `app/api/auth.py` & `app/api/router.py`: Created endpoints for staff login (`POST /auth/login`), profile inspection (`GET /auth/me`), logout (`POST /auth/logout`), user management (`POST/GET /auth/users`), and API key lifecycle (`POST/GET/DELETE /auth/keys`).
+  - `tests/test_auth_and_db.py`: Added test suite covering password hashing, API key generation, staff login with session tokens, RBAC restrictions, and API key revocation.
+- **Verification:**
+  - `python -m pytest tests/test_auth_and_db.py -q --disable-warnings` passed 5 tests cleanly.
+  - Full test suite: `python -m pytest -q --disable-warnings` passed 46 tests cleanly (0 failures).
+  - `python scripts/demo_hero.py` executed all 7 hero recovery steps with exit code 0.
+- **Decision:** Floats forbidden for money. Zero new external binary pip dependencies introduced. Static `.env` keys continue to work seamlessly alongside database-backed users and keys.
+
