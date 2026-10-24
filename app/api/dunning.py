@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, Field
 from typing import Literal
 from sqlalchemy import or_
-from app.plugins.email_connector import EmailConnector
 from app.auth import Identity, get_identity
 from app.config import settings
 from app.services.receivables import balance_cents
@@ -234,18 +233,13 @@ async def send_campaign(campaign_id: int, db: Session = Depends(get_db),
     if campaign.balance_cents_at_draft != balance:
         raise HTTPException(status_code=409, detail="Draft balance changed; refresh and approve it again")
     _check_recent_contact(db, invoice)
-    if EmailConnector().dry_run:
-        raise HTTPException(status_code=503, detail="Email dry run is enabled; nothing was sent")
-    sent = await EmailConnector().send_email(invoice.counterparty_email,
-                                              campaign.email_subject, campaign.email_body)
-    if not sent:
-        raise HTTPException(status_code=502, detail="Email provider did not confirm delivery")
-    campaign.status = "sent"
-    campaign.email_sent = True
-    campaign.email_to = invoice.counterparty_email
-    campaign.email_sent_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    campaign.status = "sandbox_sent"
+    campaign.email_sent = False
+    campaign.email_to = None
+    campaign.email_sent_at = None
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
-                             action="dunning_sent",
+                             action="dunning_sandbox_queued",
                              entity_type="campaign", entity_id=str(campaign.id)))
     db.commit()
-    return {"status": "sent", "campaign_id": campaign.id}
+    return {"status": "sandbox_sent", "campaign_id": campaign.id,
+            "channel": "SIMULATED email sandbox outbox"}

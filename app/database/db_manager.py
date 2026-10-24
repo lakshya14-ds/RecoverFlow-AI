@@ -91,6 +91,13 @@ def init_db() -> None:
                 "attempts": "INTEGER NOT NULL DEFAULT 0",
                 "locked_until": "DATETIME",
             },
+            "agent_policies": {
+                "autonomy_mode": "TEXT NOT NULL DEFAULT 'review_all'",
+            },
+            "intake_uploads": {
+                "stages_json": "TEXT NOT NULL DEFAULT '[\"Uploaded\"]'",
+                "extraction_json": "TEXT",
+            },
             "provider_events": {
                 "resource_id": "TEXT",
                 "resolution_note": "TEXT",

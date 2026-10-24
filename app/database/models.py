@@ -220,6 +220,28 @@ class ProcessingJob(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+class IntakeUpload(Base):
+    """Durable upload queue state; file bytes live outside the frontend root."""
+    __tablename__ = "intake_uploads"
+    id = Column(String, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    actor = Column(String, nullable=False)
+    filename = Column(String, nullable=False)
+    mime_type = Column(String, nullable=False)
+    source_path = Column(String, nullable=False)
+    size_bytes = Column(Integer, nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    stage = Column(String, nullable=False, default="Uploaded")
+    stages_json = Column(Text, nullable=False, default='["Uploaded"]')
+    error = Column(Text)
+    attempts = Column(Integer, nullable=False, default=0)
+    cases_created = Column(Integer, nullable=False, default=0)
+    extraction_json = Column(Text)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
     id = Column(Integer, primary_key=True)
@@ -355,8 +377,54 @@ class AgentPolicy(Base):
     max_assessments_per_day = Column(Integer, nullable=False, default=20)
     max_internal_actions_per_day = Column(Integer, nullable=False, default=5)
     max_balance_cents = Column(Integer, nullable=False, default=100000)
+    autonomy_mode = Column(String, nullable=False, default="review_all")
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))
+
+
+class NegotiationSession(Base):
+    __tablename__ = "negotiation_sessions"
+    __table_args__ = (UniqueConstraint("tenant_id", "invoice_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    mode = Column(String, nullable=False, default="manual")
+    status = Column(String, nullable=False, default="active")
+    round_count = Column(Integer, nullable=False, default=0)
+    max_instalments = Column(Integer, nullable=False, default=3)
+    max_extension_days = Column(Integer, nullable=False, default=30)
+    min_first_percent = Column(Integer, nullable=False, default=30)
+    settlement_discount_allowed = Column(Boolean, nullable=False, default=False)
+    max_ai_rounds = Column(Integer, nullable=False, default=3)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class NegotiationTurn(Base):
+    __tablename__ = "negotiation_turns"
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("negotiation_sessions.id"), nullable=False, index=True)
+    direction = Column(String, nullable=False)
+    actor = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    body_hash = Column(String(64), nullable=False)
+    supersedes_id = Column(Integer, ForeignKey("negotiation_turns.id"))
+    approved_by = Column(String)
+    status = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class SandboxOutbox(Base):
+    __tablename__ = "sandbox_outbox"
+    __table_args__ = (UniqueConstraint("tenant_id", "proposal_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    proposal_id = Column(Integer, ForeignKey("agent_proposals.id"), nullable=False)
+    channel = Column(String, nullable=False, default="SIMULATED sandbox")
+    body = Column(Text, nullable=False)
+    body_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AgentProposal(Base):

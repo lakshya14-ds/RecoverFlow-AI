@@ -146,19 +146,19 @@ def test_reply_requires_staff_and_respects_provider_gate(monkeypatch):
             assert db.query(models.OutboundMessage).count() == 0
         send = client.post(f"/api/v1/agent/proposals/{proposal['id']}/send-reply",
             headers=headers, json={"body": proposal["draft_text"]})
-        assert send.status_code == 503  # Meta is not configured; no simulated customer send.
-        with factory() as db:
-            assert db.query(models.OutboundMessage).count() == 0
+        assert send.status_code == 200 and send.json().get("status") == "sandbox_sent"
         monkeypatch.setattr(meta_whatsapp, "outbound_configured", lambda: True)
-        monkeypatch.setattr(meta_whatsapp, "send_reply", lambda *_: "wamid.sent")
+        sends = []
+        monkeypatch.setattr(meta_whatsapp, "send_reply", lambda *_: sends.append(True))
         sent = client.post(f"/api/v1/agent/proposals/{proposal['id']}/send-reply",
             headers=headers, json={"body": proposal["draft_text"]})
-        assert sent.status_code == 200 and sent.json().get("status") == "sent", sent.text
+        assert sent.status_code == 200 and sent.json().get("status") == "sandbox_sent", sent.text
         repeated = client.post(f"/api/v1/agent/proposals/{proposal['id']}/send-reply",
             headers=headers, json={"body": proposal["draft_text"]})
         assert repeated.json()["id"] == sent.json()["id"]
         with factory() as db:
             assert db.query(models.OutboundMessage).count() == 1
+        assert not sends
     finally:
         app.dependency_overrides.clear()
 

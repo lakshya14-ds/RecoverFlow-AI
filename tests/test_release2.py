@@ -267,7 +267,11 @@ def test_staff_whatsapp_reply_is_idempotent_and_requires_recent_inbound(monkeypa
         headers = {"X-RECOVERFLOW-API-KEY": "test-key"}
         assert client.post(path, json=payload, headers=headers).status_code == 201
         assert client.post(path, json=payload, headers=headers).status_code == 201
-        assert len(calls) == 1
+        assert len(calls) == 0  # Release 4 keeps replies in the sandbox.
+        with factory() as db:
+            outgoing = db.query(models.OutboundMessage).one()
+            assert outgoing.status == "sandbox_sent"
+            assert outgoing.provider == "sandbox_whatsapp"
         with factory() as db:
             db.get(models.InboundMessage, incoming_id).received_at = (
                 datetime.now(timezone.utc) - timedelta(hours=25))

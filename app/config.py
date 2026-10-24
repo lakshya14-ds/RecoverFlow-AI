@@ -23,9 +23,16 @@ class Settings(BaseSettings):
     LLM_MAX_TOKENS: int = 2048
     LLM_TEMPERATURE: float = 0.3            # controlled variation for collection drafts
     GEMINI_API_KEY: str = ""
+    GEMINI_API_KEY_1: str = ""
+    GEMINI_API_KEY_2: str = ""
+    GEMINI_API_KEY_3: str = ""
+    # JSON role-to-slot mapping, e.g. {"intake":1,"drafter":2,"negotiator":3}.
+    GEMINI_ROLE_MAP_JSON: str = ""
+    GEMINI_KEY_3_RESERVE_RPM: int = 5
+    GEMINI_KEY_3_RESERVE_RPD: int = 300
     AGENT_MODEL: str = "gemini-3.6-flash"
-    GEMINI_RPM_LIMIT: int = 15              # Official AI Studio free tier limit: 15 RPM
-    GEMINI_RPD_LIMIT: int = 1500            # Official AI Studio free tier limit: 1,500 RPD
+    GEMINI_RPM_LIMIT: int = 15              # Requested per-slot client cap
+    GEMINI_RPD_LIMIT: int = 1500            # Requested per-slot client cap
 
     # OCR (Tesseract)
     TESSERACT_CMD: str = "tesseract"        # path to the Tesseract executable

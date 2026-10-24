@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sessionStorage.setItem('recoverflowApiKey', apiKey);
         document.getElementById('api-key').value = '';
         loadSummary();
+        loadIntakeUploads();
     });
     document.getElementById('forget-key').addEventListener('click', () => {
         apiKey = '';
@@ -92,28 +93,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // Navigational Logic
     const navItems = document.querySelectorAll('.nav-item');
     const views = document.querySelectorAll('.view');
+    const pageForView = {dashboard: 'control', upload: 'intake', cases: 'review',
+        reconciliation: 'review', dunning: 'review', fraud: 'review',
+        connected: 'control', agent: 'review', control: 'control'};
+    const legacyTools = document.getElementById('legacy-tools');
+    [...document.querySelectorAll('#view-upload > .card')].forEach(card => {
+        if (card.contains(document.getElementById('review-list'))) document.getElementById('view-cases').insertBefore(card, document.getElementById('case-detail'));
+        else legacyTools.appendChild(card);
+    });
+    document.getElementById('view-connected').before(document.getElementById('view-control'));
+    document.getElementById('view-control').after(document.getElementById('view-dashboard'));
+    document.getElementById('view-control').appendChild(
+        document.querySelector('#view-agent > .card'));
 
     function navigate(targetView, caseId = null) {
-            const item = document.querySelector(`.nav-item[data-view="${targetView}"]`);
+            const page = pageForView[targetView] || targetView;
+            const item = document.querySelector(`.nav-item[data-view="${page}"]`);
+            if (!item) return;
             
             navItems.forEach(n => n.classList.remove('active'));
             views.forEach(v => v.classList.remove('active'));
             
             item.classList.add('active');
-            document.getElementById(`view-${targetView}`).classList.add('active');
-            document.querySelector('main header h2').textContent = targetView === 'dashboard' ? 'Overview' : item.textContent;
-            const descriptions = {dashboard:'The work that needs a decision today.',upload:'Bring receivables into review.',cases:'One balance, one evidence trail, one decision at a time.',reconciliation:'Check payment matches before posting.',dunning:'Review collection wording and contact records.',connected:'Provider status and controlled schedules.',agent:'Assess, edit, and approve exact draft versions.',fraud:'Resolve exceptions with a recorded reason.'};
-            document.getElementById('view-description').textContent = descriptions[targetView];
+            views.forEach(v => v.classList.toggle('active', pageForView[v.id.replace('view-', '')] === page));
+            document.querySelector('main header h2').textContent = item.textContent;
+            const descriptions = {intake:'Upload evidence and watch each file advance.',
+                review:'Review sources, approve exact drafts, and choose who negotiates.',
+                control:'Inspect the ledger, sandbox payments, audit, policies, and keys.'};
+            document.getElementById('view-description').textContent = descriptions[page];
 
             // Load data when view is opened
-            if(targetView === 'reconciliation') loadReconciliations();
-            if(targetView === 'dunning') loadDunning();
-            if(targetView === 'fraud') loadFraud();
-            if(targetView === 'upload') loadReviewQueue();
-            if(targetView === 'cases') loadCases();
-            if(targetView === 'dashboard') loadSummary();
-            if(targetView === 'connected') loadConnected();
-            if(targetView === 'agent') loadAgent();
+            if(page === 'review') {
+                loadCases(); loadReviewQueue(); loadReconciliations();
+                loadDunning(); loadFraud(); loadAgent();
+            }
+            if(page === 'intake') loadIntakeUploads();
+            if(page === 'control') { loadSummary(); loadConnected(); loadAgent(); loadControl(); }
             if (caseId) openCase(caseId);
     }
     navItems.forEach(item => {
@@ -248,6 +263,9 @@ document.addEventListener('DOMContentLoaded', () => {
         container.textContent = 'Loading cases…';
         try {
             caseRows = await (await apiFetch('/api/v1/cases')).json();
+            caseRows.sort((a,b) => Number(!!b.requires_human_review) - Number(!!a.requires_human_review)
+                || b.outstanding_cents - a.outstanding_cents
+                || String(a.due_date).localeCompare(String(b.due_date)));
             renderCases(document.getElementById('case-search').value);
         } catch (error) { container.textContent = error.message; }
     }
@@ -279,11 +297,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const sourceFor = (claim, cents) => {
                 const evidence = (data.evidence || []).find(ev => ev.claim_type === claim && ev.amount_cents === cents);
                 if (evidence) return `<button type="button" class="source-chip" data-claim="${escapeHtml(claim)}">Source · ${escapeHtml(evidence.title)}</button>`;
-                if (cents === 0) return '<span class="source-unavailable">No amount currently due</span>';
-                return '<button type="button" class="source-chip" data-claim="ledger">Source · Current ledger activity</button>';
+                const hasInvoiceSource = (data.evidence || []).some(ev => ev.claim_type === 'invoice_total' && ev.source_reference);
+                const hasLedgerSource = (data.entries || []).length > 0;
+                if (claim === 'received_payment' && hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Current ledger activity</button>';
+                if ((claim === 'undisputed_balance') && hasInvoiceSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Invoice and ledger</button>';
+                if (cents === 0 && hasInvoiceSource) return '<span class="source-unavailable">No amount currently due</span>';
+                return null;
             };
-            const metric = (label, cents, claim, className = '') => `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${sourceFor(claim, cents)}</div>`;
-            const leaf = (label, cents, claim, className) => `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${sourceFor(claim, cents)}</div>`;
+            const metric = (label, cents, claim, className = '') => { const source = sourceFor(claim, cents); return source == null ? '' : `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}</div>`; };
+            const leaf = (label, cents, claim, className) => { const source = sourceFor(claim, cents); return source == null ? '' : `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}</div>`; };
 
             const splitHtml = `
                 ${injectionHtml}
@@ -326,7 +348,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(data.evidence || []).map(ev => `
                         <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
-                                <strong>${localEvidence.has(ev.source_reference) ? `<a class="document-link" href="${localEvidence.get(ev.source_reference)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.title)} · Open PDF</a>` : escapeHtml(ev.title)}</strong>
+                                <strong>${localEvidence.has(ev.source_reference) ? `<a class="document-link" href="${localEvidence.get(ev.source_reference)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.title)} · Open PDF</a>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · ${ev.verified ? 'Marked verified' : 'Not verified'}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
@@ -334,6 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="evidence-ref">Source: ${escapeHtml(ev.source_reference)}</span>
                                 ${ev.amount_cents != null ? `<strong>${money(data.currency, ev.amount_cents)}</strong>` : ''}
                             </div>
+                            ${!ev.verified && String(ev.source_reference).startsWith('/api/v1/intake/uploads/') && ['invoice_total','received_payment'].includes(ev.claim_type) ? `<button type="button" class="btn confirm-upload" data-url="${escapeHtml(ev.source_reference.replace(/\/file$/, ev.claim_type === 'invoice_total' ? '/confirm-invoice' : '/confirm-receipt'))}">Confirm ${ev.claim_type === 'invoice_total' ? 'invoice' : 'receipt'} after review</button>` : ''}
                             ${ev.source_snippet ? `<div class="snippet-box">"${escapeHtml(ev.source_snippet)}"</div>` : ''}
                         </div>
                     `).join('') || '<p>No linked evidence items yet.</p>'}
@@ -351,6 +374,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 ].join('') || '<p>No activity yet.</p>'}</div>
             `;
 
+            await Promise.all((data.evidence || []).filter(ev =>
+                /^\/api\/v1\/intake\/uploads\/[^/]+\/file$/.test(ev.source_reference || '')
+            ).map(async ev => {
+                try {
+                    const uploadUrl = ev.source_reference.replace(/\/file$/, '');
+                    const upload = await (await apiFetch(uploadUrl)).json();
+                    const confidence = upload.extraction?.confidence;
+                    if (!confidence || !Object.keys(confidence).length) return;
+                    const card = document.getElementById(`evidence-${Number(ev.id)}`);
+                    if (!card) return;
+                    const detail = document.createElement('p');
+                    detail.className = 'extraction-confidence';
+                    detail.textContent = 'Extraction confidence · ' + Object.entries(confidence)
+                        .map(([field, value]) => `${field.replaceAll('_', ' ')} ${Math.round(Number(value) * 100)}%`).join(' · ');
+                    card.append(detail);
+                } catch (_) { /* Source stays available; confidence is optional for legacy uploads. */ }
+            }));
+
             detail.querySelectorAll('.reverse-entry').forEach(button => button.addEventListener('click', async () => {
                 const reason = prompt('Why is this receipt or credit being reversed?');
                 if (!reason) return;
@@ -362,7 +403,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     openCase(id); loadCases();
                 } catch (error) { alert(error.message); }
             }));
+            detail.querySelectorAll('.uploaded-source').forEach(button => button.addEventListener('click', async () => {
+                try {
+                    const response = await apiFetch(button.dataset.url);
+                    const url = URL.createObjectURL(await response.blob());
+                    window.open(url, '_blank', 'noopener');
+                    setTimeout(() => URL.revokeObjectURL(url), 60000);
+                } catch (error) { alert(error.message); }
+            }));
+            detail.querySelectorAll('.confirm-upload').forEach(button => button.addEventListener('click', async () => {
+                try {
+                    await apiFetch(button.dataset.url, {method:'POST'});
+                    openCase(id); loadAgent(); loadIntakeUploads();
+                } catch (error) { alert(error.message); }
+            }));
             loadCases();
+            loadNegotiation();
             detail.scrollIntoView({behavior: 'smooth', block: 'start'});
         } catch (error) { detail.classList.remove('hidden'); document.getElementById('case-summary').textContent = error.message; }
     }
@@ -963,6 +1019,161 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
+    async function loadIntakeUploads() {
+        const tracker = document.getElementById('intake-tracker');
+        try {
+            const data = await (await apiFetch('/api/v1/intake/uploads')).json();
+            document.getElementById('intake-summary').innerHTML = [
+                ['Files processed', data.summary.files_processed],
+                ['Cases created', data.summary.cases_created],
+                ['Needs review', data.summary.items_needing_review]
+            ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('');
+            tracker.innerHTML = data.uploads.length ? data.uploads.map(file => `
+                <div class="intake-row"><div><strong>${escapeHtml(file.filename)}</strong><small>${(file.stages || [file.stage]).map(escapeHtml).join(' → ')}</small>${file.error ? `<small>${escapeHtml(file.error)}</small>` : ''}</div>
+                ${file.status === 'needs_attention' && file.cases_created === 0 ? `<button type="button" class="btn intake-retry" data-id="${escapeHtml(file.id)}">Retry failed file</button>` : ''}</div>`).join('') : '<p>No files uploaded yet.</p>';
+            tracker.querySelectorAll('.intake-retry').forEach(button => button.addEventListener('click', async () => {
+                try { await apiFetch(`/api/v1/intake/uploads/${button.dataset.id}/retry`, {method: 'POST'}); loadIntakeUploads(); }
+                catch (error) { document.getElementById('intake-upload-result').textContent = error.message; }
+            }));
+        } catch (error) { tracker.textContent = error.message; }
+    }
+    async function uploadIntakeFiles(files) {
+        const result = document.getElementById('intake-upload-result');
+        const mimeFor = file => ({csv:'text/csv',pdf:'application/pdf',jpg:'image/jpeg',
+            jpeg:'image/jpeg',png:'image/png'})[file.name.split('.').pop().toLowerCase()];
+        for (const file of files) {
+            try {
+                if (!mimeFor(file)) throw new Error(`${file.name}: unsupported file type`);
+                if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name}: file exceeds 10 MB`);
+                await apiFetch('/api/v1/intake/uploads', {method:'POST',
+                    headers:{'Content-Type':mimeFor(file),'X-Filename':file.name}, body:file});
+                result.textContent = `Uploaded ${file.name} to the local processing queue.`;
+            } catch (error) { result.textContent = `${file.name}: ${error.message}`; }
+        }
+        loadIntakeUploads();
+    }
+    const intakeInput = document.getElementById('intake-files');
+    const intakeDrop = document.getElementById('intake-drop-zone');
+    intakeInput.addEventListener('change', event => uploadIntakeFiles([...event.target.files]));
+    intakeDrop.addEventListener('dragover', event => { event.preventDefault(); intakeDrop.classList.add('dragging'); });
+    intakeDrop.addEventListener('dragleave', () => intakeDrop.classList.remove('dragging'));
+    intakeDrop.addEventListener('drop', event => {
+        event.preventDefault(); intakeDrop.classList.remove('dragging');
+        uploadIntakeFiles([...event.dataTransfer.files]);
+    });
+    intakeDrop.addEventListener('keydown', event => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); intakeInput.click(); }
+    });
+    setInterval(() => { if (apiKey && document.querySelector('.nav-item[data-view="intake"]').classList.contains('active')) loadIntakeUploads(); }, 3000);
+
+    async function loadControl() {
+        try {
+            const evaluation = await (await fetch('/evaluation.json')).json();
+            document.getElementById('evaluation-summary').textContent =
+                `Synthetic run ${evaluation.generated_on}: ${evaluation.correct_split}/${evaluation.cases} correct balance splits; ` +
+                `${evaluation.correct_triage}/${evaluation.files} files routed correctly; ` +
+                `${evaluation.review_without_entry}/${evaluation.files} reached Review without data entry. ` +
+                evaluation.scope;
+        } catch (_) {
+            document.getElementById('evaluation-summary').textContent =
+                'Run python scripts/run_evaluation.py to generate measured synthetic results.';
+        }
+        try {
+            const status = await (await apiFetch('/api/v1/agent/status')).json();
+            document.getElementById('autonomy-mode').value = status.policy?.autonomy_mode || 'review_all';
+            document.getElementById('key-assignment').innerHTML = (status.rate_limits?.slots || []).map(slot => `
+                <div class="intake-row"><div><strong>Key ${slot.slot}</strong><small>${slot.agents.map(escapeHtml).join(', ')}</small></div>
+                <div><span>${slot.configured ? (slot.throttled ? 'Cooldown' : 'Ready') : 'Not configured'}</span><small>${slot.rpm_used}/${slot.rpm_limit} RPM · ${slot.rpd_used}/${slot.rpd_limit} RPD · ${slot.cooldown_seconds}s cooldown · ${slot.fallback_events} fallbacks</small></div></div>`).join('');
+            const outbox = await (await apiFetch('/api/v1/agent/sandbox-outbox')).json();
+            document.getElementById('sandbox-outbox').innerHTML = outbox.length ? outbox.map(item => `
+                <div class="intake-row"><div><strong>Case ${item.invoice_id} · ${escapeHtml(item.channel)}</strong><small>${escapeHtml(item.body_hash.slice(0,12))}</small><p>${escapeHtml(item.body)}</p></div></div>`).join('') : '<p>No sandbox messages queued.</p>';
+        } catch (error) { document.getElementById('key-assignment').textContent = error.message; }
+    }
+    document.getElementById('autonomy-save').addEventListener('click', async () => {
+        const result = document.getElementById('autonomy-result');
+        try {
+            await apiFetch('/api/v1/agent/autonomy', {method:'PUT', headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({mode:document.getElementById('autonomy-mode').value})});
+            result.textContent = 'Autonomy mode saved. Outbound delivery remains sandbox only.';
+        } catch (error) { result.textContent = error.message; }
+    });
+    document.getElementById('bulk-approve').addEventListener('click', async () => {
+        const result = document.getElementById('bulk-approve-result');
+        try {
+            const data = await (await apiFetch('/api/v1/agent/bulk-approve', {method:'POST'})).json();
+            result.textContent = `${data.approved.length} approved; ${data.skipped.length} skipped by policy.`;
+            loadAgent();
+        } catch (error) { result.textContent = error.message; }
+    });
+
+    async function loadNegotiation() {
+        const panel = document.getElementById('negotiation-panel');
+        if (!selectedCaseId) { panel.classList.add('hidden'); return; }
+        panel.classList.remove('hidden');
+        try {
+            const data = await (await apiFetch(`/api/v1/negotiations/cases/${selectedCaseId}`)).json();
+            document.getElementById('negotiation-status').textContent = `${data.mode} · ${data.status} · ${data.round_count}/${data.bounds.max_ai_rounds} AI rounds`;
+            document.getElementById('negotiation-transcript').innerHTML = data.transcript.map(turn => `
+                <div class="intake-row"><div><strong>${escapeHtml(turn.actor)} · ${escapeHtml(turn.status)}</strong><p>${escapeHtml(turn.body)}</p></div>
+                ${turn.status === 'pending_approval' ? `<div><button type="button" class="btn negotiation-edit" data-id="${turn.id}">Edit</button><button type="button" class="btn negotiation-approve" data-id="${turn.id}" data-hash="${escapeHtml(turn.body_hash)}">Approve exact version</button></div>` : ''}</div>`).join('') || '<p>No messages yet.</p>';
+            document.querySelectorAll('.negotiation-approve').forEach(button => button.addEventListener('click', async () => {
+                try { await apiFetch(`/api/v1/negotiations/cases/${selectedCaseId}/turns/${button.dataset.id}/approve`,
+                    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body_hash:button.dataset.hash})}); loadNegotiation(); }
+                catch(error){ document.getElementById('negotiation-status').textContent = error.message; }
+            }));
+            document.querySelectorAll('.negotiation-edit').forEach(button => button.addEventListener('click', async () => {
+                const body = prompt('Edit the exact sandbox message');
+                if (!body) return;
+                try { await apiFetch(`/api/v1/negotiations/cases/${selectedCaseId}/turns/${button.dataset.id}/edit`,
+                    {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({body})}); loadNegotiation(); }
+                catch(error){ document.getElementById('negotiation-status').textContent = error.message; }
+            }));
+        } catch (error) {
+            document.getElementById('negotiation-status').textContent = 'Choose Manual or Delegate to start this case.';
+            document.getElementById('negotiation-transcript').textContent = '';
+        }
+    }
+    async function negotiationAction(path, options = {method:'POST'}) {
+        if (!selectedCaseId) return;
+        try {
+            const response = await apiFetch(`/api/v1/negotiations/cases/${selectedCaseId}${path}`, options);
+            const data = await response.json();
+            if (data.body) document.getElementById('negotiation-status').textContent = `${data.status}: ${data.body}`;
+            loadNegotiation();
+            return data;
+        } catch (error) { document.getElementById('negotiation-status').textContent = error.message; }
+    }
+    document.getElementById('negotiation-delegate').addEventListener('click', () => negotiationAction('',
+        {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'delegate'})}));
+    for (const [id, path] of [['negotiation-pause','/pause'],['negotiation-take-over','/take-over'],
+        ['negotiation-stop','/stop'],['negotiation-next-offer','/delegate/step']]) {
+        document.getElementById(id).addEventListener('click', () => negotiationAction(path));
+    }
+    document.getElementById('negotiation-send-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const body = event.target.elements.body.value;
+        const data = await negotiationAction('/manual/send', {method:'POST',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({body})});
+        if (data) event.target.reset();
+    });
+    document.getElementById('negotiation-customer-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const body = event.target.elements.body.value;
+        const data = await negotiationAction('/incoming', {method:'POST',
+            headers:{'Content-Type':'application/json'},body:JSON.stringify({body})});
+        if (data) event.target.reset();
+    });
+    document.getElementById('negotiation-manual').addEventListener('click', async () => {
+        await negotiationAction('', {method:'PUT',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({mode:'manual'})});
+        const data = await negotiationAction('/copilot');
+        if (data?.suggestions) document.getElementById('negotiation-suggestions').innerHTML = data.suggestions.map((item,index) => `
+            <div class="intake-row"><span>Suggestion ${index+1} · ${escapeHtml(item.engine)}<br>${escapeHtml(item.body)}</span><button type="button" class="btn use-suggestion" data-index="${index}">Use</button></div>`).join('');
+        document.querySelectorAll('.use-suggestion').forEach(button => button.addEventListener('click', () => {
+            document.querySelector('#negotiation-send-form textarea').value = data.suggestions[Number(button.dataset.index)].body;
+        }));
+    });
+
     // Exported globals for inline onclick
     window.approveRecon = async (id) => {
         try {
@@ -981,6 +1192,7 @@ document.addEventListener('DOMContentLoaded', () => {
             alert("Could not resolve the fraud alert.");
         }
     };
+    if (apiKey) loadIntakeUploads();
 });
 // RecoverFlow dashboard module
 

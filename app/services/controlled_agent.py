@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -153,15 +154,17 @@ def _eligible_collection_stage(db: Session, invoice: models.Invoice) -> int | No
 
 
 def _fallback(facts: dict, action: str) -> tuple[str, str, str]:
+    def amount(value: int) -> str:
+        return f"{facts['currency']} {Decimal(value) / Decimal(100):,.2f}"
     if action == "split_balance_draft":
-        undisputed_str = f"{facts['currency']} {facts.get('undisputed_cents', 0) / 100:,.2f}"
-        disputed_str = f"{facts['currency']} {facts.get('disputed_cents', 0) / 100:,.2f}"
-        received_str = f"{facts['currency']} {facts.get('received_cents', 0) / 100:,.2f}"
-        total_str = f"{facts['currency']} {facts.get('invoice_total_cents', facts['balance_cents']) / 100:,.2f}"
+        undisputed_str = amount(facts.get('undisputed_cents', 0))
+        disputed_str = amount(facts.get('disputed_cents', 0))
+        received_str = amount(facts.get('received_cents', 0))
+        total_str = amount(facts.get('invoice_total_cents', facts['balance_cents']))
         summary = (
             f"Invoice {facts['invoice_number']} total is {total_str} with {received_str} received. "
-            f"Of the remaining {facts['currency']} {facts['balance_cents'] / 100:,.2f} balance, {disputed_str} is disputed "
-            f"(shortfall under review) and {undisputed_str} is undisputed and overdue."
+            f"Of the remaining {amount(facts['balance_cents'])} balance, {disputed_str} is disputed "
+            f"and {undisputed_str} is undisputed and overdue."
         )
         rationale = (
             f"RecoverFlow policy: Chase only undisputed funds ({undisputed_str}). "
@@ -169,15 +172,14 @@ def _fallback(facts: dict, action: str) -> tuple[str, str, str]:
         )
         draft = (
             f"Dear {facts.get('customer_name') or 'Customer'},\n\n"
-            f"Thank you for your partial payment of {received_str} against invoice {facts['invoice_number']}.\n\n"
-            f"We acknowledge your open dispute regarding the delivery shortfall of {disputed_str}, which our operations "
-            f"team is actively reviewing.\n\n"
+            f"Our records show {received_str} received against invoice {facts['invoice_number']}.\n\n"
+            f"We acknowledge the open disputed amount of {disputed_str}, which remains under review.\n\n"
             f"In the meantime, the remaining undisputed balance of {undisputed_str} is now overdue. Please arrange payment "
             f"for this undisputed portion at your earliest convenience."
         )
         return summary, rationale, draft
 
-    balance = f"{facts['currency']} {facts['balance_cents'] / 100:.2f}"
+    balance = amount(facts['balance_cents'])
     lines = [f"Invoice {facts['invoice_number']} has a ledger balance of {balance} and is {facts['status']}."]
     if facts["messages"]:
         last = facts["messages"][-1]

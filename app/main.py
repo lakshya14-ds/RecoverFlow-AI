@@ -10,6 +10,8 @@ import os
 from app.config import settings
 from app.database.db_manager import init_db
 from app.api.router import api_router
+from app.services.intake_pipeline import process_one as process_intake_one, recover_interrupted_jobs
+import asyncio
 
 # Configure logging.
 logging.basicConfig(level=settings.LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -55,9 +57,32 @@ async def protect_api(request: Request, call_next):
     return await call_next(request)
 
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     logging.info("Starting RecoverFlow...")
     init_db()
+    recover_interrupted_jobs()
+    async def intake_loop():
+        while True:
+            try:
+                worked = await asyncio.to_thread(process_intake_one)
+                await asyncio.sleep(0.2 if worked else 2)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logging.exception("Intake worker failed; retrying")
+                await asyncio.sleep(2)
+    app.state.intake_task = asyncio.create_task(intake_loop())
+
+
+@app.on_event("shutdown")
+async def stop_intake_loop():
+    task = getattr(app.state, "intake_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
 app.include_router(api_router)
 

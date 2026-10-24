@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 from app.auth import Identity, get_identity
 from app.database import models
 from app.database.db_manager import get_db
-from app.services import meta_whatsapp
+from app.services.negotiation import guard_outbound
+from app.services.receivables import split_balance
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -63,14 +64,16 @@ def triage(message_id: int, payload: TriageInput, db: Session = Depends(get_db),
 @router.post("/{message_id}/reply", status_code=201)
 def reply(message_id: int, payload: ReplyInput, db: Session = Depends(get_db),
           identity: Identity = Depends(get_identity)):
-    if identity.tenant_id != "local" or not meta_whatsapp.outbound_configured():
-        raise HTTPException(status_code=503, detail="Meta WhatsApp is not configured")
     incoming = db.get(models.InboundMessage, message_id)
     if not incoming or incoming.tenant_id != identity.tenant_id or incoming.status != "triaged":
         raise HTTPException(status_code=404, detail="Triaged inbound message not found")
     invoice = db.get(models.Invoice, incoming.invoice_id)
     if not invoice or invoice.tenant_id != identity.tenant_id or invoice.contact_opt_out:
         raise HTTPException(status_code=409, detail="Customer contact is not allowed")
+    split = split_balance(db, invoice)
+    allowed, reason = guard_outbound(payload.body, split["disputed_cents"], split["undisputed_cents"])
+    if not allowed:
+        raise HTTPException(status_code=409, detail=reason)
     received_at = incoming.received_at.replace(tzinfo=timezone.utc) if incoming.received_at.tzinfo is None else incoming.received_at
     if datetime.now(timezone.utc) - received_at >= timedelta(hours=24):
         raise HTTPException(status_code=409, detail="Customer service window has expired; use an approved template")
@@ -83,20 +86,11 @@ def reply(message_id: int, payload: ReplyInput, db: Session = Depends(get_db),
         return previous
     outgoing = models.OutboundMessage(
         tenant_id=identity.tenant_id, inbound_id=message_id, invoice_id=invoice.id,
-        idempotency_key=key, provider="meta_whatsapp", recipient=incoming.sender,
-        body=payload.body, status="sending")
+        idempotency_key=key, provider="sandbox_whatsapp", recipient=incoming.sender,
+        body=payload.body, status="sandbox_sent")
     db.add(outgoing)
-    db.commit()
-    db.refresh(outgoing)
-    try:
-        outgoing.provider_message_id = meta_whatsapp.send_reply(outgoing)
-    except Exception as exc:
-        outgoing.status = "needs_review"
-        db.commit()
-        raise HTTPException(status_code=502, detail="WhatsApp send is unresolved; check Meta before retrying") from exc
-    outgoing.status = "sent"
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
-                             action="whatsapp_reply_sent", entity_type="message",
+                             action="whatsapp_reply_sandbox_queued", entity_type="message",
                              entity_id=str(outgoing.id)))
     db.commit()
     db.refresh(outgoing)

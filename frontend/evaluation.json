@@ -1,0 +1,11 @@
+{
+  "cases": 30,
+  "correct_split": 30,
+  "baseline_split": 25,
+  "files": 10,
+  "correct_triage": 10,
+  "review_without_entry": 5,
+  "image_success_offline": 0,
+  "generated_on": "2026-10-24",
+  "scope": "Synthetic cases and offline generated files; not real recovery or field accuracy"
+}
