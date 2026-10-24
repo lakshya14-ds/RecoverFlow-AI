@@ -148,12 +148,12 @@ def init_db() -> None:
     # Bootstrap default admin user and API key if not present
     with SessionLocal() as db:
         admin_user = db.query(models.User).filter_by(email="admin@recoverflow.in").first()
-        if not admin_user:
+        if not admin_user and settings.ADMIN_BOOTSTRAP_PASSWORD:
             admin_user = models.User(
                 tenant_id="local",
                 email="admin@recoverflow.in",
                 name="System Administrator",
-                password_hash=hash_password("RecoverFlowAdmin2026!"),
+                password_hash=hash_password(settings.ADMIN_BOOTSTRAP_PASSWORD),
                 role="admin",
                 is_active=True,
             )

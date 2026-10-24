@@ -1,0 +1,17 @@
+.env
+.env.*
+.venv/
+.venv312/
+.codex/
+.git/
+app/
+bin/
+data/
+docs/
+output/
+tests/
+tmp/
+*.db
+*.db-shm
+*.db-wal
+requirements.txt

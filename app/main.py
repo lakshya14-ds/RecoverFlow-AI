@@ -4,6 +4,7 @@ RecoverFlow - Receivables and Collections
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from app.auth import authenticate, configured_keys
 import logging
 import os
@@ -22,6 +23,15 @@ app = FastAPI(
     version="1.3.0"
 )
 
+allowed_origins = [origin.strip().rstrip("/") for origin in settings.FRONTEND_ORIGINS.split(",") if origin.strip()]
+if allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-RECOVERFLOW-API-KEY", "X-APEX-API-KEY", "X-Filename"],
+    )
+
 @app.middleware("http")
 async def protect_api(request: Request, call_next):
     # Public endpoints that do not require authentication
@@ -29,7 +39,7 @@ async def protect_api(request: Request, call_next):
         "/api/v1/system/health",
         "/api/v1/auth/login",
     )
-    if request.url.path.startswith("/api/v1/") and request.url.path not in public_paths:
+    if request.method != "OPTIONS" and request.url.path.startswith("/api/v1/") and request.url.path not in public_paths:
         # Public callbacks perform their own raw-body provider signature verification.
         if (request.url.path.startswith("/api/v1/webhooks/razorpay/") or
                 request.url.path.startswith("/api/v1/webhooks/meta-whatsapp/") or

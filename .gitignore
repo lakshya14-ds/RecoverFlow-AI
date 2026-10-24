@@ -28,6 +28,7 @@ Thumbs.db
 # Distribution / packaging
 build/
 dist/
+.vercel/
 *.egg-info/
 
 # Temporary directories

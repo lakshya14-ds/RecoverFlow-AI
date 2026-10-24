@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     AFIS_DB_PATH: str = "../AFIS/afis_finance.db"   # path relative to the parent project
     AXIS_DB_PATH: str = "../AXIS/axis_tax.db"        # reads payment classifications
     PDF_STORAGE_PATH: str = "data/invoices"          # local invoice storage
+    INTAKE_STORAGE_PATH: str = "data/intake"         # durable intake evidence
+    INCOMING_STORAGE_PATH: str = "data/incoming"     # temporary invoice upload staging
     AUTH_TOKEN_EXPIRE_HOURS: int = 24
 
     # LLM
@@ -75,6 +77,8 @@ class Settings(BaseSettings):
     APEX_API_KEYS_JSON: str = ""
     RECOVERFLOW_API_KEY: str = ""
     RECOVERFLOW_API_KEYS_JSON: str = ""
+    FRONTEND_ORIGINS: str = ""                 # Comma-separated HTTPS origins for a separately hosted frontend
+    ADMIN_BOOTSTRAP_PASSWORD: str = ""         # Optional initial admin password; never use a fixed default
     MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
     POPPLER_PATH: str = ""
 

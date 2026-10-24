@@ -4,10 +4,11 @@ Tests password hashing, API keys, session tokens, RBAC gates, and auth endpoints
 """
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
-from app.database import models
-from app.database.db_manager import SessionLocal, init_db
+from app.database import db_manager, models
 from app.main import app
 from app.services.auth_security import (
     hash_password,
@@ -18,19 +19,20 @@ from app.services.auth_security import (
 
 
 @pytest.fixture(autouse=True)
-def setup_auth_db(monkeypatch):
-    """Ensure database and test keys are initialized for auth tests."""
+def setup_auth_db(monkeypatch, tmp_path):
+    """Give auth tests their own database and deterministic bootstrap user."""
+    db_path = tmp_path / "auth-test.db"
+    engine = create_engine("sqlite:///" + db_path.as_posix(),
+                           connect_args={"check_same_thread": False})
+    monkeypatch.setattr(settings, "APEX_DB_PATH", str(db_path))
+    monkeypatch.setattr(db_manager, "engine", engine)
+    monkeypatch.setattr(db_manager, "SessionLocal", sessionmaker(
+        autocommit=False, autoflush=False, bind=engine))
     monkeypatch.setattr(settings, "RECOVERFLOW_API_KEY", "test-admin-secret")
-    init_db()
-    with SessionLocal() as db:
-        test_users = db.query(models.User).filter(
-            models.User.email.in_(["auditor@retailer.in", "hacker@test.local"])
-        ).all()
-        for u in test_users:
-            db.query(models.UserSession).filter_by(user_id=u.id).delete()
-            db.query(models.UserApiKey).filter_by(user_id=u.id).delete()
-            db.delete(u)
-        db.commit()
+    monkeypatch.setattr(settings, "ADMIN_BOOTSTRAP_PASSWORD", "TestAdminPassword2026!")
+    db_manager.init_db()
+    yield
+    engine.dispose()
 
 
 def test_password_hashing():
@@ -58,7 +60,7 @@ def test_auth_login_and_me_endpoint():
     # 1. Login with bootstrapped default admin
     res = client.post("/api/v1/auth/login", json={
         "email": "admin@recoverflow.in",
-        "password": "RecoverFlowAdmin2026!"
+        "password": "TestAdminPassword2026!"
     })
     assert res.status_code == 200, res.text
     data = res.json()

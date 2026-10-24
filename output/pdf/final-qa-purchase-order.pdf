@@ -1,0 +1,152 @@
+%PDF-1.4
+%“Œ‹ž ReportLab Generated PDF document http://www.reportlab.com
+1 0 obj
+<<
+/F1 2 0 R /F2 3 0 R
+>>
+endobj
+2 0 obj
+<<
+/BaseFont /Helvetica /Encoding /WinAnsiEncoding /Name /F1 /Subtype /Type1 /Type /Font
+>>
+endobj
+3 0 obj
+<<
+/BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding /Name /F2 /Subtype /Type1 /Type /Font
+>>
+endobj
+4 0 obj
+<<
+/Contents 8 0 R /MediaBox [ 0 0 595.2756 841.8898 ] /Parent 7 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+5 0 obj
+<<
+/PageMode /UseNone /Pages 7 0 R /Type /Catalog
+>>
+endobj
+6 0 obj
+<<
+/Author (anonymous) /CreationDate (D:20261024165504+05'00') /Creator (ReportLab PDF Library - www.reportlab.com) /Keywords () /ModDate (D:20261024165504+05'00') /Producer (ReportLab PDF Library - www.reportlab.com) 
+  /Subject (unspecified) /Title (untitled) /Trapped /False
+>>
+endobj
+7 0 obj
+<<
+/Count 1 /Kids [ 4 0 R ] /Type /Pages
+>>
+endobj
+8 0 obj
+<<
+/Length 3004
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+.090196 .227451 .262745 rg
+n 0 706.8898 595.2756 135 re f*
+1 1 1 rg
+BT /F2 23 Tf 27.6 TL ET
+BT 1 0 0 1 45 783.8898 Tm (PURCHASE ORDER) Tj T* ET
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 45 759.8898 Tm (Synthetic comparison document for line-item review) Tj T* ET
+BT 1 0 0 1 473.5856 783.8898 Tm (RF-PO-2026-001) Tj T* ET
+.913725 .952941 .945098 rg
+n
+50 586.8898 m
+545.2756 586.8898 l
+550.8036 586.8898 555.2756 591.3618 555.2756 596.8898 c
+555.2756 664.8898 l
+555.2756 670.4178 550.8036 674.8898 545.2756 674.8898 c
+50 674.8898 l
+44.472 674.8898 40 670.4178 40 664.8898 c
+40 596.8898 l
+40 591.3618 44.472 586.8898 50 586.8898 c
+h
+f*
+.090196 .227451 .262745 rg
+BT /F2 10 Tf 12 TL ET
+BT 1 0 0 1 55 652.8898 Tm (FROM) Tj T* ET
+BT 1 0 0 1 315 652.8898 Tm (BILL TO) Tj T* ET
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 55 633.8898 Tm (RecoverFlow Demo Supplies) Tj T* ET
+BT 1 0 0 1 55 616.8898 Tm (Synthetic business, Pune, India) Tj T* ET
+BT 1 0 0 1 315 633.8898 Tm (Synthetic Test Retailer) Tj T* ET
+BT 1 0 0 1 315 616.8898 Tm (Synthetic customer, Mumbai, India) Tj T* ET
+.078431 .490196 .513725 rg
+BT /F2 9 Tf 10.8 TL ET
+BT 1 0 0 1 45 55 Tm (SYNTHETIC SAMPLE - FOR SOFTWARE TESTING ONLY) Tj T* ET
+.368627 .439216 .447059 rg
+BT /F1 8 Tf 9.6 TL ET
+BT 1 0 0 1 45 40 Tm (No goods were shipped and no real payment was made.) Tj T* ET
+.090196 .227451 .262745 rg
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 45 550.8898 Tm (PO Number: RF-PO-2026-001) Tj T* ET
+BT 1 0 0 1 45 532.8898 Tm (Invoice Reference: RF-SAMPLE-2026-001) Tj T* ET
+BT 1 0 0 1 315 532.8898 Tm (Issue Date: 2026-08-25) Tj T* ET
+BT 1 0 0 1 315 514.8898 Tm (Currency: INR) Tj T* ET
+.913725 .952941 .945098 rg
+n 45 459.8898 505 29 re f*
+.090196 .227451 .262745 rg
+BT /F2 9 Tf 10.8 TL ET
+BT 1 0 0 1 48 468.8898 Tm (ITEM) Tj T* ET
+BT 1 0 0 1 336.496 468.8898 Tm (QTY) Tj T* ET
+BT 1 0 0 1 377.997 468.8898 Tm (UNIT PRICE INR) Tj T* ET
+BT 1 0 0 1 490.508 468.8898 Tm (AMOUNT INR) Tj T* ET
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 48 437.8898 Tm (Precision Valve Sets) Tj T* ET
+BT 1 0 0 1 343.88 437.8898 Tm (10) Tj T* ET
+BT 1 0 0 1 408.08 437.8898 Tm (1,000.00) Tj T* ET
+BT 1 0 0 1 503.52 437.8898 Tm (10,000.00) Tj T* ET
+.870588 .909804 .901961 RG
+n 45 425.8898 m 550 425.8898 l S
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 48 403.8898 Tm (Safety Couplings) Tj T* ET
+BT 1 0 0 1 349.44 403.8898 Tm (4) Tj T* ET
+BT 1 0 0 1 408.08 403.8898 Tm (2,000.00) Tj T* ET
+BT 1 0 0 1 509.08 403.8898 Tm (8,000.00) Tj T* ET
+.870588 .909804 .901961 RG
+n 45 391.8898 m 550 391.8898 l S
+.090196 .227451 .262745 rg
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 408.31 349.8898 Tm (Subtotal) Tj T* ET
+BT 1 0 0 1 483.52 349.8898 Tm (INR 18,000.00) Tj T* ET
+.090196 .227451 .262745 rg
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 338.3 325.8898 Tm (GST 18% \(Tax Amount\)) Tj T* ET
+BT 1 0 0 1 489.08 325.8898 Tm (INR 3,240.00) Tj T* ET
+.090196 .227451 .262745 rg
+BT /F2 12 Tf 14.4 TL ET
+BT 1 0 0 1 322.96 293.8898 Tm (Total Purchase Order) Tj T* ET
+BT 1 0 0 1 470.624 293.8898 Tm (INR 21,240.00) Tj T* ET
+ 
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000073 00000 n 
+0000000114 00000 n 
+0000000221 00000 n 
+0000000333 00000 n 
+0000000536 00000 n 
+0000000604 00000 n 
+0000000900 00000 n 
+0000000959 00000 n 
+trailer
+<<
+/ID 
+[<3f6c0f8421c53670195b370be6e3927f><3f6c0f8421c53670195b370be6e3927f>]
+% ReportLab generated PDF document -- digest (http://www.reportlab.com)
+
+/Info 6 0 R
+/Root 5 0 R
+/Size 9
+>>
+startxref
+4014
+%%EOF

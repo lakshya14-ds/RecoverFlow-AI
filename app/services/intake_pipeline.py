@@ -1,5 +1,6 @@
 """Bounded local intake processor. An uploaded file is always untrusted data."""
 import csv
+import hashlib
 import json
 import httpx
 from pydantic import ValidationError
@@ -134,6 +135,15 @@ def _process_vision(db, job):
             invoice_number=document.invoice_number,
             counterparty_name=document.customer_name).all()
         if existing:
+            if len(existing) == 1 and existing[0].source_path:
+                original = Path(existing[0].source_path)
+                if original.is_file() and (hashlib.sha256(original.read_bytes()).digest() ==
+                                           hashlib.sha256(Path(job.source_path).read_bytes()).digest()):
+                    job.status = "ready_for_review"
+                    job.error = None
+                    _audit(db, job, "Already imported", f"invoice_id={existing[0].id}; identical file")
+                    _audit(db, job, "Ready for review", "Identical invoice file; no new case created")
+                    return
             raise ValueError("Invoice already exists; review potential duplicate")
         amount_cents = cents(validated["total"])
         invoice = models.Invoice(tenant_id=job.tenant_id,
@@ -148,7 +158,7 @@ def _process_vision(db, job):
         job.cases_created = 1
         db.add(models.CaseEvidence(tenant_id=job.tenant_id, invoice_id=invoice.id,
             claim_type="invoice_total", title="Extracted invoice total",
-            description="Vision extraction reconciled line items; staff confirmation pending",
+            description="Document extraction reconciled the total; staff confirmation pending",
             source_type="uploaded_invoice", source_reference=f"/api/v1/intake/uploads/{job.id}/file",
             amount_cents=amount_cents, verified=False))
         _audit(db, job, "Matched", "New invoice; no receipt match inferred")
@@ -211,6 +221,8 @@ def process_one() -> bool:
             job.stage = "Needs attention"
             if isinstance(exc, httpx.HTTPStatusError):
                 job.error = f"Gemini extraction returned HTTP {exc.response.status_code}; staff review required"
+            elif isinstance(exc, httpx.ConnectError):
+                job.error = "Gemini connection unavailable; staff review required"
             elif isinstance(exc, (ValueError, GeminiRateLimitError)):
                 job.error = str(exc)[:500]
             else:

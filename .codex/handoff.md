@@ -4,6 +4,18 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Two-minute live demo script (2026-10-24):** Updated `docs/RecoverFlow_Demo_Video_Script.docx` from the supplied Downloads copy for the currently running port 8018 app. It has seven shots ending at 2:00 and 155 spoken words. Off-camera setup prepares Case 1's controlled-agent draft; the on-camera flow covers Intake, the hero balance, evidence, versioned approval, simulated injection, SIMULATED payment, and Control. The original Downloads file was not overwritten. DOCX package/text checks passed; rendered page QA remains unavailable because the bundled renderer cannot find LibreOffice on this host.
+
+- **GitHub-to-Vercel handoff (2026-10-24):** `vercel.json` now skips package installation and builds the static frontend from the repository root. `docs/vercel-deployment.md` gives exact GitHub import fields and a Vercel/backend environment-variable matrix. Only `RECOVERFLOW_BACKEND_URL` is set on Vercel; private staff/model/provider keys remain on the persistent backend. No changes were pushed or deployed.
+
+- **PDF intake repair (2026-10-24):** Port 8018 now serves the isolated final-QA database from Python process 49988. The newly added ignored `.env` loads three configured Gemini slots; local network restrictions prevented a live provider check. A conservative text-PDF parser extracted both invoice uploads, the purchase order, and the SIMULATED receipt offline. The receipt remains matched but awaits staff confirmation before ledger posting. An identical invoice retry is marked already imported without a second case. Browser Intake shows 5 processed files, 2 cases created, 1 item awaiting staff review, and no console errors. Full suite passes 69/69.
+
+- **Vercel preparation (2026-10-24):** Static frontend build, configurable HTTPS backend origin, exact-origin CORS, configurable durable file paths, and safe optional admin bootstrap are implemented. Vercel will serve the UI while a persistent Python host runs FastAPI and both workers. No remote deployment was performed; no backend URL or Vercel account is configured. The guide is `docs/vercel-deployment.md`.
+
+- **Hackathon pitch (2026-10-24):** Created a 12-slide PowerPoint at `output/presentation/RecoverFlow-Hackathon-Pitch-v3.pptx` from repository facts and real screenshots of a separate local seeded app on port 8012. The offline hero demo passed in this checkout. The deck covers the problem, full workflow, features, all five judging criteria, synthetic evaluation and production limits. Presentation package, layout and first-party import checks passed. No application source was changed for the pitch.
+
+- **Final local QA (2026-10-24):** Isolated localhost app is serving `http://127.0.0.1:8018` from Python process 27700 with ignored SQLite `recoverflow-final-qa.db`. It has the seeded synthetic hero case and three newly generated PDF upload jobs. Local API authentication is configured only in that process; no credential was written to this handoff. All 66 tests passed, the offline hero demo completed, and browser checks found no console errors or global overflow at 390 px. Ordinary generated PDFs require staff review without Gemini; the tagged offline synthetic PDFs completed the full flow. Port 8002 belongs to a separate existing server and was left alone.
+
 - **Latest synthetic PDF QA (2026-10-24):** The app is serving http://127.0.0.1:8002 from Uvicorn process 5916 on ignored SQLite recoverflow-release4-fresh.db. A second synthetic case was created from generated invoice, purchase order and SIMULATED receipt PDFs. Live vision extraction, source links, review, negotiation and signed SIMULATED payment were verified. The case is PARTIALLY_RESOLVED with only the INR 2,000 dispute open. Full suite passes 66/66. This entry supersedes older process, case-count and test-count statements below. Keys remain in ignored .env.
 
 - **Release 4 local run (2026-10-24):** The current checkout is serving `http://127.0.0.1:8002` from Uvicorn process 17988. It uses a newly created ignored SQLite database at `C:\Users\Samit Reddy\Documents\GitHub\RecoverFlow-AI\recoverflow-release4-fresh.db`, with one synthetic hero invoice, one admin user, and five evidence records. The staff API key and Gemini keys remain in ignored `.env`; do not copy them into handoff. The older `14a2dff` detached worktree is separate; its prior port 8017 was unavailable at this task's start.
@@ -22,6 +34,62 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 2. For a production rollout, replace local pilot identity and SQLite storage with managed tenant credentials, PostgreSQL, database migrations (e.g. Alembic), automated backups, monitoring, and provider-specific operational tests. See `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md` for details.
 
 ## Iteration log
+
+### 2026-10-24 — Antigravity — Full working tree verification, clean db untrack, and push
+
+- **Objective:** Verify test suite and code integrity, remove tracked SQLite shared memory artifact from git cache, stage all implementation, deployment, presentation, and doc assets, commit with co-authorship, and push master branch to GitHub.
+- **Changed:** Untracked `apex_ar.db-shm` from git tracking while retaining local file; staged all Release 4 & Vercel deployment assets (`vercel.json`, `.vercelignore`, `scripts/build_vercel_frontend.mjs`, `frontend/config.js`, `docs/vercel-deployment.md`), presentation assets (`output/presentation/RecoverFlow-Hackathon-Pitch-v3.pptx`, `output/pitch-build/`, `.codex/pitch-build/capture.mjs`), video script (`docs/RecoverFlow_Demo_Video_Script.docx`), synthetic QA PDFs (`output/pdf/final-qa-*.pdf`), and modified core/test files (`app/`, `frontend/`, `tests/`, `README.md`, `.gitignore`, `.env.example`).
+- **Verification:** Ran `py -3.12 -m pytest -q --disable-warnings` (69 passed, 0 failures in 24.35s); `node --check frontend/app.js` passed; `git diff --check` passed.
+- **Limits / next:** Working tree synchronized with remote `origin/master`. Secrets and local `.env` remain untouched and untracked.
+
+### 2026-10-24 — Codex — Two-minute script for live port 8018
+
+- **Objective:** Edit the supplied demo video Word script to fit two minutes and match the current localhost application.
+- **Changed:** Replaced the 2:30 narration and shot list in `docs/RecoverFlow_Demo_Video_Script.docx` with seven shots totaling 2:00; added off-camera preparation for the currently unprepared hero draft and correct port/key setup for the simulator. Kept the user's Downloads original intact. No app source or database state changed.
+- **Verification:** Read the source DOCX and inspected the running Intake, Review and Negotiate, and Control screens plus read-only case/proposal APIs. Reopened the final DOCX: valid ZIP package, 25 paragraphs, seven timed headings, 155 spoken words, localhost URL present, old 2:30 timing absent. The document renderer was attempted on source and final files but failed before page creation because bundled LibreOffice `soffice.exe` is unavailable; page layout was not visually verified. App tests were not run for this documentation-only edit.
+- **Limits / next:** Visually inspect the Word pages in an environment with LibreOffice or Word before recording. The local demo case must be prepared off camera, and the payment simulator terminal must use the same staff key as the port 8018 server. Keep all payment and customer-reply footage explicitly SIMULATED.
+
+### 2026-10-24 — Codex — Text-PDF intake repair after env addition
+
+- **Objective:** Resolve the failed PDF upload tracker rows on the isolated localhost app after the user added `.env`.
+- **Changed:** Added conservative text-layer extraction and reconciliation for explicitly labelled invoices, purchase orders and receipts in `app/services/vision_extraction.py`; made connection failures actionable and exact duplicate invoice retries idempotent in `app/services/intake_pipeline.py`; clarified receipt review in `frontend/app.js`; isolated auth tests from existing databases; added focused extraction/duplicate tests; updated `README.md` and this handoff. Restarted port 8018 against the existing isolated DB and retried the four displayed uploads.
+- **Verification:** 69/69 pytest tests passed; `node --check frontend/app.js` and `git diff --check` passed. Both invoices and the PO now show Ready for review; the exact duplicate invoice shows Already imported → Ready for review. The SIMULATED receipt extracted and matched but remains Needs attention for staff confirmation before posting. Browser showed 5 processed files, 2 cases, 1 staff review item, and no console errors. Health and authenticated API remained HTTP 200.
+- **Limits / next:** The new `.env` has configured Gemini slots, but a local Gemini request failed at socket connect because this execution environment blocks outbound access. Automatic approval review rejected an unsandboxed live request because sending the full synthetic invoice PDF plus API key to Gemini was not explicitly authorized. No live Gemini accuracy or quota claim is made. Staff should inspect the matched receipt before confirming it; real scanned/unrecognized PDFs still need approved provider access or manual review. No keys or uploaded customer data were written to shared notes.
+
+### 2026-10-24 — Codex — Demo video Word script
+
+- **Objective:** Deliver the requested 2.5-minute MVP demo narration and page-by-page screen directions as a Word document.
+- **Changed:** Added `docs/RecoverFlow_Demo_Video_Script.docx` with preparation steps, seven timed shots, narration, and explicit SIMULATED payment and sandbox boundaries. No application source changed.
+- **Verification:** Opened the DOCX with the bundled Python document library; its ZIP package is valid, all seven timed scenes are present, and the final 2:30 mark and SIMULATED label are included. Attempted the required DOCX render, but the packaged renderer could not find LibreOffice on this host; Word COM was also unavailable, so page-image layout verification was not possible. Tests were not run for this document-only change.
+- **Limits / next:** Visually inspect the Word pages on a host with a DOCX renderer before recording. Use a fresh seeded database and the matching server port for the payment simulator.
+
+### 2026-10-24 — Codex — Hackathon presentation
+
+- **Objective:** Produce a judge-ready PPTX with an accurate problem statement, workflow, features, judging criteria and screenshots from the running project.
+- **Changed:** Added the final 12-slide deck under `output/presentation/`, screenshots and authoring files under `output/pitch-build/`, and a temporary capture script under `.codex/pitch-build/`. Used a separate ignored seeded demo database. Did not change app code or credentials.
+- **Verification:** `python scripts/demo_hero.py` passed, including source-linked balance, edited draft approval, sandbox negotiation, injection escalation, SIMULATED ₹60,000 payment and synthetic evaluation. Seeded local app on `127.0.0.1:8012`; Playwright captured genuine UI screenshots with no page errors. Rendered and visually reviewed all 12 slides. PPTX package integrity, layout and Artifact Tool import checks passed. Full pytest was not rerun for this presentation-only iteration.
+- **Limits / next:** Numbers and documents in the deck are synthetic. ROI is a proposed pilot measurement, not a recovery claim. Live messaging and payment remain out of scope. Use the PPTX for the hackathon; run the offline demo alongside it.
+
+### 2026-10-24 — Codex — Final synthetic PDF and localhost QA
+
+- **Objective:** Recheck the project with freshly generated PDFs and leave an isolated localhost instance for user testing.
+- **Changed:** Generated `output/pdf/final-qa-invoice.pdf`, `final-qa-purchase-order.pdf`, and `final-qa-simulated-receipt.pdf`; seeded ignored `recoverflow-final-qa.db`; started localhost port 8018. No application source changed. Existing pitch work and port 8002 were left untouched.
+- **Verification:** `python -m pytest -q --disable-warnings` passed 66/66 (one existing warning); `node --check frontend/app.js` and `git diff --check` passed. `scripts/demo_hero.py` completed intake, source-linked split, exact-version approval, Manual/Delegate negotiation, injection escalation, SIMULATED payment to `PARTIALLY_RESOLVED`, and evaluation (30/30 split, 10/10 triage, 5/10 ready without entry). Generated PDFs were parsed as one-page files and visually rendered. On port 8018, all three uploaded with HTTP 202 and retrieved byte-identical source files; without Gemini they correctly entered Needs attention with no case creation. Browser showed the seeded case's five balance figures and evidence, no console warnings/errors, and no global overflow at 390 px. Health, UI assets and authenticated cases returned HTTP 200.
+- **Limits / next:** Live Gemini/vision and real provider calls were not exercised because this isolated run has no provider keys. Python Playwright failed at driver startup under filesystem restrictions; the Codex in-app browser was used for UI checks. The seeded hero case remains open for manual user testing; payments and outbound messages remain simulated/sandboxed.
+
+### 2026-10-24 — Codex — README workflow diagram
+
+- **Objective:** Add the requested architecture/workflow diagram to the root README.
+- **Changed:** Added a GitHub-renderable Mermaid flowchart to `README.md` covering intake, SQLite-backed processing, optional Gemini assistance, evidence-linked balance review, staff approval, sandbox messaging, and the separate confirmed-receipt/SIMULATED-payment ledger path.
+- **Verification:** Checked diagram relationships against the current API, intake worker, draft and ledger code; `git diff --check` passed. Tests were not run for this documentation-only change; the previous local test attempt remains blocked by missing `pypdf` in that Python environment.
+- **Limits / next:** The diagram describes the local pilot workflow. No provider calls or application behavior changed. An unrelated untracked `.codex/pitch-build/` directory was present and left untouched.
+
+### 2026-10-24 — Codex — README project guide
+
+- **Objective:** Rewrite the root README so a new contributor can understand RecoverFlow's features, run the offline demo and web app, and see the pilot boundaries without a license section or emojis.
+- **Changed:** Updated `README.md` with a feature overview, Python environment setup, persistent local database and seed instructions, web UI/API entry points, optional Gemini behavior, verification commands, and links to detailed guides. No application source or credentials changed.
+- **Verification:** Checked commands and feature descriptions against the current scripts, config, routes, frontend, and evaluation report; all README documentation links exist; `git diff --check` passed. A full pytest attempt on the current Python 3.12 environment stopped during collection because `pypdf` is not installed, so this iteration does not claim a passing test run. The previous 66/66 result above remains from the earlier configured environment.
+- **Limits / next:** Install the pinned requirements in a clean environment before rerunning tests or the demo locally. Provider behavior and real document accuracy were not retested for this documentation-only change.
 
 ### 2026-10-24 — Codex — Generated invoice PDF and end-to-end QA
 
@@ -181,4 +249,18 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Changed:** Created a detached worktree for `14a2dff`, an isolated Python environment, a generated local API key in ignored `.env`, and a separate seeded `apex_ar.db`; started the FastAPI server on loopback port 8017. No application source was edited.
 - **Verification:** Hero case seeding succeeded (one invoice, five evidence records). Focused auth tests passed 5/5 and full suite passed 46/46 against separate test databases. Live health, HTML, JS, CSS, API key auth, Bearer login, case listing, and SQLite user/invoice counts passed. Port 8017 was listening at handoff time.
 - **Limits / next:** This run uses SQLite; PostgreSQL was not configured or verified. The server is a local background process and must be restarted after reboot. The frontend asks for the generated API key stored in the isolated worktree's `.env`; do not copy that value into shared notes.
+
+### 2026-10-24 — Codex — Vercel frontend deployment preparation
+
+- **Objective:** Make the existing pilot deployable as a Vercel-hosted frontend connected to a persistent FastAPI backend, and document the steps.
+- **Changed:** Added `vercel.json`, `.vercelignore`, `scripts/build_vercel_frontend.mjs`, `frontend/config.js`, and `docs/vercel-deployment.md`; connected `frontend/app.js` to a build-time HTTPS backend origin; added exact-origin CORS and configurable intake/invoice file paths; replaced the fixed admin bootstrap password with optional `ADMIN_BOOTSTRAP_PASSWORD`; updated `.env.example` and the auth test, and linked the guide from `README.md`.
+- **Verification:** Isolated SQLite test run passed 66/66; Node syntax checks and static build passed, including synthetic PDF assets; allowed CORS preflight returned 200 and unrelated origin returned 400; fresh database with no bootstrap password created zero admin users; `git diff --check` passed. A first test run used a missing `tmp/` directory and failed to open its database; rerun with a root-level ignored database passed.
+- **Limits / next:** No live Vercel or backend deployment, DNS, remote persistent disk, or browser test against HTTPS was performed. User must supply a persistent Python backend URL and Vercel project, then follow `docs/vercel-deployment.md`. Existing databases with the former fixed admin password require rotation before public exposure. Other agents' README/handoff and pitch changes were preserved.
+
+### 2026-10-24 — Codex — GitHub import instructions and environment-variable map
+
+- **Objective:** Make the direct GitHub-to-Vercel import steps and secret placement explicit for the user.
+- **Changed:** Added `installCommand: ""` to `vercel.json`; expanded `docs/vercel-deployment.md` with GitHub push/import settings, production and preview variable scope, backend-only key inventory, first-deploy order, and a reminder that the current API requires a persistent host.
+- **Verification:** Local Vercel frontend build, Node syntax checks, JSON config assertion, generated `dist/index.html`/`config.js`, and `git diff --check` passed. Backend tests were not rerun because this iteration changed only deployment configuration and documentation; the latest backend handoff reports 69/69.
+- **Limits / next:** No GitHub push, Vercel account operation, backend host, or live deployment was performed. Push reviewed source/deployment files, provision the persistent backend, set its secrets, then import GitHub into Vercel as documented.
 

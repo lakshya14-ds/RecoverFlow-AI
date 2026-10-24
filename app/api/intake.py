@@ -83,7 +83,7 @@ async def upload(request: Request, db: Session = Depends(get_db),
         chunks.append(chunk)
     data = b"".join(chunks)
     _validate(data, suffix)
-    storage = Path(settings.BASE_DIR) / "data" / "intake"
+    storage = Path(settings.INTAKE_STORAGE_PATH)
     storage.mkdir(parents=True, exist_ok=True)
     job_id = str(uuid.uuid4())
     stored = storage / (job_id + suffix)
@@ -131,7 +131,7 @@ def get_upload_file(job_id: str, db: Session = Depends(get_db),
     if not row or row.tenant_id != identity.tenant_id:
         raise HTTPException(status_code=404, detail="Upload not found")
     path = Path(row.source_path).resolve()
-    storage = (Path(settings.BASE_DIR) / "data" / "intake").resolve()
+    storage = Path(settings.INTAKE_STORAGE_PATH).resolve()
     if storage not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Stored file not found")
     return FileResponse(path, media_type=row.mime_type, filename=row.filename)

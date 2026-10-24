@@ -162,7 +162,7 @@ async def upload_invoice(request: Request, invoice_type: Literal["AP", "AR"] = "
     """Accept a bounded PDF as the raw request body."""
     if request.headers.get("content-type", "").split(";")[0] != "application/pdf":
         raise HTTPException(status_code=415, detail="PDF required")
-    temp_dir = Path(settings.BASE_DIR) / "data" / "incoming"
+    temp_dir = Path(settings.INCOMING_STORAGE_PATH)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_path = temp_dir / f"{uuid.uuid4()}.pdf"
     total = 0

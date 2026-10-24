@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const backendOrigin = window.RECOVERFLOW_BACKEND_ORIGIN || '';
     let apiKey = sessionStorage.getItem('recoverflowApiKey') || sessionStorage.getItem('apexApiKey') || '';
     let selectedCaseId = null;
     let caseRows = [];
@@ -30,7 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!apiKey) throw new Error('Enter your API key first.');
         const headers = new Headers(options.headers || {});
         headers.set('X-RECOVERFLOW-API-KEY', apiKey);
-        const response = await fetch(url, {...options, headers});
+        const response = await fetch(`${backendOrigin}${url}`, {...options, headers});
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             throw new Error(body.detail || `Request failed (${response.status})`);
@@ -1030,7 +1031,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join('');
             tracker.innerHTML = data.uploads.length ? data.uploads.map(file => `
                 <div class="intake-row"><div><strong>${escapeHtml(file.filename)}</strong><small>${(file.stages || [file.stage]).map(escapeHtml).join(' → ')}</small>${file.error ? `<small>${escapeHtml(file.error)}</small>` : ''}</div>
-                ${file.status === 'needs_attention' && file.cases_created === 0 ? `<button type="button" class="btn intake-retry" data-id="${escapeHtml(file.id)}">Retry failed file</button>` : ''}</div>`).join('') : '<p>No files uploaded yet.</p>';
+                ${file.status === 'needs_attention' && file.extraction?.document_type === 'receipt'
+                    ? '<span class="status-pill">Review receipt in the case before confirming</span>'
+                    : file.status === 'needs_attention' && file.cases_created === 0
+                        ? `<button type="button" class="btn intake-retry" data-id="${escapeHtml(file.id)}">Retry extraction</button>` : ''}</div>`).join('') : '<p>No files uploaded yet.</p>';
             tracker.querySelectorAll('.intake-retry').forEach(button => button.addEventListener('click', async () => {
                 try { await apiFetch(`/api/v1/intake/uploads/${button.dataset.id}/retry`, {method: 'POST'}); loadIntakeUploads(); }
                 catch (error) { document.getElementById('intake-upload-result').textContent = error.message; }

@@ -1,6 +1,7 @@
 """Gemini vision extraction. Model output is untrusted until server validation."""
 import base64
 import io
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import re
 
@@ -191,11 +192,110 @@ def _offline_synthetic_pdf(data: bytes) -> dict | None:
     return result
 
 
+def _offline_text_pdf(data: bytes) -> dict | None:
+    """Read PDFs with explicit text labels; leave ambiguous layouts for review."""
+    try:
+        pages = PdfReader(io.BytesIO(data)).pages
+        lines = [line.strip() for page in pages for line in
+                 (page.extract_text() or "").splitlines() if line.strip()]
+    except Exception:
+        return None
+    if not lines or len(lines) > 500:
+        return None
+
+    def after(label: str, *, last: bool = False) -> str:
+        matches = [i for i, line in enumerate(lines[:-1])
+                   if line.casefold().rstrip(":") == label.casefold()]
+        return lines[matches[-1 if last else 0] + 1] if matches else ""
+
+    def inline(label: str) -> str:
+        prefix = label.casefold() + ":"
+        return next((line[len(prefix):].strip() for line in lines
+                     if line.casefold().startswith(prefix)), "")
+
+    def amount(value: str) -> str:
+        raw = re.sub(r"^(?:INR|₹)\s*", "", value.strip(), flags=re.I)
+        return f"{_nonnegative_money(raw):.2f}" if raw else ""
+
+    def iso_date(value: str) -> str:
+        for fmt in ("%Y-%m-%d", "%b %d, %Y", "%B %d, %Y", "%d %b %Y"):
+            try:
+                return datetime.strptime(value, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return ""
+
+    sample = "SYNTHETIC SAMPLE - FOR SOFTWARE TESTING ONLY" in lines
+    kind = {"TAX INVOICE": "invoice", "PURCHASE ORDER": "purchase_order",
+            "SIMULATED RECEIPT": "receipt"}.get(lines[0]) if sample else None
+    fields: dict[str, str] = {}
+    items: list[ExtractedLine] = []
+    if kind:
+        reference = inline("Invoice Reference")
+        fields = {"document_type": kind,
+                  "invoice_number": inline("Invoice Number") if kind == "invoice" else "",
+                  "invoice_reference": reference,
+                  "customer_name": lines[lines.index("BILL TO") + 3] if "BILL TO" in lines else "",
+                  "issue_date": iso_date(inline("Issue Date")),
+                  "due_date": iso_date(inline("Due Date")),
+                  "currency": inline("Currency") or "INR",
+                  "text": "\n".join(lines)[:3000]}
+        if kind == "receipt":
+            fields["total_amount"] = amount(inline("Total Amount Received"))
+        else:
+            if "AMOUNT INR" not in lines or "Subtotal" not in lines:
+                return None
+            values = lines[lines.index("AMOUNT INR") + 1:lines.index("Subtotal")]
+            if not values or len(values) % 4 or len(values) > 80:
+                return None
+            for description, quantity, unit_price, line_total in zip(
+                    values[::4], values[1::4], values[2::4], values[3::4]):
+                items.append(ExtractedLine(description=description, quantity=quantity,
+                    unit_price=amount(unit_price), amount=amount(line_total)))
+            fields["tax_amount"] = amount(after("GST 18% (Tax Amount)"))
+            fields["total_amount"] = amount(after(
+                "Total Amount Due" if kind == "invoice" else "Total Purchase Order"))
+            if sum((_money(item.amount) for item in items), Decimal(0)) != _money(
+                    amount(after("Subtotal"))):
+                raise ValueError("Extracted line amounts do not reconcile to subtotal")
+    elif "Invoice Number" in lines and "Invoice Date" in lines and "Due Date" in lines:
+        # Some text invoices put each field value on the next PDF text line.
+        subtotal = amount(after("Sub Total", last=True))
+        tax = amount(after("Tax", last=True))
+        total = amount(after("Total", last=True))
+        if not all((subtotal, tax, total, after("To"))):
+            return None
+        fields = {"document_type": "invoice", "invoice_number": after("Invoice Number"),
+                  "customer_name": after("To"),
+                  "issue_date": iso_date(after("Invoice Date")),
+                  "due_date": iso_date(after("Due Date")),
+                  "total_amount": total, "tax_amount": tax,
+                  "currency": "INR" if re.search(r"₹|\bINR\b", "\n".join(lines)) else "",
+                  "text": "\n".join(lines)[:3000]}
+        if not fields["currency"] or not fields["issue_date"] or not fields["due_date"]:
+            return None
+        items = [ExtractedLine(description="Invoice subtotal; item details require staff review",
+                               amount=subtotal)]
+        due = amount(after("Total Due"))
+        if due and due != total:
+            raise ValueError("Total due does not match invoice total")
+    else:
+        return None
+
+    confidence = {name: 0.9 for name in ("document_type", "invoice_number",
+        "invoice_reference", "customer_name", "issue_date", "due_date",
+        "total_amount", "tax_amount", "currency") if fields.get(name)}
+    document = VisionDocument(**fields, line_items=items, confidence=confidence)
+    result = validate_document(document)
+    result["engine"] = "offline_text_rules"
+    return result
+
+
 def extract(data: bytes, mime: str) -> dict:
     if mime not in ("application/pdf", "image/jpeg", "image/png"):
         raise ValueError("Unsupported vision file type")
     if mime == "application/pdf":
-        offline = _offline_synthetic_pdf(data)
+        offline = _offline_synthetic_pdf(data) or _offline_text_pdf(data)
         if offline is not None:
             return offline
     if not gemini_agent.configured():

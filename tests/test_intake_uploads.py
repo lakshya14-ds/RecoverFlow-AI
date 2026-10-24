@@ -116,3 +116,35 @@ def test_po_upload_is_visible_to_investigator_before_transaction_commit(monkeypa
     finally:
         app.dependency_overrides.clear()
 
+
+def test_identical_invoice_retry_is_marked_imported_once(monkeypatch, tmp_path):
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine)
+    def override():
+        with factory() as db:
+            yield db
+    app.dependency_overrides[get_db] = override
+    monkeypatch.setattr(intake_pipeline, "SessionLocal", factory)
+    monkeypatch.setattr(settings, "BASE_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RECOVERFLOW_API_KEY", "synthetic-duplicate-test")
+    monkeypatch.setattr(settings, "RECOVERFLOW_API_KEYS_JSON", "")
+    auth = {"X-RECOVERFLOW-API-KEY": "synthetic-duplicate-test",
+            "X-Filename": "same.pdf", "Content-Type": "application/pdf"}
+    client = TestClient(app)
+    try:
+        source = synthetic_pdf(number="INV-DUPLICATE")
+        for expected_cases in (1, 0):
+            response = client.post("/api/v1/intake/uploads", content=source, headers=auth)
+            assert response.status_code == 202
+            assert intake_pipeline.process_one()
+            result = client.get(f"/api/v1/intake/uploads/{response.json()['id']}",
+                                headers=auth).json()
+            assert result["status"] == "ready_for_review"
+            assert result["cases_created"] == expected_cases
+        with factory() as db:
+            assert db.query(models.Invoice).count() == 1
+    finally:
+        app.dependency_overrides.clear()
+
