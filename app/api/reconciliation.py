@@ -1,6 +1,7 @@
 """
 RecoverFlow - Receivables and Collections
 """
+from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database.db_manager import get_db
@@ -47,7 +48,7 @@ def approve_reconciliation(reconciliation_id: int, db: Session = Depends(get_db)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
     else:
-        invoice.status = "paid" if abs(invoice.total_amount - rec.matched_amount) < 0.01 else "partially_matched"
+        invoice.status = "paid" if abs(invoice.total_amount - rec.matched_amount) < Decimal("0.01") else "partially_matched"
     invoice.afis_transaction_id = rec.afis_transaction_id
     rec.status = "approved"
     rec.reviewed_by_human = 1

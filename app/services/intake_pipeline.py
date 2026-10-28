@@ -16,7 +16,7 @@ from app.database.db_manager import SessionLocal
 from app.services.receivables import cents, opening_cents
 from app.services.security import detect_prompt_injection
 from app.services import vision_extraction
-from app.services.gemini_agent import GeminiRateLimitError
+from app.services.meta_agent import MetaRateLimitError
 from app.services.release4_orchestrator import investigate, prepare_draft
 
 REQUIRED = {"external_id", "invoice_number", "customer_name", "issue_date", "due_date", "amount"}
@@ -46,6 +46,10 @@ def _advance(db, job, invoice):
         job.status = "needs_attention"
         job.error = str(exc)[:500]
         _audit(db, job, "Needs attention", "staff review required")
+    from app.services.case_lifecycle import checkpoint
+    checkpoint(db, invoice, "intake_processed", "intake_agent")
+    from app.services.supervisor import request_reassessment
+    request_reassessment(db, invoice, "document", "intake_agent")
 
 
 def _process_csv(db, job):
@@ -98,7 +102,8 @@ def _process_csv(db, job):
             description="Invoice amount from uploaded CSV row; staff confirmation pending",
             source_type="uploaded_csv", source_reference=f"/api/v1/intake/uploads/{job.id}/file",
             source_snippet=f"Row {row_number}; invoice {number}",
-            amount_cents=amount_cents, verified=False))
+            amount_cents=amount_cents, verified=False, trust_state="extracted",
+            currency=currency))
         new_invoices.append(invoice)
         imported += 1
     job.cases_created = imported
@@ -123,7 +128,7 @@ def _process_vision(db, job):
     document = validated["document"]
     job.extraction_json = json.dumps(document.model_dump(), ensure_ascii=False)
     db.flush()  # Investigator queries linked uploads with autoflush disabled.
-    _audit(db, job, "Extracted", f"{validated.get('engine', 'Gemini vision')}; server-validated fields and line total")
+    _audit(db, job, "Extracted", f"{validated.get('engine', 'Meta vision')}; server-validated fields and line total")
     if document.document_type == "invoice":
         if not document.issue_date or not document.due_date:
             raise ValueError("Extracted invoice dates are missing")
@@ -160,10 +165,11 @@ def _process_vision(db, job):
             claim_type="invoice_total", title="Extracted invoice total",
             description="Document extraction reconciled the total; staff confirmation pending",
             source_type="uploaded_invoice", source_reference=f"/api/v1/intake/uploads/{job.id}/file",
-            amount_cents=amount_cents, verified=False))
+            amount_cents=amount_cents, verified=False, trust_state="extracted",
+            currency=document.currency))
         _audit(db, job, "Matched", "New invoice; no receipt match inferred")
         _advance(db, job, invoice)
-    elif document.document_type in ("receipt", "purchase_order", "message"):
+    elif document.document_type in ("receipt", "purchase_order", "message", "delivery_note", "return_note", "discount_agreement"):
         if not document.invoice_reference:
             raise ValueError("Document has no invoice reference; ambiguous match")
         candidates = db.query(models.Invoice).filter_by(tenant_id=job.tenant_id,
@@ -172,7 +178,8 @@ def _process_vision(db, job):
             raise ValueError("Document invoice reference has no unique match")
         invoice = candidates[0]
         claim = {"receipt": "received_payment", "purchase_order": "purchase_order",
-                 "message": "customer_message"}[document.document_type]
+                 "message": "customer_message", "delivery_note": "delivery_note",
+                 "return_note": "return_note", "discount_agreement": "discount_agreement"}[document.document_type]
         db.add(models.CaseEvidence(tenant_id=job.tenant_id, invoice_id=invoice.id,
             claim_type=claim, title="Uploaded " + document.document_type,
             description="Machine extracted document; staff confirmation pending",
@@ -180,7 +187,8 @@ def _process_vision(db, job):
             source_reference=f"/api/v1/intake/uploads/{job.id}/file",
             source_snippet=document.text[:250],
             amount_cents=cents(validated["total"]) if validated["total"] else None,
-            verified=False))
+            verified=False, trust_state="extracted",
+            currency=document.currency or invoice.currency or "INR"))
         _audit(db, job, "Matched", f"invoice_id={invoice.id}; evidence only")
         if document.document_type == "receipt":
             job.status = "needs_attention"
@@ -190,6 +198,55 @@ def _process_vision(db, job):
             _advance(db, job, invoice)
 
 
+def claim_job(db, job_id: str):
+    """Atomically claim one queued upload in the caller's session."""
+    claimed = db.execute(update(models.IntakeUpload).where(
+        models.IntakeUpload.id == job_id,
+        models.IntakeUpload.status == "queued").values(
+        status="processing", attempts=models.IntakeUpload.attempts + 1))
+    db.commit()
+    if not claimed.rowcount:
+        return None
+    return db.get(models.IntakeUpload, job_id)
+
+
+def process_job(db, job) -> None:
+    """Run extraction/matching for a claimed job in the caller's session."""
+    try:
+        if job.mime_type in ("text/csv", "application/csv", "application/vnd.ms-excel"):
+            _process_csv(db, job)
+        else:
+            _process_vision(db, job)
+        db.commit()
+    except (ValueError, UnicodeDecodeError, csv.Error, IntegrityError, OSError,
+            MetaRateLimitError, httpx.HTTPError, ValidationError) as exc:
+        db.rollback()
+        job = db.get(models.IntakeUpload, job.id)
+        job.status = "needs_attention"
+        job.stage = "Needs attention"
+        if isinstance(exc, httpx.HTTPStatusError):
+            job.error = f"Meta extraction returned HTTP {exc.response.status_code}; staff review required"
+        elif isinstance(exc, httpx.ConnectError):
+            job.error = "Meta connection unavailable; staff review required"
+        elif isinstance(exc, (ValueError, MetaRateLimitError)):
+            job.error = str(exc)[:500]
+        else:
+            job.error = "Document processing failed; staff review required"
+        detail = type(exc).__name__
+        if isinstance(exc, httpx.HTTPStatusError):
+            detail += f"; http_status={exc.response.status_code}"
+        _audit(db, job, "Needs attention", detail)
+        db.commit()
+    except Exception:
+        db.rollback()
+        job = db.get(models.IntakeUpload, job.id)
+        job.status = "needs_attention"
+        job.stage = "Needs attention"
+        job.error = "Document processing failed; staff review required"
+        _audit(db, job, "Needs attention", "unexpected processor failure")
+        db.commit()
+
+
 def process_one() -> bool:
     """Claim one DB job; API startup loop calls this with bounded concurrency."""
     with SessionLocal() as db:
@@ -197,49 +254,12 @@ def process_one() -> bool:
             models.IntakeUpload.created_at).first()
         if not candidate:
             return False
-        claimed = db.execute(update(models.IntakeUpload).where(
-            models.IntakeUpload.id == candidate[0],
-            models.IntakeUpload.status == "queued").values(
-            status="processing", attempts=models.IntakeUpload.attempts + 1))
-        db.commit()
-        if not claimed.rowcount:
-            return True
         job_id = candidate[0]
-    try:
-        with SessionLocal() as db:
-            job = db.get(models.IntakeUpload, job_id)
-            if job.mime_type in ("text/csv", "application/csv", "application/vnd.ms-excel"):
-                _process_csv(db, job)
-            else:
-                _process_vision(db, job)
-            db.commit()
-    except (ValueError, UnicodeDecodeError, csv.Error, IntegrityError, OSError,
-            GeminiRateLimitError, httpx.HTTPError, ValidationError) as exc:
-        with SessionLocal() as db:
-            job = db.get(models.IntakeUpload, job_id)
-            job.status = "needs_attention"
-            job.stage = "Needs attention"
-            if isinstance(exc, httpx.HTTPStatusError):
-                job.error = f"Gemini extraction returned HTTP {exc.response.status_code}; staff review required"
-            elif isinstance(exc, httpx.ConnectError):
-                job.error = "Gemini connection unavailable; staff review required"
-            elif isinstance(exc, (ValueError, GeminiRateLimitError)):
-                job.error = str(exc)[:500]
-            else:
-                job.error = "Document processing failed; staff review required"
-            detail = type(exc).__name__
-            if isinstance(exc, httpx.HTTPStatusError):
-                detail += f"; http_status={exc.response.status_code}"
-            _audit(db, job, "Needs attention", detail)
-            db.commit()
-    except Exception:
-        with SessionLocal() as db:
-            job = db.get(models.IntakeUpload, job_id)
-            job.status = "needs_attention"
-            job.stage = "Needs attention"
-            job.error = "Document processing failed; staff review required"
-            _audit(db, job, "Needs attention", "unexpected processor failure")
-            db.commit()
+    with SessionLocal() as db:
+        job = claim_job(db, job_id)
+        if job is None:
+            return True
+        process_job(db, job)
     return True
 
 

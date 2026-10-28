@@ -1,5 +1,7 @@
 # RecoverFlow: Comprehensive System Architecture, Feature Catalog, and Project State
 
+> **Historical architecture snapshot (2026-10-24).** This file contains older deployment and provider descriptions, and some old local paths. For the verified 2026-10-27 accounting, investigation, safety, and database status, use [the foundation repair notes](foundations-2026-10-27.md) and the current README. In particular, the receivables ledger is not double-entry, AXIS is a local database reader, and the hackathon payment and messaging flows remain simulated or sandboxed.
+
 > **Document Version:** 1.3.0  
 > **Last Updated:** 2026-10-24  
 > **Target Audience:** Engineering Team, Product Architects, Autonomous Coding Agents (Codex, Antigravity)  
@@ -44,9 +46,9 @@
 **RecoverFlow** (formerly APEX AR) is an enterprise retailer receivables and assisted debt collection platform designed specifically for merchants managing credit-term sales (B2B and high-value consumer retail).
 
 The project is structured across three evolutionary phases:
-- **Release 1 (Assisted Core):** Multi-channel invoice ingestion (PDF OCR via Tesseract and CSV import), double-entry immutable receivable ledger with fixed integer-cent math, durable background workers, automated stage-based dunning drafts, customer dispute/opt-out handling, and Days Sales Outstanding (DSO) tracking.
+- **Release 1 (Assisted Core):** Multi-channel invoice ingestion (PDF OCR via Tesseract and CSV import), signed immutable receivable adjustments with fixed integer-cent math, durable background workers, automated stage-based dunning drafts, customer dispute/opt-out handling, and Days Sales Outstanding (DSO) tracking.
 - **Release 2 (Connected Recovery - India Pilot):** Read-only automated synchronization of credit-term payment schedules from **Shopify GraphQL Admin API**, staff-generated **Razorpay Payment Links**, automated signed webhook verification for payment settlement into the ledger, and two-way **Meta WhatsApp Cloud API** customer communication with strict 24-hour service window enforcement.
-- **Release 3 (Controlled Agent Pilot):** Deterministic server-rule decision engine paired with **Google Gemini 3.6 Flash** structured JSON generation for automated case summarization, risk flagging, policy-bounded internal actions (automated case notes and collection drafts), strict client-side sliding window rate limiting (15 RPM, 1,500 RPD), and mandatory human review before any customer-facing communication or money movement.
+- **Release 3 (Controlled Agent Pilot):** Deterministic server-rule decision engine paired with **Meta Muse Spark** structured JSON generation for automated case summarization, risk flagging, policy-bounded internal actions (automated case notes and collection drafts), strict client-side sliding window rate limiting (15 RPM, 1,500 RPD), and mandatory human review before any customer-facing communication or money movement.
 
 ---
 
@@ -78,8 +80,8 @@ flowchart TD
         Balance --> AgentEngine["Controlled Agent Engine (app/services/controlled_agent.py)"]
         AgentEngine --> Hash["Context SHA-256 Snapshot"]
         AgentEngine --> Rules["Deterministic Policy Decision Tree"]
-        Rules -->|Routine Summaries| Gemini["Gemini 3.6 Flash (15 RPM / 1500 RPD)"]
-        Gemini -->|Structured JSON| Proposal["AgentProposal (status=proposed)"]
+        Rules -->|Routine Summaries| Muse["Muse Spark (15 RPM / 1500 RPD)"]
+        Muse -->|Structured JSON| Proposal["AgentProposal (status=proposed)"]
         Rules -->|Model Quota / Error| Fallback["Rules-based Fallback Wording"]
         Fallback --> Proposal
     end
@@ -105,7 +107,7 @@ flowchart TD
 RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
 
 1. **AI Agents Never Touch Money:**
-   Neither the LangGraph workflow nor Gemini has access to payment tools, bank write APIs, or ledger credit/debit authorizations. Payment entries are posted *strictly* by verified cryptographic webhooks or authenticated human accountants.
+   Neither the LangGraph workflow nor Meta has access to payment tools, bank write APIs, or ledger credit/debit authorizations. Payment entries are posted *strictly* by verified cryptographic webhooks or authenticated human accountants.
 2. **AI Agents Never Message Customers Directly:**
    The AI agent is restricted to generating *internal case notes* and *unsent collection drafts*. All outbound communications (WhatsApp messages, emails) require explicit human staff review and confirmation.
 3. **Shopify is Read-Only:**
@@ -127,7 +129,7 @@ RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
 | **ORM / Data Access** | SQLAlchemy | `2.0.35` | Relational data mapping and transaction scoping |
 | **Data Validation** | Pydantic / Pydantic Settings | `2.9.2 / 2.6.1` | Schema validation and settings management |
 | **Database** | SQLite 3 | WAL Mode | Local transactional database with foreign key support |
-| **AI / LLM Integration** | Google Gemini API (Direct HTTPX) | `v1beta` | Low-latency structured text generation (`gemini-3.6-flash`) |
+| **AI / LLM Integration** | Meta Model API (Direct HTTPX) | `v1beta` | Low-latency structured text generation (`muse-spark-1.3`) |
 | **Workflow Engine** | LangGraph / LangChain Core | `0.2.39 / 0.3.15` | Multi-node invoice processing state graph |
 | **OCR Engine** | Tesseract OCR / PyTesseract | `0.3.13` (Bundled Win binaries) | Text extraction from scanned invoice documents |
 | **PDF Rendering** | pdf2image / Poppler | `1.17.0` (Bundled Win binaries) | Converting PDF pages to 300 DPI images for OCR |
@@ -171,7 +173,7 @@ RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
   - Mounts static files from `frontend/`.
 - [app/config.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/config.py):
   - Defines `Settings(BaseSettings)` reading from `.env`.
-  - Defines DB paths, LLM configuration, Gemini 3.6 Flash rate limits (`GEMINI_RPM_LIMIT=15`, `GEMINI_RPD_LIMIT=1500`), OCR paths, ML thresholds, collection stages, and provider credentials.
+  - Defines DB paths, LLM configuration, Muse Spark rate limits (`META_RPM_LIMIT=15`, `META_RPD_LIMIT=1500`), OCR paths, ML thresholds, collection stages, and provider credentials.
 - [app/auth.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/auth.py):
   - Implements API key parsing with `secrets.compare_digest` constant-time comparison.
   - Supports single root keys (`RECOVERFLOW_API_KEY`) and multi-tenant JSON arrays (`RECOVERFLOW_API_KEYS_JSON`).
@@ -219,8 +221,8 @@ RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
 ### 4.6 Domain Services (`app/services/`)
 
 - [app/services/receivables.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/receivables.py): Immutable ledger engine. Implements `cents()` conversion, `opening_cents()`, `balance_cents()`, and atomic `post_entry()` with over-allocation prevention.
-- [app/services/controlled_agent.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/controlled_agent.py): Full decision logic for Release 3. Handles case snapshotting, SHA-256 context hashing, deterministic action routing (`no_action`, `staff_review`, `reply_draft`, `collection_draft`), Gemini invocation with rules fallback, internal action execution, and hourly worker scanning.
-- [app/services/gemini_agent.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/gemini_agent.py): Gemini 3.6 Flash integration. Features `GeminiRateLimiter` (15 RPM sliding window, 1,500 RPD Pacific Time reset), structured JSON output parsing, and `safe_reply()` content filters (blocking URLs, phone numbers, banking instructions, or unverified promises).
+- [app/services/controlled_agent.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/controlled_agent.py): Full decision logic for Release 3. Handles case snapshotting, SHA-256 context hashing, deterministic action routing (`no_action`, `staff_review`, `reply_draft`, `collection_draft`), Meta invocation with rules fallback, internal action execution, and hourly worker scanning.
+- [app/services/meta_agent.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/meta_agent.py): Muse Spark integration. Features `MetaRateLimiter` (15 RPM sliding window, 1,500 RPD UTC reset), structured JSON output parsing, and `safe_reply()` content filters (blocking URLs, phone numbers, banking instructions, or unverified promises).
 - [app/services/razorpay.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/razorpay.py): Razorpay API connector. Supports remote link creation, link cancellation, query-by-reference recovery, HMAC-SHA256 signature verification, and settlement into the ledger.
 - [app/services/shopify.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/shopify.py): Read-only Shopify GraphQL Admin API client. Fetches credit-term payment schedules, verifies HMAC-SHA256 webhooks, and flags cases needing human review when store balances diverge.
 - [app/services/meta_whatsapp.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/services/meta_whatsapp.py): Meta WhatsApp Cloud API connector. Handles webhook HMAC-SHA256 signatures, parses inbound messages, links sender phones to receivables, and sends outbound staff replies within 24 hours.
@@ -268,7 +270,7 @@ RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
 
 - [tests/test_release1.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/tests/test_release1.py): Unit and integration tests for Release 1 (CSV imports, ledger entries, dunning approval, contact suppression, cooldowns, and reconciliation).
 - [tests/test_release2.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/tests/test_release2.py): Safety tests for Release 2 (Razorpay links, signed webhook processing, duplicate delivery protection, Shopify order sync, Meta WhatsApp inbound triage, and 24h reply gates).
-- [tests/test_release3.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/tests/test_release3.py): Rigorous boundary tests for Release 3 (Gemini structured output, rate limiter sliding window RPM/RPD quotas, fallback behavior, stale proposal rejection, daily budget caps, and role permissions).
+- [tests/test_release3.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/tests/test_release3.py): Rigorous boundary tests for Release 3 (Meta structured output, rate limiter sliding window RPM/RPD quotas, fallback behavior, stale proposal rejection, daily budget caps, and role permissions).
 - [tests/test_workflow.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/tests/test_workflow.py): LangGraph pipeline orchestration, database migration, and multi-tenant isolation tests.
 - [tests/test_api.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/tests/test_api.py): System health and authentication header validation tests.
 
@@ -345,14 +347,14 @@ RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
     - `staff_review`: Open disputes, Shopify balance mismatches, opt-outs, or unverified refunds.
     - `reply_draft`: Routine inbound customer questions within the 24-hour service window.
     - `collection_draft`: Overdue receivables passing all cooldown and review gates.
-- **Gemini 3.6 Flash Integration:**
-  - Endpoint: `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent`.
-  - Direct HTTPX implementation using official Google AI Studio REST specifications.
+- **Muse Spark Integration:**
+  - Endpoint: `https://api.meta.ai/v1/chat/completions`.
+  - Direct HTTPX implementation using the OpenAI-compatible Meta Model API REST specification.
   - Strict structured JSON schema enforcement (`summary`, `rationale`, `reply_draft`).
   - Low thinking level (`"thinkingConfig": {"thinkingLevel": "LOW"}`).
 - **Official AI Studio Client-Side Rate Limiter:**
   - Requests Per Minute (RPM): Enforced on a 60-second sliding window (default 15 RPM).
-  - Requests Per Day (RPD): Evaluated against current date in Pacific Time (`America/Los_Angeles`), resetting at midnight PT (default 1,500 RPD).
+  - Requests Per Day (RPD): Evaluated against current date in UTC, resetting at midnight UTC (default 1,500 RPD).
   - Upstream 429 Throttle Handling: Automatically extracts `Retry-After` headers and pauses requests.
   - Automatic Rules Fallback: If limits are reached or the model is unavailable, the system safely falls back to deterministic rule wording tagged with `model_rate_limited` or `model_unavailable`.
 - **Bounded Internal Actions:**
@@ -407,7 +409,7 @@ gantt
     Live Razorpay Production Webhooks    :p5, 2026-11-20, 10d
     Meta WhatsApp HSM Template Campaigns  :p6, after p5, 14d
     section AI & Governance
-    Gemini Production Tier Verification   :p7, 2026-12-01, 10d
+    Meta Production Tier Verification   :p7, 2026-12-01, 10d
     Multi-Turn Chat Case History Memory   :p8, after p7, 14d
 ```
 
@@ -426,7 +428,7 @@ gantt
 - **Live SMTP Verification:** Connect SendGrid, AWS SES, or Postmark for production collection email delivery with delivery tracking and click-to-pay links.
 
 ### 4. Advanced AI Capabilities
-- **Live Synthetic Generation Verification:** Complete live sandbox generation check against Google AI Studio endpoint for `gemini-3.6-flash`.
+- **Live Synthetic Generation Verification:** Complete live sandbox generation check against Meta Model API endpoint for `muse-spark-1.3`.
 - **Multi-Turn Conversation Memory:** Expand agent context window to summarize long multi-month negotiation threads with overdue corporate debtors.
 
 ---
@@ -492,10 +494,10 @@ curl -s -H "X-RECOVERFLOW-API-KEY: your-api-key" http://127.0.0.1:8002/api/v1/sy
 | `LOG_LEVEL` | `INFO` | No | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`. |
 | `RECOVERFLOW_API_KEY` | *None* | **Yes** | Master authentication secret for staff and admin access. |
 | `RECOVERFLOW_API_KEYS_JSON` | *None* | No | JSON array of multi-tenant keys: `[{"key":"...","actor":"...","tenant_id":"...","role":"admin"}]`. |
-| `AGENT_MODEL` | `gemini-3.6-flash` | No | Model identifier for controlled agent wording. |
-| `GEMINI_API_KEY` | *None* | Optional | Google AI Studio API key for structured text generation. |
-| `GEMINI_RPM_LIMIT` | `15` | No | Client-side Requests Per Minute sliding window rate limit. |
-| `GEMINI_RPD_LIMIT` | `1500` | No | Client-side Requests Per Day rate limit (resets midnight PT). |
+| `AGENT_MODEL` | `muse-spark-1.3` | No | Model identifier for controlled agent wording. |
+| `META_MODEL_API_KEY` | *None* | Optional | Meta Model API key for structured text generation. |
+| `META_RPM_LIMIT` | `15` | No | Client-side Requests Per Minute sliding window rate limit. |
+| `META_RPD_LIMIT` | `1500` | No | Client-side Requests Per Day rate limit (resets midnight UTC). |
 | `SHOPIFY_SHOP_DOMAIN` | *None* | Optional | Shopify store domain (`your-store.myshopify.com`). |
 | `SHOPIFY_ADMIN_ACCESS_TOKEN`| *None* | Optional | Shopify Admin API token with read permissions. |
 | `SHOPIFY_API_VERSION` | `2026-07` | No | Shopify GraphQL schema version. |

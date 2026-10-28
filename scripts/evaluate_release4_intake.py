@@ -1,4 +1,4 @@
-"""Run ten real upload/pipeline trials on synthetic documents without Gemini."""
+"""Run ten real upload/pipeline trials on synthetic documents without Meta."""
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
@@ -42,7 +42,7 @@ def run_intake_evaluation() -> dict:
     app.dependency_overrides[get_db] = override
     old_factory = intake_pipeline.SessionLocal
     keys = {name: getattr(settings, name) for name in (
-        "GEMINI_API_KEY", "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+        "META_MODEL_API_KEY", "META_API_KEY_1", "META_API_KEY_2", "META_API_KEY_3",
         "RECOVERFLOW_API_KEY", "RECOVERFLOW_API_KEYS_JSON", "BASE_DIR")}
     rows = []
     try:
@@ -50,7 +50,7 @@ def run_intake_evaluation() -> dict:
             settings.BASE_DIR = Path(temp)
             settings.RECOVERFLOW_API_KEY = "synthetic-evaluation"
             settings.RECOVERFLOW_API_KEYS_JSON = ""
-            for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"):
+            for name in ("META_MODEL_API_KEY", "META_API_KEY_1", "META_API_KEY_2", "META_API_KEY_3"):
                 setattr(settings, name, "")
             intake_pipeline.SessionLocal = factory
             client = TestClient(app)

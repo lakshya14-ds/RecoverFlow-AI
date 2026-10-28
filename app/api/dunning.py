@@ -1,3 +1,4 @@
+from decimal import Decimal
 """
 RecoverFlow - Receivables and Collections
 """
@@ -12,7 +13,9 @@ from typing import Literal
 from sqlalchemy import or_
 from app.auth import Identity, get_identity
 from app.config import settings
-from app.services.receivables import balance_cents
+from app.services.receivables import balance_cents, split_balance
+from app.services.negotiation import guard_outbound
+from app.services.case_lifecycle import checkpoint
 
 router = APIRouter(prefix="/dunning", tags=["Dunning"])
 
@@ -30,7 +33,7 @@ class ManualContact(BaseModel):
 def _check_contact(db: Session, invoice: models.Invoice) -> int:
     if not invoice or invoice.invoice_type != "AR" or invoice.status in ("cancelled", "disputed"):
         raise HTTPException(status_code=409, detail="Only open receivables can be contacted")
-    if invoice.requires_human_review or invoice.dispute_open or invoice.contact_suppressed or invoice.contact_opt_out:
+    if invoice.investigation_hold or invoice.requires_human_review or invoice.dispute_open or invoice.contact_suppressed or invoice.contact_opt_out:
         raise HTTPException(status_code=409, detail="Contact is paused pending review or customer request")
     balance = balance_cents(db, invoice)
     if balance <= 0:
@@ -87,7 +90,7 @@ def trigger_dunning_stage(invoice_id: int, stage: int, db: Session = Depends(get
         "invoice_data": {
             "invoice_number": invoice.invoice_number,
             "counterparty_name": invoice.counterparty_name,
-            "total_amount": balance / 100,
+            "total_amount": Decimal(balance) / 100,
             "currency": invoice.currency or "USD",
             "due_date": str(invoice.due_date),
             "days_overdue": days_overdue
@@ -127,6 +130,11 @@ def edit_campaign(campaign_id: int, payload: DraftEdit, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="Campaign not found")
     if campaign.status not in ("draft", "approved"):
         raise HTTPException(status_code=409, detail="Only an unsent draft can be edited")
+    invoice = db.get(models.Invoice, campaign.invoice_id)
+    split = split_balance(db, invoice)
+    allowed, reason = guard_outbound(payload.body, split["disputed_cents"], split["undisputed_cents"])
+    if not allowed:
+        raise HTTPException(status_code=409, detail=reason)
     campaign.email_subject = payload.subject
     campaign.email_body = payload.body
     campaign.status = "draft"
@@ -151,6 +159,15 @@ def approve_campaign(campaign_id: int, db: Session = Depends(get_db),
     balance = _check_contact(db, invoice)
     if campaign.balance_cents_at_draft != balance:
         raise HTTPException(status_code=409, detail="Draft balance changed; refresh the draft")
+    split = split_balance(db, invoice)
+    from app.services.multilingual import verify_outbound_body
+    try:
+        verify_outbound_body(db, invoice, campaign.email_body)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    checkpoint(db, invoice, "draft_approved", identity.actor)
+    from app.services.supervisor import request_reassessment
+    request_reassessment(db, invoice, "staff:approval", identity.actor)
     campaign.status = "approved"
     campaign.approved_by = identity.actor
     campaign.approved_at = datetime.now(timezone.utc)
@@ -175,7 +192,7 @@ def refresh_campaign(campaign_id: int, db: Session = Depends(get_db),
         "invoice_data": {
             "invoice_number": invoice.invoice_number,
             "counterparty_name": invoice.counterparty_name,
-            "total_amount": balance / 100,
+            "total_amount": Decimal(balance) / 100,
             "currency": invoice.currency or "USD",
             "due_date": str(invoice.due_date),
             "days_overdue": (datetime.now(timezone.utc).date() - invoice.due_date).days,
@@ -233,6 +250,13 @@ async def send_campaign(campaign_id: int, db: Session = Depends(get_db),
     if campaign.balance_cents_at_draft != balance:
         raise HTTPException(status_code=409, detail="Draft balance changed; refresh and approve it again")
     _check_recent_contact(db, invoice)
+    split = split_balance(db, invoice)
+    from app.services.multilingual import verify_outbound_body
+    try:
+        verify_outbound_body(db, invoice, campaign.email_body)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    checkpoint(db, invoice, "draft_sandbox_sent", identity.actor)
     campaign.status = "sandbox_sent"
     campaign.email_sent = False
     campaign.email_to = None

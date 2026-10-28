@@ -38,14 +38,14 @@ Generate `RECOVERFLOW_API_KEY` locally with `python -c "import secrets; print(se
 | `APEX_DB_PATH` | **Backend only** | Yes | SQLite file on the persistent disk. |
 | `INTAKE_STORAGE_PATH`, `INCOMING_STORAGE_PATH`, `PDF_STORAGE_PATH` | **Backend only** | Yes | Writable evidence and upload directories on the persistent disk. |
 | `EMAIL_DRY_RUN` | **Backend only** | Yes, `true` | Keeps email in sandbox mode. |
-| `GEMINI_API_KEY_1`, `_2`, `_3` | **Backend only** | Optional | Model assistance; leave unset for rules fallback. |
+| `META_API_KEY_1`, `_2`, `_3` | **Backend only** | Optional | Model assistance; leave unset for rules fallback. |
 | `ADMIN_BOOTSTRAP_PASSWORD` | **Backend only** | Optional | Initial password login on a fresh database. The UI uses the staff API key instead. |
 
 Keep `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, WhatsApp/Meta tokens, SMTP credentials, and Shopify credentials unset for the synthetic demo. The payment flow remains SIMULATED and messages remain sandbox-only. No provider key belongs in Vercel's environment variables for this deployment.
 
 Create the `/persistent/recoverflow` directory and mount the host's persistent disk there. The service account must be able to write it. Set `ADMIN_BOOTSTRAP_PASSWORD` only if password login is required; give it a new strong value **before the first start on a fresh database**. The web UI uses `RECOVERFLOW_API_KEY`, so password login is optional. An existing database created by older versions may still contain the former fixed admin password: rotate or remove that account before exposing that database to the internet. Never copy a local pilot database containing real or private data into this deployment.
 
-Optional `GEMINI_API_KEY_1`, `_2`, and `_3` stay on the backend. Without them, rules fallback remains available and unsupported documents go to staff review. Do not enable live messaging or payment credentials for this demo.
+Optional `META_API_KEY_1`, `_2`, and `_3` stay on the backend. Without them, rules fallback remains available and unsupported documents go to staff review. Do not enable live messaging or payment credentials for this demo.
 
 Before connecting Vercel, visit `https://YOUR-BACKEND/api/v1/system/health` and confirm `status: ok`. Test an authenticated endpoint with the new staff key from a private terminal. A public health response only proves that the API process is reachable; also confirm both worker processes and the persistent disk in the host's logs.
 

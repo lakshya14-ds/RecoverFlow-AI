@@ -46,7 +46,52 @@ def init_db() -> None:
     from app.database import models  # noqa: F401
     from app.services.auth_security import hash_password, hash_api_key
 
-    db_path = Path(settings.APEX_DB_PATH)
+    if engine.dialect.name == "sqlite":
+        _upgrade_legacy_sqlite(models)
+    else:
+        Base.metadata.create_all(bind=engine)
+    from app.database.migrations import migrate
+    migrate(engine, Base.metadata)
+
+    # Bootstrap default admin user and API key if not present
+    with SessionLocal() as db:
+        admin_user = db.query(models.User).filter_by(email="admin@recoverflow.in").first()
+        if not admin_user and settings.ADMIN_BOOTSTRAP_PASSWORD:
+            admin_user = models.User(
+                tenant_id="local",
+                email="admin@recoverflow.in",
+                name="System Administrator",
+                password_hash=hash_password(settings.ADMIN_BOOTSTRAP_PASSWORD),
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin_user)
+            db.flush()
+
+            # If an environment API key is present, also seed it into user_api_keys if not present
+            if settings.RECOVERFLOW_API_KEY:
+                k_hash = hash_api_key(settings.RECOVERFLOW_API_KEY)
+                existing_key = db.query(models.UserApiKey).filter_by(key_hash=k_hash).first()
+                if not existing_key:
+                    admin_key = models.UserApiKey(
+                        tenant_id="local",
+                        user_id=admin_user.id,
+                        name="Default Admin Key",
+                        key_prefix=settings.RECOVERFLOW_API_KEY[:8] if len(settings.RECOVERFLOW_API_KEY) >= 8 else "rf_admin",
+                        key_hash=k_hash,
+                        role="admin",
+                        is_active=True,
+                    )
+                    db.add(admin_key)
+            db.commit()
+            logging.info("Bootstrapped initial admin user: admin@recoverflow.in")
+
+
+def _upgrade_legacy_sqlite(models):
+    db_path = Path(engine.url.database) if engine.url.database and engine.url.database != ":memory:" else None
+    if db_path is None:
+        Base.metadata.create_all(bind=engine)
+        return
     if is_sqlite and not db_path.exists():
         logging.info("Initializing RecoverFlow database from schema.sql...")
         schema_path = Path(__file__).parent / "schema.sql"
@@ -144,39 +189,6 @@ def init_db() -> None:
                       "dso_snapshots", "counterparties", "processing_jobs", "audit_events",
                       "receivable_entries", "customer_messages"):
             conn.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_tenant ON {table}(tenant_id)")
-
-    # Bootstrap default admin user and API key if not present
-    with SessionLocal() as db:
-        admin_user = db.query(models.User).filter_by(email="admin@recoverflow.in").first()
-        if not admin_user and settings.ADMIN_BOOTSTRAP_PASSWORD:
-            admin_user = models.User(
-                tenant_id="local",
-                email="admin@recoverflow.in",
-                name="System Administrator",
-                password_hash=hash_password(settings.ADMIN_BOOTSTRAP_PASSWORD),
-                role="admin",
-                is_active=True,
-            )
-            db.add(admin_user)
-            db.flush()
-
-            # If an environment API key is present, also seed it into user_api_keys if not present
-            if settings.RECOVERFLOW_API_KEY:
-                k_hash = hash_api_key(settings.RECOVERFLOW_API_KEY)
-                existing_key = db.query(models.UserApiKey).filter_by(key_hash=k_hash).first()
-                if not existing_key:
-                    admin_key = models.UserApiKey(
-                        tenant_id="local",
-                        user_id=admin_user.id,
-                        name="Default Admin Key",
-                        key_prefix=settings.RECOVERFLOW_API_KEY[:8] if len(settings.RECOVERFLOW_API_KEY) >= 8 else "rf_admin",
-                        key_hash=k_hash,
-                        role="admin",
-                        is_active=True,
-                    )
-                    db.add(admin_key)
-            db.commit()
-            logging.info("Bootstrapped initial admin user: admin@recoverflow.in")
 
 
 def get_db() -> Generator[Session, None, None]:

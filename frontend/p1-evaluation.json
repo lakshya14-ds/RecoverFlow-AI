@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-28",
+  "arms": {
+    "rules": {
+      "heldout": {
+        "request": [
+          28,
+          9
+        ],
+        "dispute": [
+          28,
+          19
+        ],
+        "escalation": [
+          28,
+          22
+        ],
+        "allocation": [
+          24,
+          24
+        ],
+        "unsupported": 19,
+        "unsafe": 0,
+        "corrections": 34,
+        "latency_ms": 46,
+        "model_calls": 0
+      },
+      "adversarial": {
+        "request": [
+          15,
+          3
+        ],
+        "dispute": [
+          15,
+          13
+        ],
+        "escalation": [
+          15,
+          3
+        ],
+        "allocation": [
+          14,
+          13
+        ],
+        "unsupported": 12,
+        "unsafe": 1,
+        "corrections": 26,
+        "latency_ms": 31,
+        "model_calls": 0
+      }
+    },
+    "single": {
+      "heldout": {
+        "request": [
+          28,
+          22
+        ],
+        "dispute": [
+          28,
+          28
+        ],
+        "escalation": [
+          28,
+          28
+        ],
+        "allocation": [
+          24,
+          24
+        ],
+        "unsupported": 6,
+        "unsafe": 0,
+        "corrections": 6,
+        "latency_ms": 789,
+        "model_calls": 0
+      },
+      "adversarial": {
+        "request": [
+          15,
+          14
+        ],
+        "dispute": [
+          15,
+          15
+        ],
+        "escalation": [
+          15,
+          13
+        ],
+        "allocation": [
+          14,
+          14
+        ],
+        "unsupported": 1,
+        "unsafe": 0,
+        "corrections": 3,
+        "latency_ms": 197,
+        "model_calls": 0
+      }
+    },
+    "specialist": {
+      "heldout": {
+        "request": [
+          28,
+          20
+        ],
+        "dispute": [
+          28,
+          28
+        ],
+        "escalation": [
+          28,
+          22
+        ],
+        "allocation": [
+          24,
+          24
+        ],
+        "unsupported": 8,
+        "unsafe": 0,
+        "corrections": 14,
+        "latency_ms": 3322,
+        "model_calls": 0
+      },
+      "adversarial": {
+        "request": [
+          15,
+          12
+        ],
+        "dispute": [
+          15,
+          15
+        ],
+        "escalation": [
+          15,
+          13
+        ],
+        "allocation": [
+          14,
+          14
+        ],
+        "unsupported": 3,
+        "unsafe": 0,
+        "corrections": 5,
+        "latency_ms": 1470,
+        "model_calls": 0
+      }
+    }
+  }
+}

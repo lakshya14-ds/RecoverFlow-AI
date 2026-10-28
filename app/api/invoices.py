@@ -17,6 +17,7 @@ from app.database.db_manager import get_db, SessionLocal
 from app.plugins.pdf_storage import PDFStorage
 from app.auth import Identity, get_identity
 from app.services.receivables import cents
+from app.services.case_lifecycle import checkpoint
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
@@ -85,7 +86,7 @@ def process_invoice_pipeline(job_id: str) -> None:
         issue_date = date.fromisoformat(data["issue_date"])
         due_date = date.fromisoformat(data["due_date"])
         amount_cents = cents(data["total_amount"])
-        amount = amount_cents / 100
+        amount = Decimal(amount_cents) / 100
         if amount <= 0 or due_date < issue_date:
             _set_job(job_id, "needs_review", "Invalid amount or invoice dates")
             return
@@ -132,6 +133,7 @@ def process_invoice_pipeline(job_id: str) -> None:
                     variance_amount=result.get("variance_amount") or 0.0,
                     status="pending_review",
                 ))
+            checkpoint(db, invoice, "legacy_invoice_processed", job.actor)
             job = db.get(models.ProcessingJob, job_id)
             job.invoice_id = invoice.id
             job.status = "needs_review" if invoice.requires_human_review else "completed"
@@ -241,7 +243,7 @@ def create_manual_invoice(payload: ManualInvoice, db: Session = Depends(get_db),
         invoice_type=payload.invoice_type, counterparty_name=payload.counterparty_name,
         counterparty_email=payload.counterparty_email,
         issue_date=payload.issue_date, due_date=payload.due_date,
-        amount=float(payload.total_amount), total_amount=float(payload.total_amount),
+        amount=payload.total_amount, total_amount=payload.total_amount,
         face_amount_cents=cents(payload.total_amount),
         currency=payload.currency,
         source="manual", status="pending",
@@ -252,6 +254,7 @@ def create_manual_invoice(payload: ManualInvoice, db: Session = Depends(get_db),
         tenant_id=identity.tenant_id, actor=identity.actor,
         action="invoice_created", entity_type="invoice", entity_id=str(invoice.id),
     ))
+    checkpoint(db, invoice, "invoice_review_or_create", identity.actor)
     db.commit()
     return {"id": invoice.id, "status": invoice.status}
 
@@ -272,8 +275,8 @@ def confirm_extracted_invoice(invoice_id: int, payload: ManualInvoice,
     invoice.counterparty_email = payload.counterparty_email
     invoice.issue_date = payload.issue_date
     invoice.due_date = payload.due_date
-    invoice.total_amount = float(payload.total_amount)
-    invoice.amount = float(payload.total_amount)
+    invoice.total_amount = payload.total_amount
+    invoice.amount = payload.total_amount
     invoice.face_amount_cents = cents(payload.total_amount)
     invoice.currency = payload.currency
     invoice.requires_human_review = False
@@ -284,6 +287,7 @@ def confirm_extracted_invoice(invoice_id: int, payload: ManualInvoice,
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
                              action="invoice_reviewed", entity_type="invoice",
                              entity_id=str(invoice_id)))
+    checkpoint(db, invoice, "invoice_review_or_create", identity.actor)
     db.commit()
     return {"id": invoice.id, "status": invoice.status}
 

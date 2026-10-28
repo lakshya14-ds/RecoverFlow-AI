@@ -1,3 +1,4 @@
+from decimal import Decimal
 """
 RecoverFlow - Receivables and Collections
 """
@@ -14,7 +15,7 @@ def match_invoice_to_payment(
     sorted by descending confidence.
     """
     matches = []
-    inv_amount = invoice.get("total_amount", 0.0)
+    inv_amount = Decimal(str(invoice.get("total_amount", 0)))
     inv_date_str = invoice.get("due_date")
     inv_date = None
     if inv_date_str:
@@ -24,7 +25,7 @@ def match_invoice_to_payment(
             pass
 
     for tx in afis_transactions:
-        tx_amount = abs(tx.get("amount", 0.0))
+        tx_amount = abs(Decimal(str(tx.get("amount", 0))))
         tx_date_str = tx.get("date")
         tx_date = None
         if tx_date_str:
@@ -34,8 +35,8 @@ def match_invoice_to_payment(
                 pass
         
         amount_diff = abs(inv_amount - tx_amount)
-        amount_exact = amount_diff < 0.01
-        amount_fuzzy = inv_amount > 0 and (amount_diff / inv_amount) <= fuzzy_amount_tolerance
+        amount_exact = amount_diff < Decimal("0.01")
+        amount_fuzzy = inv_amount > 0 and (amount_diff / inv_amount) <= Decimal(str(fuzzy_amount_tolerance))
 
         date_diff_days = None
         if inv_date and tx_date:

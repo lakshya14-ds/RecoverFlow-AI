@@ -1,4 +1,4 @@
-"""Release 3 controlled agent: deterministic decisions, optional Gemini wording, bounded internal work."""
+"""Release 3 controlled agent: deterministic decisions, optional Meta wording, bounded internal work."""
 import hashlib
 import json
 import logging
@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.auth import Identity
 from app.config import settings
 from app.database import models
-from app.services import gemini_agent
+from app.services import meta_agent
 from app.services.receivables import balance_cents, split_balance
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,10 @@ def snapshot(db: Session, invoice: models.Invoice) -> tuple[dict, str, models.In
     messages, latest = _conversation(db, invoice)
     balance = balance_cents(db, invoice)
     split = split_balance(db, invoice)
+    from app.services.case_lifecycle import fingerprint
     facts = {
+        "case_context_hash": fingerprint(db, invoice),
+        "investigation_hold": bool(invoice.investigation_hold),
         "invoice_id": invoice.id, "invoice_number": invoice.invoice_number[:80],
         "customer_name": invoice.counterparty_name,
         "status": invoice.status, "balance_cents": balance,
@@ -84,6 +87,8 @@ def snapshot(db: Session, invoice: models.Invoice) -> tuple[dict, str, models.In
 def _choice(db: Session, invoice: models.Invoice, facts: dict,
             latest: models.InboundMessage | None) -> tuple[str, list[str]]:
     flags = []
+    if invoice.investigation_hold:
+        return "manual_review", ["investigation_requires_review"]
     if facts["balance_cents"] <= 0 or invoice.status in ("paid", "RESOLVED_PAID"):
         flags.append("no_outstanding_balance")
     if invoice.contact_opt_out:
@@ -209,6 +214,8 @@ def assess(db: Session, tenant_id: str, invoice_id: int, actor: str,
     invoice = db.get(models.Invoice, invoice_id)
     if not invoice or invoice.tenant_id != tenant_id or invoice.invoice_type != "AR":
         raise HTTPException(status_code=404, detail="Receivable case not found")
+    from app.services.case_lifecycle import checkpoint
+    checkpoint(db, invoice, "agent_assessment", actor)
     facts, digest, latest = snapshot(db, invoice)
     existing = db.query(models.AgentProposal).filter_by(
         tenant_id=tenant_id, invoice_id=invoice_id, context_hash=digest).first()
@@ -219,19 +226,19 @@ def assess(db: Session, tenant_id: str, invoice_id: int, actor: str,
     action, flags = _choice(db, invoice, facts, latest)
     summary, rationale, reply = _fallback(facts, action)
     engine = "rules_only"
-    if gemini_agent.configured():
+    if meta_agent.configured():
         try:
-            wording = gemini_agent.generate(facts, action)
+            wording = meta_agent.generate(facts, action)
             summary, rationale = wording.summary, wording.rationale
-            if action == "reply_draft" and gemini_agent.safe_reply(wording.reply_draft):
+            if action == "reply_draft" and meta_agent.safe_reply(wording.reply_draft):
                 reply = wording.reply_draft
             engine = settings.AGENT_MODEL
-        except gemini_agent.GeminiRateLimitError as exc:
-            logger.warning("Gemini rate limit reached (%s) for invoice %s; using rules-only wording", exc, invoice_id)
+        except meta_agent.MetaRateLimitError as exc:
+            logger.warning("Meta rate limit reached (%s) for invoice %s; using rules-only wording", exc, invoice_id)
             flags.append("model_rate_limited")
             engine = "rules_fallback"
         except Exception:
-            logger.exception("Gemini assessment failed for invoice %s; using rules-only wording", invoice_id)
+            logger.exception("Meta assessment failed for invoice %s; using rules-only wording", invoice_id)
             flags.append("model_unavailable")
             engine = "rules_fallback"
     proposal = models.AgentProposal(

@@ -10,9 +10,10 @@ from app.auth import Identity, get_identity
 from app.config import settings
 from app.database import models
 from app.database.db_manager import get_db
-from app.services import controlled_agent, gemini_agent
+from app.services import controlled_agent, meta_agent
 from app.services.negotiation import guard_outbound
 from app.services.receivables import split_balance
+from app.services.case_lifecycle import checkpoint
 
 router = APIRouter(prefix="/agent", tags=["Controlled agent"])
 
@@ -58,9 +59,9 @@ def _proposal(db: Session, proposal_id: int, identity: Identity) -> models.Agent
 @router.get("/status")
 def status(db: Session = Depends(get_db), identity: Identity = Depends(get_identity)):
     policy = db.get(models.AgentPolicy, identity.tenant_id)
-    return {"model": settings.AGENT_MODEL if gemini_agent.configured() else "rules_only",
-            "model_configured": gemini_agent.configured(),
-            "rate_limits": gemini_agent.get_rate_limit_status(),
+    return {"model": settings.AGENT_MODEL if meta_agent.configured() else "rules_only",
+            "model_configured": meta_agent.configured(),
+            "rate_limits": meta_agent.get_rate_limit_status(),
             "policy": policy}
 
 
@@ -87,7 +88,7 @@ def bulk_approve(db: Session = Depends(get_db),
         evidence = db.query(models.CaseEvidence).filter_by(
             tenant_id=identity.tenant_id, invoice_id=proposal.invoice_id).all()
         split = split_balance(db, invoice)
-        confident = (not invoice.requires_human_review and not invoice.contact_suppressed
+        confident = (not invoice.investigation_hold and not invoice.requires_human_review and not invoice.contact_suppressed
             and not invoice.contact_opt_out and
             any(row.claim_type == "invoice_total" and row.verified for row in evidence) and
             (not split["disputed_cents"] or any(row.claim_type == "dispute_item" and row.verified for row in evidence)))
@@ -99,6 +100,12 @@ def bulk_approve(db: Session = Depends(get_db),
         if not confident or not allowed or digest != proposal.context_hash:
             skipped.append(proposal.id)
             continue
+        from app.services.multilingual import verify_outbound_body
+        try:
+            verify_outbound_body(db, invoice, version.body)
+        except ValueError:
+            skipped.append(proposal.id)
+            continue
         version.status = "approved"
         version.approved_by = identity.actor
         version.approved_at = controlled_agent.utc_naive()
@@ -107,6 +114,9 @@ def bulk_approve(db: Session = Depends(get_db),
         db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
             action="agent_draft_bulk_approved", entity_type="proposal_draft_version",
             entity_id=str(version.id), details=f"hash={version.version_hash}"))
+        checkpoint(db, invoice, "draft_approved", identity.actor)
+        from app.services.supervisor import request_reassessment
+        request_reassessment(db, invoice, "staff:approval", identity.actor)
         approved.append(proposal.id)
     db.commit()
     return {"approved": approved, "skipped": skipped}
@@ -246,6 +256,8 @@ def edit_proposal_draft(proposal_id: int, payload: EditDraftInput,
         raise HTTPException(status_code=409, detail=f"Cannot edit draft when proposal is {proposal.status}")
     controlled_agent._fresh(db, proposal)
     invoice = db.get(models.Invoice, proposal.invoice_id)
+    if invoice.investigation_hold:
+        raise HTTPException(status_code=409, detail="Investigation requires staff review")
     split = split_balance(db, invoice)
     allowed, reason = guard_outbound(payload.body, split["disputed_cents"], split["undisputed_cents"])
     if not allowed:
@@ -310,10 +322,14 @@ def approve_proposal_draft(proposal_id: int, payload: ApproveDraftInput,
     if version.version_hash != payload.version_hash:
         raise HTTPException(status_code=409, detail="Version hash mismatch; draft was modified after display")
     invoice = db.get(models.Invoice, proposal.invoice_id)
+    if invoice.investigation_hold:
+        raise HTTPException(status_code=409, detail="Investigation requires staff review")
     split = split_balance(db, invoice)
-    allowed, reason = guard_outbound(version.body, split["disputed_cents"], split["undisputed_cents"])
-    if not allowed:
-        raise HTTPException(status_code=409, detail=reason)
+    from app.services.multilingual import verify_outbound_body
+    try:
+        verify_outbound_body(db, invoice, version.body)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     version.status = "approved"
     version.approved_by = identity.actor
@@ -322,6 +338,9 @@ def approve_proposal_draft(proposal_id: int, payload: ApproveDraftInput,
     proposal.status = "approved"
     proposal.reviewed_by = identity.actor
     proposal.review_note = f"Approved draft v{version.version_number} (hash: {version.version_hash[:12]})"
+    from app.services.supervisor import request_reassessment
+    request_reassessment(db, invoice, "staff:approval", identity.actor)
+    checkpoint(db, invoice, "draft_approved", identity.actor)
 
     db.add(models.AuditEvent(
         tenant_id=identity.tenant_id,

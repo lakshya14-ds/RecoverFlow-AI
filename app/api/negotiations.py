@@ -1,6 +1,9 @@
 """Per-case negotiation, with sandbox-only outbound messages."""
 from typing import Literal
 import httpx
+import hashlib
+import json
+from app.services.case_lifecycle import fingerprint, checkpoint, ensure_contact_allowed
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -10,7 +13,7 @@ from app.auth import Identity, get_identity
 from app.config import settings
 from app.database import models
 from app.database.db_manager import get_db
-from app.services import gemini_agent, negotiation
+from app.services import meta_agent, negotiation
 from app.services.receivables import split_balance
 
 router = APIRouter(prefix="/negotiations", tags=["Negotiation"])
@@ -51,7 +54,30 @@ def _session(db: Session, invoice_id: int, identity: Identity):
     return invoice, session
 
 
+def _context(db, invoice, session):
+    last = db.query(models.NegotiationTurn.id).filter_by(session_id=session.id,
+        tenant_id=invoice.tenant_id, direction="inbound").order_by(models.NegotiationTurn.id.desc()).first()
+    bounds = [session.mode, session.max_instalments, session.max_extension_days,
+              session.min_first_percent, session.max_ai_rounds, last[0] if last else None]
+    return hashlib.sha256((fingerprint(db, invoice) + json.dumps(bounds)).encode()).hexdigest()
+
+
+def _allowed(db, invoice, session):
+    if split_balance(db, invoice)["undisputed_cents"] <= 0:
+        return []
+    return [amount for round_number in range(1, session.max_ai_rounds + 1)
+            for amount in negotiation.offer_ladder(db, invoice, session, round_number)["instalments_cents"]]
+
+
+def _contact(invoice):
+    try:
+        ensure_contact_allowed(invoice)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 def _audit(db, identity, invoice_id, action, detail=""):
+    checkpoint(db, db.get(models.Invoice, invoice_id), action, identity.actor)
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
         action=action, entity_type="invoice", entity_id=str(invoice_id), details=detail))
 
@@ -114,6 +140,7 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
 def copilot(invoice_id: int, db: Session = Depends(get_db),
             identity: Identity = Depends(get_identity)):
     invoice, session = _session(db, invoice_id, identity)
+    _contact(invoice)
     if session.mode != "manual" or session.status != "active":
         raise HTTPException(status_code=409, detail="Co-pilot suggestions require an active Manual case")
     latest = db.query(models.NegotiationTurn).filter_by(session_id=session.id,
@@ -122,9 +149,9 @@ def copilot(invoice_id: int, db: Session = Depends(get_db),
         safe_kind = negotiation.classify_inbound(latest.body)
         if safe_kind in ("injection", "anger", "legal_threat", "dispute", "ambiguous"):
             return {"suggestions": [], "escalation": safe_kind}
-        if gemini_agent.configured():
+        if meta_agent.configured():
             try:
-                model_kind = gemini_agent.classify_intent(latest.body, role="copilot")
+                model_kind = meta_agent.classify_intent(latest.body, role="copilot")
                 if model_kind in ("injection", "anger", "legal_threat", "dispute", "ambiguous"):
                     return {"suggestions": [], "escalation": model_kind}
             except (RuntimeError, httpx.HTTPError, ValueError):
@@ -133,7 +160,7 @@ def copilot(invoice_id: int, db: Session = Depends(get_db),
     for round_number in range(1, min(3, session.max_ai_rounds) + 1):
         offer = negotiation.offer_ladder(db, invoice, session, round_number)
         body = negotiation.phrase_offer(invoice, offer)
-        allowed, reason = negotiation.guard_outbound(body, offer["disputed_cents"], offer["undisputed_cents"])
+        allowed, reason = negotiation.guard_outbound(body, offer["disputed_cents"], offer["undisputed_cents"], allowed_instalments=offer["instalments_cents"])
         if not allowed:
             raise HTTPException(status_code=409, detail=reason)
         suggestions.append({"body": body, "offer": offer, "engine": "rules_fallback"})
@@ -144,10 +171,11 @@ def copilot(invoice_id: int, db: Session = Depends(get_db),
 def manual_send(invoice_id: int, payload: BodyInput, db: Session = Depends(get_db),
                 identity: Identity = Depends(get_identity)):
     invoice, session = _session(db, invoice_id, identity)
+    _contact(invoice)
     if session.mode != "manual" or session.status != "active":
         raise HTTPException(status_code=409, detail="Take over an active case before staff sends")
     split = split_balance(db, invoice)
-    allowed, reason = negotiation.guard_outbound(payload.body, split["disputed_cents"], split["undisputed_cents"])
+    allowed, reason = negotiation.guard_outbound(payload.body, split["disputed_cents"], split["undisputed_cents"], allowed_instalments=_allowed(db, invoice, session))
     if not allowed:
         raise HTTPException(status_code=409, detail=reason)
     warnings = []
@@ -172,6 +200,7 @@ def manual_send(invoice_id: int, payload: BodyInput, db: Session = Depends(get_d
 def delegate_step(invoice_id: int, db: Session = Depends(get_db),
                   identity: Identity = Depends(get_identity)):
     invoice, session = _session(db, invoice_id, identity)
+    _contact(invoice)
     if session.mode != "delegate" or session.status != "active":
         raise HTTPException(status_code=409, detail="AI negotiation is not active")
     if db.query(models.NegotiationTurn).filter_by(session_id=session.id,
@@ -190,7 +219,7 @@ def delegate_step(invoice_id: int, db: Session = Depends(get_db),
         db.commit()
         return _state(db, invoice, session)
     body = negotiation.phrase_offer(invoice, offer)
-    allowed, reason = negotiation.guard_outbound(body, offer["disputed_cents"], offer["undisputed_cents"])
+    allowed, reason = negotiation.guard_outbound(body, offer["disputed_cents"], offer["undisputed_cents"], allowed_instalments=offer["instalments_cents"])
     if not allowed:
         raise HTTPException(status_code=409, detail=reason)
     policy = db.get(models.AgentPolicy, identity.tenant_id)
@@ -198,6 +227,7 @@ def delegate_step(invoice_id: int, db: Session = Depends(get_db),
     turn = models.NegotiationTurn(tenant_id=identity.tenant_id,
         session_id=session.id, direction="outbound", actor="negotiator_agent",
         body=body, body_hash=negotiation.body_hash(body),
+        context_hash=_context(db, invoice, session), offer_json=json.dumps(offer),
         status="sandbox_sent" if auto_sandbox else "pending_approval")
     db.add(turn)
     session.round_count += 1
@@ -212,16 +242,31 @@ def delegate_step(invoice_id: int, db: Session = Depends(get_db),
 @router.post("/cases/{invoice_id}/turns/{turn_id}/approve")
 def approve_turn(invoice_id: int, turn_id: int, payload: ApproveInput,
                  db: Session = Depends(get_db), identity: Identity = Depends(get_identity)):
-    _, session = _session(db, invoice_id, identity)
+    invoice, session = _session(db, invoice_id, identity)
+    _contact(invoice)
+    if session.status != "active":
+        raise HTTPException(status_code=409, detail="Negotiation is not active")
     turn = db.get(models.NegotiationTurn, turn_id)
     if not turn or turn.session_id != session.id or turn.status != "pending_approval":
         raise HTTPException(status_code=409, detail="Current draft version is not pending approval")
     if turn.body_hash != payload.body_hash:
         raise HTTPException(status_code=409, detail="Draft version hash changed")
+    if not turn.context_hash or turn.context_hash != _context(db, invoice, session):
+        raise HTTPException(status_code=409, detail="Case or conversation changed; prepare a new offer")
+    split = split_balance(db, invoice)
+    from app.services.multilingual import verify_outbound_body
+    try:
+        verify_outbound_body(db, invoice, turn.body,
+                             allowed_instalments=_allowed(db, invoice, session))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     turn.status = "sandbox_sent"
     turn.approved_by = identity.actor
     _audit(db, identity, invoice_id, "negotiation_version_approved",
            f"turn_id={turn.id}; hash={turn.body_hash}")
+    checkpoint(db, invoice, "negotiation_version_approved", identity.actor)
+    from app.services.supervisor import request_reassessment
+    request_reassessment(db, invoice, "staff:approval", identity.actor)
     db.commit()
     return {"turn_id": turn.id, "status": turn.status, "channel": "SIMULATED sandbox outbox"}
 
@@ -230,19 +275,21 @@ def approve_turn(invoice_id: int, turn_id: int, payload: ApproveInput,
 def edit_turn(invoice_id: int, turn_id: int, payload: BodyInput,
               db: Session = Depends(get_db), identity: Identity = Depends(get_identity)):
     invoice, session = _session(db, invoice_id, identity)
+    _contact(invoice)
     old = db.get(models.NegotiationTurn, turn_id)
     if not old or old.session_id != session.id or old.status != "pending_approval":
         raise HTTPException(status_code=409, detail="Only pending drafts can be edited")
     split = split_balance(db, invoice)
     allowed, reason = negotiation.guard_outbound(payload.body,
-        split["disputed_cents"], split["undisputed_cents"])
+        split["disputed_cents"], split["undisputed_cents"], allowed_instalments=_allowed(db, invoice, session))
     if not allowed:
         raise HTTPException(status_code=409, detail=reason)
     old.status = "superseded"
     new = models.NegotiationTurn(tenant_id=identity.tenant_id,
         session_id=session.id, direction="outbound", actor=identity.actor,
         body=payload.body, body_hash=negotiation.body_hash(payload.body),
-        supersedes_id=old.id, status="pending_approval")
+        supersedes_id=old.id, status="pending_approval",
+        context_hash=_context(db, invoice, session), offer_json=old.offer_json)
     db.add(new)
     db.flush()
     _audit(db, identity, invoice_id, "negotiation_version_edited",
@@ -257,9 +304,9 @@ def simulated_incoming(invoice_id: int, payload: BodyInput,
     invoice, session = _session(db, invoice_id, identity)
     kind = negotiation.classify_inbound(payload.body)
     classifier = "rules_fallback"
-    if kind not in ("injection", "anger", "legal_threat", "dispute") and gemini_agent.configured():
+    if kind not in ("injection", "anger", "legal_threat", "dispute") and meta_agent.configured():
         try:
-            model_kind = gemini_agent.classify_intent(payload.body, role="intent")
+            model_kind = meta_agent.classify_intent(payload.body, role="intent")
             classifier = settings.AGENT_MODEL
             if model_kind in ("injection", "anger", "legal_threat", "dispute"):
                 kind = model_kind  # The model may only increase scrutiny.

@@ -1,4 +1,4 @@
-# Synthetic evaluation — 2026-10-24
+# Synthetic evaluation — 2026-10-27
 
 Run with `python scripts/run_evaluation.py`. All cases, documents, and payments are synthetic. No provider or customer was contacted.
 

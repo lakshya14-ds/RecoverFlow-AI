@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 """
 RecoverFlow - Receivables and Collections
 """
@@ -15,9 +16,9 @@ class InvoiceFields:
     counterparty_tax_id: Optional[str] = None
     issue_date: Optional[str] = None        # YYYY-MM-DD
     due_date: Optional[str] = None          # YYYY-MM-DD
-    amount: Optional[float] = None
-    tax_amount: Optional[float] = None
-    total_amount: Optional[float] = None
+    amount: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
     po_number: Optional[str] = None
     description: Optional[str] = None
     currency: str = "USD"
@@ -26,11 +27,11 @@ class InvoiceFields:
     confidence_scores: dict = field(default_factory=dict)
     raw_text: str = ""
 
-def clean_amount(val_str: str) -> Optional[float]:
+def clean_amount(val_str: str) -> Optional[Decimal]:
     clean_str = re.sub(r'[^\d.]', '', val_str)
     try:
-        return float(clean_str)
-    except ValueError:
+        return Decimal(clean_str)
+    except (ValueError, InvalidOperation):
         return None
 
 def extract_invoice_fields(pdf_path: str) -> InvoiceFields:

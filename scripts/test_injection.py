@@ -78,6 +78,9 @@ def test_injection_defense():
             source_reference=f"MSG-ADVERSARIAL-{invoice.id}",
             source_snippet=adversarial_text,
             verified=False,
+            trust_state="rejected",
+            decided_by="policy_guard",
+            decision_reason=reason,
         )
         db.add(evidence)
 

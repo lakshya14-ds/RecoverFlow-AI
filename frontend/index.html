@@ -104,9 +104,28 @@
                         <select name="kind"><option value="payment">Payment</option><option value="credit">Credit</option></select>
                         <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
                         <input name="reference" placeholder="Unique receipt or reference" required>
+                        <label>Apply to balance<select name="allocation"><option value="undisputed_first">Undisputed first</option><option value="disputed_first">Disputed first</option><option value="undisputed">Undisputed only</option><option value="disputed">Disputed only</option></select></label>
                         <button type="submit" class="btn btn-primary">Record entry</button>
                     </form>
                     <p id="entry-result"></p>
+                    <h4>Investigate discrepancy</h4>
+                    <p>Compare linked invoice, order, delivery, return, and scheme records. Conflicts pause contact for staff review.</p>
+                    <button type="button" id="case-investigate" class="btn">Run investigation</button>
+                    <p id="investigation-result"></p>
+                    <form id="case-evidence-form" class="data-form">
+                        <label>Source record or upload reference<input name="source_reference" required placeholder="Document or uploaded source reference"></label>
+                        <label>Evidence title<input name="title" required></label>
+                        <label>What the source shows<input name="description" required></label>
+                        <button type="submit" class="btn">Attach source</button>
+                    </form>
+                    <p id="case-evidence-result"></p>
+                    <form id="dispute-review-form" class="data-form hidden">
+                        <label>Reviewed disputed amount<input name="disputed_amount" type="number" min="0" step="0.01" required></label>
+                        <label>Evidence reviewed<select name="evidence_id" required></select></label>
+                        <label>Reason for decision<input name="reason" minlength="5" required></label>
+                        <button type="submit" class="btn">Save staff dispute decision</button>
+                    </form>
+                    <p id="dispute-review-result"></p>
                     <h4>Record a customer reply</h4>
                     <form id="reply-form" class="data-form">
                         <select name="category"><option value="question">Question</option><option value="needs_time">Needs time</option><option value="paid_claim">Already paid</option><option value="dispute">Dispute</option><option value="opt_out">Opt out</option><option value="other">Other</option></select>
@@ -258,7 +277,9 @@
                     <label>Autonomy mode <select id="autonomy-mode"><option value="review_all">Review all</option><option value="auto_prepare">Auto-prepare</option><option value="auto_send_sandbox">Auto-send to sandbox</option></select></label>
                     <button type="button" class="btn" id="autonomy-save">Save autonomy mode</button><p id="autonomy-result"></p>
                 </div>
-                <div class="paper-panel"><h3>Gemini key assignment</h3><div id="key-assignment">Connect to load slot status.</div></div>
+                <div class="paper-panel"><h3>Meta key assignment</h3><div id="key-assignment">Connect to load slot status.</div></div>
+                <div class="paper-panel"><h3>Owner action queue</h3><p>Next action per case, derived from case state.</p><div class="stack" id="owner-queue"><p>Loading queue…</p></div></div>
+                <div class="paper-panel"><h3>Agent activity</h3><p>Specialist tasks with retries, pauses, and outcomes.</p><div class="stack" id="agent-activity"><p>Loading activity…</p></div></div>
                 <div class="paper-panel"><h3>Sandbox outbox</h3><div id="sandbox-outbox">No messages queued.</div></div>
                 <div class="paper-panel"><h3>Mini evaluation</h3><p id="evaluation-summary">Loading measured synthetic results…</p><p><a href="/evaluation.html" target="_blank" rel="noopener">Open methods and file-level results</a></p></div>
                 <div class="paper-panel"><h3>Advanced existing controls</h3><div id="legacy-tools"></div></div>

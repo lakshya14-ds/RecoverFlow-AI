@@ -1,3 +1,4 @@
+from decimal import Decimal
 """Restartable local invoice worker. Run with: python -m app.worker."""
 import argparse
 import logging
@@ -78,9 +79,9 @@ def refresh_dso_snapshots() -> None:
                 snapshot = models.DSOSnapshot(tenant_id=tenant, snapshot_date=today)
                 db.add(snapshot)
             snapshot.dso_days = round(ar_cents / recent_sales_cents * 30, 2)
-            snapshot.ar_balance = ar_cents / 100
-            snapshot.revenue_30d = recent_sales_cents / 100
-            snapshot.overdue_amount = sum(balance for _, balance in overdue) / 100
+            snapshot.ar_balance = Decimal(ar_cents) / 100
+            snapshot.revenue_30d = Decimal(recent_sales_cents) / 100
+            snapshot.overdue_amount = Decimal(sum(balance for _, balance in overdue)) / 100
             snapshot.overdue_count = len(overdue)
         db.commit()
 

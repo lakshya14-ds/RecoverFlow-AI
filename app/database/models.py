@@ -5,6 +5,7 @@ from sqlalchemy import Column, Integer, String, Float, DateTime, Date, ForeignKe
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from app.database.db_manager import Base
+from app.database.money import Money
 
 class Invoice(Base):
     """
@@ -23,10 +24,10 @@ class Invoice(Base):
     issue_date = Column(Date, nullable=False)
     due_date = Column(Date, nullable=False, index=True)
     received_date = Column(Date)
-    amount = Column(Float, nullable=False)
-    currency = Column(String, default="USD")
-    tax_amount = Column(Float, default=0.0)
-    total_amount = Column(Float, nullable=False)
+    amount = Column(Money, nullable=False)
+    currency = Column(String, default="INR")
+    tax_amount = Column(Money, default=0.0)
+    total_amount = Column(Money, nullable=False)
     face_amount_cents = Column(Integer)
     description = Column(Text)
     po_number = Column(String)
@@ -48,6 +49,9 @@ class Invoice(Base):
     contact_opt_out = Column(Boolean, nullable=False, default=False)
     dispute_open = Column(Boolean, nullable=False, default=False)
     disputed_cents = Column(Integer, nullable=False, default=0)
+    investigation_hold = Column(Boolean, nullable=False, default=False)
+    investigation_reason = Column(Text)
+    investigation_decision_hash = Column(String(64))
     afis_transaction_id = Column(Integer)
     axis_classified = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -68,8 +72,8 @@ class Reconciliation(Base):
     afis_transaction_id = Column(Integer, nullable=False)
     match_type = Column(String, nullable=False)
     confidence_score = Column(Float, nullable=False)
-    matched_amount = Column(Float, nullable=False)
-    variance_amount = Column(Float, default=0.0)
+    matched_amount = Column(Money, nullable=False)
+    variance_amount = Column(Money, default=0.0)
     variance_reason = Column(Text)
     match_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     matched_by = Column(String, default="recoverflow_agent")
@@ -84,12 +88,15 @@ class Reconciliation(Base):
 class ReceivableEntry(Base):
     """Signed, immutable adjustment to an invoice's opening receivable balance."""
     __tablename__ = "receivable_entries"
-    __table_args__ = (UniqueConstraint("tenant_id", "source", "reference"),)
+    __table_args__ = (UniqueConstraint("tenant_id", "source", "reference"), UniqueConstraint("tenant_id", "reversal_of_id"),)
     id = Column(Integer, primary_key=True)
     tenant_id = Column(String, nullable=False, index=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
     kind = Column(String, nullable=False)
     amount_cents = Column(Integer, nullable=False)
+    allocation = Column(String, nullable=False, default="legacy")
+    disputed_delta_cents = Column(Integer, nullable=False, default=0)
+    reversal_of_id = Column(Integer, ForeignKey("receivable_entries.id"))
     currency = Column(String, nullable=False)
     source = Column(String, nullable=False)
     reference = Column(String, nullable=False)
@@ -162,9 +169,9 @@ class DSOSnapshot(Base):
     tenant_id = Column(String, nullable=False, default="local", index=True)
     snapshot_date = Column(Date, nullable=False)
     dso_days = Column(Float, nullable=False)
-    ar_balance = Column(Float, nullable=False)
-    revenue_30d = Column(Float, nullable=False)
-    overdue_amount = Column(Float, default=0.0)
+    ar_balance = Column(Money, nullable=False)
+    revenue_30d = Column(Money, nullable=False)
+    overdue_amount = Column(Money, default=0.0)
     overdue_count = Column(Integer, default=0)
     collection_rate = Column(Float, default=0.0)
     notes = Column(Text)
@@ -185,11 +192,11 @@ class Counterparty(Base):
     address = Column(Text)
     tax_id = Column(String)
     payment_terms = Column(Integer, default=30)
-    credit_limit = Column(Float, default=0.0)
+    credit_limit = Column(Money, default=0.0)
     avg_payment_days = Column(Float, default=0.0)
     on_time_rate = Column(Float, default=1.0)
-    total_invoiced = Column(Float, default=0.0)
-    total_paid = Column(Float, default=0.0)
+    total_invoiced = Column(Money, default=0.0)
+    total_paid = Column(Money, default=0.0)
     fraud_flag = Column(Integer, default=0)
     risk_score = Column(Float, default=0.0)
     notes = Column(Text)
@@ -407,6 +414,8 @@ class NegotiationTurn(Base):
     direction = Column(String, nullable=False)
     actor = Column(String, nullable=False)
     body = Column(Text, nullable=False)
+    context_hash = Column(String(64))
+    offer_json = Column(Text)
     body_hash = Column(String(64), nullable=False)
     supersedes_id = Column(Integer, ForeignKey("negotiation_turns.id"))
     approved_by = Column(String)
@@ -476,7 +485,11 @@ class AgentExecution(Base):
 
 
 class CaseEvidence(Base):
-    """Source-linked evidence verifying amounts, POs, dispute claims, or bank entries."""
+    """Source-linked claim. Trust: alleged < extracted < verified < accepted; rejected ends use.
+
+    Customer statements and model extractions enter as alleged/extracted.
+    Staff verify a source (verified) or authorize financial reliance (accepted).
+    Old verified=True rows migrate to verified, never accepted."""
     __tablename__ = "case_evidence"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String, nullable=False, default="local", index=True)
@@ -489,6 +502,11 @@ class CaseEvidence(Base):
     source_snippet = Column(Text)
     amount_cents = Column(Integer)
     verified = Column(Boolean, default=True)
+    trust_state = Column(String, nullable=False, default="alleged")
+    decided_by = Column(String)
+    decided_at = Column(DateTime)
+    decision_reason = Column(Text)
+    currency = Column(String)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
@@ -550,3 +568,180 @@ class UserSession(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     expires_at = Column(DateTime, nullable=False)
     is_revoked = Column(Boolean, nullable=False, default=False)
+
+
+class CaseWorkflow(Base):
+    """One durable, versioned lifecycle shared by all processing entry points."""
+    __tablename__ = "case_workflows"
+    __table_args__ = (UniqueConstraint("tenant_id", "invoice_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    revision = Column(Integer, nullable=False, default=0)
+    stage = Column(String, nullable=False)
+    context_hash = Column(String(64), nullable=False)
+    last_event = Column(String, nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ItemAlias(Base):
+    __tablename__ = "item_aliases"
+    __table_args__ = (UniqueConstraint("tenant_id", "alias"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    alias = Column(String(200), nullable=False)
+    canonical_sku = Column(String(200), nullable=False)
+    approved_by = Column(String, nullable=False)
+
+
+class SupervisorTask(Base):
+    """Durable specialist execution. Outputs are advisory; the ledger moves
+    exclusively through existing authorized posting paths."""
+    __tablename__ = "supervisor_tasks"
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), index=True)
+    kind = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="queued")
+    idempotency_key = Column(String, nullable=False)
+    input_json = Column(Text, nullable=False, default="{}")
+    depends_on_json = Column(Text, nullable=False, default="[]")
+    trigger = Column(String, nullable=False, default="manual")
+    attempts = Column(Integer, nullable=False, default=0)
+    max_attempts = Column(Integer, nullable=False, default=3)
+    time_budget_ms = Column(Integer, nullable=False, default=30000)
+    model_budget = Column(Integer, nullable=False, default=2)
+    model_calls = Column(Integer, nullable=False, default=0)
+    case_version = Column(String(64))
+    result_json = Column(Text)
+    error = Column(Text)
+    applied = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime)
+
+
+class CompetingExplanation(Base):
+    """Conflicting hypotheses for one item+claim. Staff resolve; never auto-picked."""
+    __tablename__ = "competing_explanations"
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    identity = Column(String(200), nullable=False)
+    category = Column(String(50), nullable=False)
+    hypotheses_json = Column(Text, nullable=False, default="[]")
+    status = Column(String, nullable=False, default="open")
+    resolved_hypothesis = Column(String(100))
+    resolved_by = Column(String)
+    resolution_reason = Column(Text)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ClarificationTask(Base):
+    """One missing fact blocking a decision, with owner, source, due date, amount."""
+    __tablename__ = "clarification_tasks"
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    key = Column(String(200), nullable=False)
+    title = Column(String(300), nullable=False)
+    owner = Column(String(20), nullable=False)
+    source = Column(String(300), nullable=False)
+    due_date = Column(Date)
+    affected_cents = Column(Integer, nullable=False, default=0)
+    status = Column(String, nullable=False, default="open")
+    draft_preview = Column(Text)
+    created_by = Column(String, nullable=False, default="investigator_agent")
+    fulfilled_evidence_id = Column(Integer, ForeignKey("case_evidence.id"))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class UnitRule(Base):
+    """Staff-approved unit conversion. No rule, no conversion."""
+    __tablename__ = "unit_rules"
+    __table_args__ = (UniqueConstraint("tenant_id", "from_unit", "to_unit"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    from_unit = Column(String(50), nullable=False)
+    to_unit = Column(String(50), nullable=False)
+    factor = Column(String(30), nullable=False)
+    approved_by = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AllocationProposal(Base):
+    """Candidate split of one verified transfer across invoices. Staff approve."""
+    __tablename__ = "allocation_proposals"
+    __table_args__ = (UniqueConstraint("tenant_id", "afis_transaction_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    afis_transaction_id = Column(String(120), nullable=False)
+    transfer_cents = Column(Integer, nullable=False)
+    currency = Column(String, nullable=False, default="INR")
+    transfer_date = Column(String(20))
+    description = Column(Text)
+    status = Column(String, nullable=False, default="proposed")
+    candidates_json = Column(Text, nullable=False, default="[]")
+    created_by = Column(String, nullable=False)
+    decided_by = Column(String)
+    decision_reason = Column(Text)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class AllocationLeg(Base):
+    """One invoice leg of a proposal. Posts only through staff approval."""
+    __tablename__ = "allocation_legs"
+    __table_args__ = (UniqueConstraint("proposal_id", "invoice_id"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    proposal_id = Column(Integer, ForeignKey("allocation_proposals.id"), nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    amount_cents = Column(Integer, nullable=False)
+    allocation = Column(String, nullable=False, default="undisputed_first")
+    status = Column(String, nullable=False, default="pending")
+    reason = Column(Text)
+    entry_id = Column(Integer, ForeignKey("receivable_entries.id"))
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PayerAlias(Base):
+    """Staff-approved payer-name alias for transfer matching."""
+    __tablename__ = "payer_aliases"
+    __table_args__ = (UniqueConstraint("tenant_id", "alias"),)
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    alias = Column(String(200), nullable=False)
+    counterparty_name = Column(String(200), nullable=False)
+    approved_by = Column(String, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PromiseToPay(Base):
+    """Nonfinancial promise record. Never cash, never closes a case."""
+    __tablename__ = "promises_to_pay"
+    id = Column(Integer, primary_key=True)
+    tenant_id = Column(String, nullable=False, index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    promised_cents = Column(Integer, nullable=False)
+    promised_date = Column(Date)
+    source_message_id = Column(Integer, ForeignKey("customer_messages.id"))
+    source_text = Column(Text, nullable=False)
+    extraction_confidence = Column(Float, nullable=False, default=0.0)
+    status = Column(String, nullable=False, default="alleged")
+    confirmed_by = Column(String)
+    confirmed_at = Column(DateTime)
+    reminders_sent = Column(Integer, nullable=False, default=0)
+    last_reminder_at = Column(DateTime)
+    broken_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc))

@@ -100,7 +100,7 @@ The test supplies **verified dispute amounts** to the ledger, then calls the rea
 
 ## Ten actual upload and pipeline trials, offline
 
-The runner generates three CSVs, five text PDFs, one PNG and one JPEG, sends them through the upload endpoint, runs the DB worker and reads the tracker. Tagged synthetic PDFs use a narrow offline parser. Ordinary PDFs and images require Gemini or staff review. No fake Gemini response is used in this run.
+The runner generates three CSVs, five text PDFs, one PNG and one JPEG, sends them through the upload endpoint, runs the DB worker and reads the tracker. Tagged synthetic PDFs use a narrow offline parser. Ordinary PDFs and images require Meta or staff review. No fake Meta response is used in this run.
 
 - Correct Review/Needs attention routing: **{intake['correct_triage']}/{intake['total']}**.
 - Reached Review without human data entry: **{intake['reached_review_without_data_entry']}/{intake['total']} ({100 * intake['reached_review_without_data_entry'] / intake['total']:.0f}%)**.
@@ -110,7 +110,7 @@ The runner generates three CSVs, five text PDFs, one PNG and one JPEG, sends the
 | --- | --- | --- |
 {file_rows}
 
-Limits: ten generated files are not a representative document sample. The fallback only recognizes tagged synthetic PDFs. Gemini PDF/image extraction has separate stubbed-client tests; live accuracy was not measured. Staff still confirm uploaded invoices and receipts before ledger posting or automatic sandbox send.
+Limits: ten generated files are not a representative document sample. The fallback only recognizes tagged synthetic PDFs. Meta PDF/image extraction has separate stubbed-client tests; live accuracy was not measured. Staff still confirm uploaded invoices and receipts before ledger posting or automatic sandbox send.
 """
     path = Path(__file__).resolve().parent.parent / "docs" / "evaluation.md"
     path.write_text(report, encoding="utf-8")

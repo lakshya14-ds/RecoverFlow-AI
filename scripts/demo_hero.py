@@ -38,13 +38,13 @@ def run_hero_demo():
     previous_factory = intake_pipeline.SessionLocal
     saved = {name: getattr(settings, name) for name in (
         "BASE_DIR", "RECOVERFLOW_API_KEY", "RECOVERFLOW_API_KEYS_JSON",
-        "GEMINI_API_KEY", "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3")}
+        "META_MODEL_API_KEY", "META_API_KEY_1", "META_API_KEY_2", "META_API_KEY_3")}
     try:
         with TemporaryDirectory() as temp:
             settings.BASE_DIR = Path(temp)
             settings.RECOVERFLOW_API_KEY = "synthetic-offline-demo"
             settings.RECOVERFLOW_API_KEYS_JSON = ""
-            for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"):
+            for name in ("META_MODEL_API_KEY", "META_API_KEY_1", "META_API_KEY_2", "META_API_KEY_3"):
                 setattr(settings, name, "")
             intake_pipeline.SessionLocal = factory
             client = TestClient(app)

@@ -71,6 +71,8 @@ def reply(message_id: int, payload: ReplyInput, db: Session = Depends(get_db),
     if not invoice or invoice.tenant_id != identity.tenant_id or invoice.contact_opt_out:
         raise HTTPException(status_code=409, detail="Customer contact is not allowed")
     split = split_balance(db, invoice)
+    if invoice.investigation_hold:
+        raise HTTPException(status_code=409, detail="Investigation requires staff review")
     allowed, reason = guard_outbound(payload.body, split["disputed_cents"], split["undisputed_cents"])
     if not allowed:
         raise HTTPException(status_code=409, detail=reason)

@@ -1,0 +1,90 @@
+%PDF-1.3
+%“Œ‹ž ReportLab Generated PDF document http://www.reportlab.com
+1 0 obj
+<<
+/F1 2 0 R /F2 3 0 R
+>>
+endobj
+2 0 obj
+<<
+/BaseFont /Helvetica /Encoding /WinAnsiEncoding /Name /F1 /Subtype /Type1 /Type /Font
+>>
+endobj
+3 0 obj
+<<
+/BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding /Name /F2 /Subtype /Type1 /Type /Font
+>>
+endobj
+4 0 obj
+<<
+/Contents 8 0 R /MediaBox [ 0 0 612 792 ] /Parent 7 0 R /Resources <<
+/Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ]
+>> /Rotate 0 /Trans <<
+
+>> 
+  /Type /Page
+>>
+endobj
+5 0 obj
+<<
+/PageMode /UseNone /Pages 7 0 R /Type /Catalog
+>>
+endobj
+6 0 obj
+<<
+/Author (anonymous) /CreationDate (D:20261028103534+05'00') /Creator (ReportLab PDF Library - www.reportlab.com) /Keywords () /ModDate (D:20261028103534+05'00') /Producer (ReportLab PDF Library - www.reportlab.com) 
+  /Subject (unspecified) /Title (untitled) /Trapped /False
+>>
+endobj
+7 0 obj
+<<
+/Count 1 /Kids [ 4 0 R ] /Type /Pages
+>>
+endobj
+8 0 obj
+<<
+/Length 841
+>>
+stream
+1 0 0 1 0 0 cm  BT /F1 12 Tf 14.4 TL ET
+BT /F2 14 Tf 16.8 TL ET
+BT 1 0 0 1 35 750 Tm (TAX INVOICE - RECOVERFLOW TEST) Tj T* ET
+BT /F1 10 Tf 12 TL ET
+BT 1 0 0 1 35 720 Tm (RECOVERFLOW SYNTHETIC DOCUMENT) Tj T* ET
+BT 1 0 0 1 35 698 Tm (DOCUMENT TYPE: invoice) Tj T* ET
+BT 1 0 0 1 35 676 Tm (INVOICE NUMBER: INV-2026-DUMMY-01) Tj T* ET
+BT 1 0 0 1 35 654 Tm (INVOICE REFERENCE: ) Tj T* ET
+BT 1 0 0 1 35 632 Tm (CUSTOMER NAME: Mehra Automotives Pvt Ltd) Tj T* ET
+BT 1 0 0 1 35 610 Tm (ISSUE DATE: 2026-10-10) Tj T* ET
+BT 1 0 0 1 35 588 Tm (DUE DATE: 2026-11-10) Tj T* ET
+BT 1 0 0 1 35 566 Tm (TOTAL AMOUNT: 120000.00) Tj T* ET
+BT 1 0 0 1 35 544 Tm (CURRENCY: INR) Tj T* ET
+BT 1 0 0 1 35 522 Tm (TEXT: Commercial invoice for automotive components) Tj T* ET
+BT 1 0 0 1 35 500 Tm (LINE: Automotive Fuel Valves | 40 | 3000.00 | 120000.00) Tj T* ET
+ 
+endstream
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000073 00000 n 
+0000000114 00000 n 
+0000000221 00000 n 
+0000000333 00000 n 
+0000000526 00000 n 
+0000000594 00000 n 
+0000000890 00000 n 
+0000000949 00000 n 
+trailer
+<<
+/ID 
+[<e2d9f74a942d3a2443d8276bdc7d0d2b><e2d9f74a942d3a2443d8276bdc7d0d2b>]
+% ReportLab generated PDF document -- digest (http://www.reportlab.com)
+
+/Info 6 0 R
+/Root 5 0 R
+/Size 9
+>>
+startxref
+1840
+%%EOF

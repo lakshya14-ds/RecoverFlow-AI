@@ -1,3 +1,4 @@
+from decimal import Decimal
 """Reports calculated from persisted records."""
 from datetime import date
 from fastapi import APIRouter, Depends
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/reports", tags=["Reports"])
 @router.get("/ar-aging")
 def get_ar_aging(db: Session = Depends(get_db),
                  identity: Identity = Depends(get_identity)):
-    buckets = {"current": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "90+": 0.0}
+    buckets = {"current": Decimal(0), "1-30": Decimal(0), "31-60": Decimal(0), "61-90": Decimal(0), "90+": Decimal(0)}
     invoices = db.query(models.Invoice).filter(
         models.Invoice.invoice_type == "AR",
         models.Invoice.tenant_id == identity.tenant_id,
@@ -26,7 +27,7 @@ def get_ar_aging(db: Session = Depends(get_db),
         overdue = (today - invoice.due_date).days
         key = ("current" if overdue <= 0 else "1-30" if overdue <= 30 else
                "31-60" if overdue <= 60 else "61-90" if overdue <= 90 else "90+")
-        buckets[key] += max(0, balance_cents(db, invoice)) / 100
+        buckets[key] += Decimal(max(0, balance_cents(db, invoice))) / 100
     return {**buckets, "total": sum(buckets.values()), "invoice_count": len(invoices)}
 
 

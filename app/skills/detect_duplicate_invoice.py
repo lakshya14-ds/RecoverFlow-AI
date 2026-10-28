@@ -1,3 +1,4 @@
+from decimal import Decimal
 """
 RecoverFlow - Receivables and Collections
 """
@@ -11,7 +12,7 @@ def detect_duplicate_invoice(
     using exact and fuzzy invoice-number matches.
     """
     inv_num = str(invoice.get("invoice_number", "")).strip()
-    inv_amount = float(invoice.get("total_amount", 0.0))
+    inv_amount = Decimal(str(invoice.get("total_amount", 0)))
     inv_counterparty = str(invoice.get("counterparty_name", "")).strip().lower()
 
     if not inv_num or not inv_counterparty:
@@ -19,14 +20,14 @@ def detect_duplicate_invoice(
 
     for existing in existing_invoices:
         ext_num = str(existing.get("invoice_number", "")).strip()
-        ext_amount = float(existing.get("total_amount", 0.0))
+        ext_amount = Decimal(str(existing.get("total_amount", 0)))
         ext_counterparty = str(existing.get("counterparty_name", "")).strip().lower()
 
         if inv_counterparty != ext_counterparty:
             continue
 
         # Exact match.
-        if inv_num == ext_num and abs(inv_amount - ext_amount) < 0.01:
+        if inv_num == ext_num and abs(inv_amount - ext_amount) < Decimal("0.01"):
             return {
                 "is_duplicate": True, 
                 "duplicate_of_id": existing.get("id"),
@@ -39,7 +40,7 @@ def detect_duplicate_invoice(
         ratio = SequenceMatcher(None, inv_num, ext_num).ratio() * 100
         amount_diff = abs(inv_amount - ext_amount) / (inv_amount if inv_amount > 0 else 1)
         
-        if ratio > 85 and amount_diff < 0.01:
+        if ratio > 85 and amount_diff < Decimal("0.01"):
             return {
                 "is_duplicate": True, 
                 "duplicate_of_id": existing.get("id"),

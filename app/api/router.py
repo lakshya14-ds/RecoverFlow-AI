@@ -22,6 +22,8 @@ from .controlled_agent import router as controlled_agent_router
 from .auth import router as auth_router
 from .intake import router as intake_router
 from .negotiations import router as negotiations_router
+from .supervisor import router as supervisor_router
+from .allocations import router as allocations_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -44,3 +46,5 @@ api_router.include_router(controlled_agent_router)
 api_router.include_router(auth_router)
 api_router.include_router(intake_router)
 api_router.include_router(negotiations_router)
+api_router.include_router(supervisor_router)
+api_router.include_router(allocations_router)

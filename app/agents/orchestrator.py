@@ -1,3 +1,4 @@
+from decimal import Decimal
 """
 RecoverFlow - Receivables and Collections
 """
@@ -26,9 +27,9 @@ class RecoverFlowAgentState(TypedDict, total=False):
     duplicate_of_id: int
     matched_afis_id: int
     reconciliation_confidence: float
-    matched_amount: float
+    matched_amount: Decimal
     match_type: str
-    variance_amount: float
+    variance_amount: Decimal
     requires_human_review: bool
     dunning_stage: int
     dunning_email_sent: bool

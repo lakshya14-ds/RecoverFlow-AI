@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import models
 from app.database.db_manager import Base, get_db
 from app.main import app
-from app.services import gemini_agent
+from app.services import meta_agent
 from app.services.negotiation import offer_ladder
 
 
@@ -25,7 +25,7 @@ def setup_case(monkeypatch):
     app.dependency_overrides[get_db] = override
     monkeypatch.setattr(settings, "RECOVERFLOW_API_KEY", "synthetic-negotiation-test")
     monkeypatch.setattr(settings, "RECOVERFLOW_API_KEYS_JSON", "")
-    for name in ("GEMINI_API_KEY", "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3"):
+    for name in ("META_MODEL_API_KEY", "META_API_KEY_1", "META_API_KEY_2", "META_API_KEY_3"):
         monkeypatch.setattr(settings, name, "")
     with factory() as db:
         invoice = models.Invoice(tenant_id="local", invoice_number="INV-SYNTH",
@@ -134,13 +134,13 @@ def test_simulated_customer_haggle_cancel_and_inject_in_each_mode(monkeypatch, m
 def test_model_classification_uses_role_slots_without_deescalation(monkeypatch):
     client, _, invoice_id, headers = setup_case(monkeypatch)
     root = f"/api/v1/negotiations/cases/{invoice_id}"
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_2", "synthetic-slot-2")
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_3", "synthetic-slot-3")
+    monkeypatch.setattr(settings, "META_API_KEY_2", "synthetic-slot-2")
+    monkeypatch.setattr(settings, "META_API_KEY_3", "synthetic-slot-3")
     calls = []
     def fake_classify(text, *, role):
         calls.append(role)
         return "haggling" if role == "intent" else "legal_threat"
-    monkeypatch.setattr(gemini_agent, "classify_intent", fake_classify)
+    monkeypatch.setattr(meta_agent, "classify_intent", fake_classify)
     try:
         assert client.put(root, headers=headers, json={"mode": "manual"}).status_code == 200
         incoming = client.post(root + "/incoming", headers=headers,

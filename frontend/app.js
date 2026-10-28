@@ -14,7 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
         pending: 'Open', partially_matched: 'Partially paid', paid: 'Paid',
         draft: 'Draft', approved: 'Approved', sent: 'Sent',
         contacted_manually: 'Contact recorded', disputed: 'Disputed',
-        PARTIALLY_RESOLVED: 'Partially resolved', RESOLVED_PAID: 'Resolved · paid'
+        PARTIALLY_RESOLVED: 'Partially resolved', RESOLVED_PAID: 'Resolved · paid',
+        adjusted: 'Resolved · adjusted'
     }[value] || String(value || 'Unknown'));
     const formatCents = cents => {
         const value = BigInt(cents || 0);
@@ -116,7 +117,11 @@ document.addEventListener('DOMContentLoaded', () => {
             views.forEach(v => v.classList.remove('active'));
             
             item.classList.add('active');
-            views.forEach(v => v.classList.toggle('active', pageForView[v.id.replace('view-', '')] === page));
+            views.forEach(v => {
+                const isActive = pageForView[v.id.replace('view-', '')] === page;
+                v.classList.toggle('active', isActive);
+                v.classList.toggle('hidden', !isActive);
+            });
             document.querySelector('main header h2').textContent = item.textContent;
             const descriptions = {intake:'Upload evidence and watch each file advance.',
                 review:'Review sources, approve exact drafts, and choose who negotiates.',
@@ -129,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadDunning(); loadFraud(); loadAgent();
             }
             if(page === 'intake') loadIntakeUploads();
-            if(page === 'control') { loadSummary(); loadConnected(); loadAgent(); loadControl(); }
+            if(page === 'control') { loadSummary(); loadConnected(); loadAgent(); loadControl(); loadOwnerQueue(); loadAgentActivity(); }
             if (caseId) openCase(caseId);
     }
     navItems.forEach(item => {
@@ -275,7 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const search = query.trim().toLocaleLowerCase();
         const rows = caseRows.filter(item => `${item.invoice_number} ${item.customer}`.toLocaleLowerCase().includes(search));
         container.innerHTML = rows.length ? `<p class="mobile-hint">Swipe the table to see each case action →</p><div class="table-container"><table><thead><tr><th scope="col">Invoice</th><th scope="col">Customer</th><th scope="col">Due</th><th scope="col">Outstanding</th><th scope="col">Undisputed</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead><tbody>${rows.map(item => `
-            <tr><td class="mono">${escapeHtml(item.invoice_number)}</td><td>${escapeHtml(item.customer)}</td><td>${escapeHtml(item.due_date)}</td><td>${money(item.currency, item.outstanding_cents)}</td><td>${money(item.currency, item.undisputed_cents)}</td><td><span class="state-text">${escapeHtml(displayStatus(item.status))}</span>${item.contact_suppressed ? '<br><span class="state-text blocked">Contact paused</span>' : ''}</td><td><button type="button" class="btn case-open" data-id="${Number(item.invoice_id)}">Open file</button></td></tr>`).join('')}</tbody></table></div>` : `<p class="empty-state">${caseRows.length ? 'No cases match this search.' : 'No receivable cases yet.'}</p>`;
+            <tr><td class="mono">${escapeHtml(item.invoice_number)}</td><td>${escapeHtml(item.customer)}</td><td>${escapeHtml(item.due_date)}</td><td>${money(item.currency, item.outstanding_cents)}</td><td>${money(item.currency, item.undisputed_cents)}</td><td><span class="state-text">${escapeHtml(displayStatus(item.status))}</span>${item.investigation_hold || item.reconciliation_error ? '<br><span class="state-text blocked">Staff reconciliation needed</span>' : item.contact_suppressed ? '<br><span class="state-text blocked">Contact paused</span>' : ''}</td><td><button type="button" class="btn case-open" data-id="${Number(item.invoice_id)}">Open file</button></td></tr>`).join('')}</tbody></table></div>` : `<p class="empty-state">${caseRows.length ? 'No cases match this search.' : 'No receivable cases yet.'}</p>`;
         container.querySelectorAll('.case-open').forEach(button => button.addEventListener('click', () => openCase(button.dataset.id)));
     }
 
@@ -301,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const hasInvoiceSource = (data.evidence || []).some(ev => ev.claim_type === 'invoice_total' && ev.source_reference);
                 const hasLedgerSource = (data.entries || []).length > 0;
                 if (claim === 'received_payment' && hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Current ledger activity</button>';
+                if (claim === 'credit_adjustment' && hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Posted credit activity</button>';
                 if ((claim === 'undisputed_balance') && hasInvoiceSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Invoice and ledger</button>';
                 if (cents === 0 && hasInvoiceSource) return '<span class="source-unavailable">No amount currently due</span>';
                 return null;
@@ -310,11 +316,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const splitHtml = `
                 ${injectionHtml}
+                ${data.investigation_hold || data.reconciliation_error ? `<div class="injection-alert"><div><strong>Staff reconciliation required</strong><p>${escapeHtml(data.investigation_reason || 'The open dispute and outstanding balance disagree. Review the ledger and source evidence before customer contact.')}</p></div></div>` : ''}
                 <div class="case-heading"><h3 class="mono">${escapeHtml(data.invoice_number)}</h3><p>${escapeHtml(data.customer)}</p></div>
                 <div class="case-meta"><span>Due <strong>${escapeHtml(data.due_date)}</strong></span><span>Status <strong>${escapeHtml(displayStatus(data.status))}</strong></span><span>${data.contact_suppressed ? 'Contact paused' : 'Contact eligible under policy'}</span></div>
                 <div class="balance-story">
                     ${metric('Invoice total', data.invoice_total_cents, 'invoice_total')}
                     ${metric('Received', data.received_cents, 'received_payment', 'received')}
+                    ${data.credits_cents ? metric('Credits applied', data.credits_cents, 'credit_adjustment') : ''}
                     ${metric('Outstanding', data.outstanding_cents, 'undisputed_balance')}
                     <div class="balance-split">${leaf('Disputed · on hold', data.disputed_cents, 'dispute_item', 'disputed')}${leaf('Undisputed · eligible', data.undisputed_cents, 'undisputed_balance', 'undisputed')}</div>
                 </div>
@@ -336,12 +344,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             });
 
-            document.getElementById('create-payment-link').disabled = data.currency !== 'INR' || data.undisputed_cents <= 0 || data.requires_human_review;
+            document.getElementById('create-payment-link').disabled = data.currency !== 'INR' || data.undisputed_cents <= 0 || data.requires_human_review || data.investigation_hold || data.reconciliation_error;
             document.getElementById('payment-link-result').textContent = '';
             document.getElementById('resume-form').classList.toggle('hidden', !data.contact_suppressed);
             document.getElementById('shopify-confirm-form').classList.toggle('hidden', !(data.source_system === 'shopify' && data.requires_human_review));
+            const reviewForm = document.getElementById('dispute-review-form');
+            reviewForm.classList.toggle('hidden', !(data.investigation_hold || data.reconciliation_error));
+            reviewForm.elements.disputed_amount.value = Math.max(0, Math.min(data.disputed_cents, data.outstanding_cents)) / 100;
+            reviewForm.elements.evidence_id.innerHTML = (data.evidence || []).filter(ev => ev.source_reference).map(ev => `<option value="${Number(ev.id)}">${escapeHtml(ev.title)}</option>`).join('');
+            reviewForm.elements.evidence_id.required = !!reviewForm.elements.evidence_id.options.length;
+            reviewForm.querySelector('button[type="submit"]').disabled = !reviewForm.elements.evidence_id.options.length;
 
             // Evidence Investigation Cards
+            const currentClaimAmounts = {undisputed_balance: data.undisputed_cents};
             const evidenceHtml = `
                 <h4>Evidence &amp; activity</h4>
                 <p>Linked records support the balance story. Unverified material is labeled.</p>
@@ -350,14 +365,16 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
                                 <strong>${localEvidence.has(ev.source_reference) ? `<a class="document-link" href="${localEvidence.get(ev.source_reference)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.title)} · Open PDF</a>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
-                                <span class="source-tag">${escapeHtml(ev.source_type)} · ${ev.verified ? 'Marked verified' : 'Not verified'}</span>
+                                <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
+                            ${ev.decided_by ? `<p class="extraction-confidence">Decided by ${escapeHtml(ev.decided_by)} · ${escapeHtml(ev.decision_reason || '')}${ev.currency ? ` · ${escapeHtml(ev.currency)}` : ''}</p>` : (ev.currency && ev.currency !== data.currency ? `<p class="extraction-confidence">Claim currency ${escapeHtml(ev.currency)}</p>` : '')}
+                            ${['accepted', 'rejected'].includes(ev.trust_state) ? '' : `<span class="trust-review" data-id="${Number(ev.id)}"><button type="button" class="btn trust-btn" data-trust="verified">Verify</button> <button type="button" class="btn trust-btn" data-trust="accepted">Accept</button> <button type="button" class="btn trust-btn" data-trust="rejected">Reject</button></span>`}
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
                                 <span class="evidence-ref">Source: ${escapeHtml(ev.source_reference)}</span>
                                 ${ev.amount_cents != null ? `<strong>${money(data.currency, ev.amount_cents)}</strong>` : ''}
                             </div>
-                            ${!ev.verified && String(ev.source_reference).startsWith('/api/v1/intake/uploads/') && ['invoice_total','received_payment'].includes(ev.claim_type) ? `<button type="button" class="btn confirm-upload" data-url="${escapeHtml(ev.source_reference.replace(/\/file$/, ev.claim_type === 'invoice_total' ? '/confirm-invoice' : '/confirm-receipt'))}">Confirm ${ev.claim_type === 'invoice_total' ? 'invoice' : 'receipt'} after review</button>` : ''}
+                            ${['alleged', 'extracted'].includes(ev.trust_state || 'alleged') && String(ev.source_reference).startsWith('/api/v1/intake/uploads/') && ['invoice_total','received_payment'].includes(ev.claim_type) ? `<button type="button" class="btn confirm-upload" data-url="${escapeHtml(ev.source_reference.replace(/\/file$/, ev.claim_type === 'invoice_total' ? '/confirm-invoice' : '/confirm-receipt'))}">Confirm ${ev.claim_type === 'invoice_total' ? 'invoice' : 'receipt'} after review</button>` : ''}
                             ${ev.source_snippet ? `<div class="snippet-box">"${escapeHtml(ev.source_snippet)}"</div>` : ''}
                         </div>
                     `).join('') || '<p>No linked evidence items yet.</p>'}
@@ -368,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${evidenceHtml}
                 <h4 id="ledger-activity">Current ledger entries &amp; activity</h4>
                 <div class="stack">${[
-                    ...data.entries.map(item => `<div class="subcard">${escapeHtml(item.kind)}: ${money(item.currency, item.amount_cents < 0 ? -item.amount_cents : item.amount_cents)} · <span class="mono">${escapeHtml(item.reference)}</span>${item.amount_cents < 0 ? ` <button type="button" class="btn reverse-entry" data-id="${Number(item.id)}">Reverse (admin)</button>` : ''}</div>`),
+                    ...data.entries.map(item => `<div class="subcard">${escapeHtml(item.kind)}: ${money(item.currency, item.amount_cents < 0 ? -item.amount_cents : item.amount_cents)} · <span class="mono">${escapeHtml(item.reference)}</span> · ${escapeHtml(item.allocation || 'legacy')}${item.disputed_delta_cents ? ` · dispute ${formatCents(item.disputed_delta_cents)}` : ''}${item.amount_cents < 0 ? ` <button type="button" class="btn reverse-entry" data-id="${Number(item.id)}">Reverse (admin)</button>` : ''}</div>`),
                     ...data.messages.map(item => `<div class="subcard">${escapeHtml(item.category)}: ${escapeHtml(item.body)}${item.is_injection ? ' <span class="state-text blocked">Blocked instruction</span>' : ''}</div>`),
                     ...data.campaigns.map(item => `<div class="subcard">Collection draft stage ${escapeHtml(item.campaign_stage)}: ${escapeHtml(displayStatus(item.status))}</div>`),
                     ...(data.agent_notes || []).map(item => `<div class="subcard">Agent note: ${escapeHtml(item.body)}</div>`)
@@ -393,6 +410,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (_) { /* Source stays available; confidence is optional for legacy uploads. */ }
             }));
 
+            detail.querySelectorAll('.trust-btn').forEach(button => button.addEventListener('click', async () => {
+                const reason = prompt(`Reason to mark this evidence ${button.dataset.trust}? (minimum 5 characters)`);
+                if (!reason || reason.trim().length < 5) return;
+                try {
+                    const holder = button.closest('.trust-review');
+                    await apiFetch(`/api/v1/cases/${id}/evidence/${holder.dataset.id}/review`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({trust_state: button.dataset.trust, reason: reason.trim()})
+                    });
+                    openCase(id);
+                } catch (error) { alert(error.message); }
+            }));
             detail.querySelectorAll('.reverse-entry').forEach(button => button.addEventListener('click', async () => {
                 const reason = prompt('Why is this receipt or credit being reversed?');
                 if (!reason) return;
@@ -434,6 +463,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(values)
             });
             result.textContent = 'Balance entry recorded.';
+            form.reset(); openCase(selectedCaseId); loadCases();
+        } catch (error) { result.textContent = error.message; }
+    });
+    document.getElementById('case-investigate').addEventListener('click', async () => {
+        const result = document.getElementById('investigation-result');
+        try {
+            await apiFetch(`/api/v1/cases/${selectedCaseId}/investigate`, {method: 'POST'});
+            result.textContent = 'Investigation complete. Review the evidence and updated split.';
+        } catch (error) { result.textContent = error.message; }
+        openCase(selectedCaseId); loadCases();
+    });
+    document.getElementById('case-evidence-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const result = document.getElementById('case-evidence-result');
+        const values = Object.fromEntries(new FormData(form));
+        const payload = {...values, claim_type: 'dispute_item', source_type: 'staff_record'};
+        try {
+            await apiFetch(`/api/v1/cases/${selectedCaseId}/evidence`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+            });
+            result.textContent = 'Source attached as an allegation; verify or accept it from the evidence card.';
+            form.reset(); openCase(selectedCaseId);
+        } catch (error) { result.textContent = error.message; }
+    });
+    document.getElementById('dispute-review-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const result = document.getElementById('dispute-review-result');
+        const values = Object.fromEntries(new FormData(form));
+        values.evidence_id = Number(values.evidence_id);
+        try {
+            await apiFetch(`/api/v1/cases/${selectedCaseId}/dispute-review`, {
+                method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(values)
+            });
+            result.textContent = 'Dispute decision saved with the selected source.';
             form.reset(); openCase(selectedCaseId); loadCases();
         } catch (error) { result.textContent = error.message; }
     });
@@ -558,7 +623,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rl = data.rate_limits;
             const modelText = data.model_configured
                 ? (rl ? `${data.model} (RPM: ${rl.rpm_used}/${rl.rpm_limit}, RPD: ${rl.rpd_used}/${rl.rpd_limit})` : data.model)
-                : 'rules-only; add Gemini API key to enable AI';
+                : 'rules-only; add Meta API key to enable AI';
             status.textContent = `AI wording: ${modelText} • Agent: ${data.policy?.enabled ? 'enabled' : 'off'}`;
             const policy = data.policy || {enabled: false, auto_assess: false,
                 auto_execute_internal: false, max_assessments_per_day: 20,
@@ -1070,6 +1135,31 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     setInterval(() => { if (apiKey && document.querySelector('.nav-item[data-view="intake"]').classList.contains('active')) loadIntakeUploads(); }, 3000);
 
+    async function loadOwnerQueue() {
+        const container = document.getElementById('owner-queue');
+        try {
+            const items = await (await apiFetch('/api/v1/supervisor/queue')).json();
+            container.innerHTML = items.length ? items.map(item => `
+                <div class="queue-row"><div><strong class="mono">${escapeHtml(item.invoice_number)}</strong>
+                <small>${escapeHtml(item.customer)}</small><p>${escapeHtml(item.action)} — ${escapeHtml(item.reason)}</p>
+                <small>Owner: ${escapeHtml(item.owner)} · Due: ${escapeHtml(item.deadline || '—')} · Affects: ${formatCents(item.affected_cents)}${item.approval_required ? ' · Approval required' : ''}</small>
+                ${item.uncertainty.length ? `<small>Uncertain: ${item.uncertainty.map(escapeHtml).join('; ')}</small>` : ''}</div>
+                <div><button type="button" class="btn queue-open" data-id="${Number(item.invoice_id)}">Open case</button></div></div>`).join('')
+                : '<p>No pending actions. All cases are steady or resolved.</p>';
+            container.querySelectorAll('.queue-open').forEach(button => button.addEventListener('click', () => navigate('cases', Number(button.dataset.id))));
+        } catch (error) { container.textContent = error.message; }
+    }
+    async function loadAgentActivity() {
+        const container = document.getElementById('agent-activity');
+        try {
+            const tasks = await (await apiFetch('/api/v1/supervisor/tasks')).json();
+            container.innerHTML = tasks.length ? tasks.slice(0, 30).map(task => `
+                <div class="activity-row"><span><strong>${escapeHtml(task.kind)}</strong>
+                <small>case ${task.invoice_id == null ? '—' : Number(task.invoice_id)} · ${escapeHtml(task.status)} · attempts ${task.attempts}/${task.max_attempts} · model calls ${task.model_calls}</small>
+                ${task.error ? `<small>${escapeHtml(task.error)}</small>` : ''}</span></div>`).join('')
+                : '<p>No specialist tasks yet.</p>';
+        } catch (error) { container.textContent = error.message; }
+    }
     async function loadControl() {
         try {
             const evaluation = await (await fetch('/evaluation.json')).json();

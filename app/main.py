@@ -12,6 +12,7 @@ from app.config import settings
 from app.database.db_manager import init_db
 from app.api.router import api_router
 from app.services.intake_pipeline import process_one as process_intake_one, recover_interrupted_jobs
+from app.services.supervisor import recover_interrupted_tasks, run_due_thread
 import asyncio
 
 # Configure logging.
@@ -71,6 +72,7 @@ async def startup_event():
     logging.info("Starting RecoverFlow...")
     init_db()
     recover_interrupted_jobs()
+    recover_interrupted_tasks()
     async def intake_loop():
         while True:
             try:
@@ -82,6 +84,17 @@ async def startup_event():
                 logging.exception("Intake worker failed; retrying")
                 await asyncio.sleep(2)
     app.state.intake_task = asyncio.create_task(intake_loop())
+    async def supervisor_loop():
+        while True:
+            try:
+                outcomes = await asyncio.to_thread(run_due_thread, 5)
+                await asyncio.sleep(0.5 if outcomes else 2)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logging.exception("Supervisor worker failed; retrying")
+                await asyncio.sleep(2)
+    app.state.supervisor_task = asyncio.create_task(supervisor_loop())
 
 
 @app.on_event("shutdown")
@@ -91,6 +104,13 @@ async def stop_intake_loop():
         task.cancel()
         try:
             await task
+        except asyncio.CancelledError:
+            pass
+    second = getattr(app.state, "supervisor_task", None)
+    if second:
+        second.cancel()
+        try:
+            await second
         except asyncio.CancelledError:
             pass
 

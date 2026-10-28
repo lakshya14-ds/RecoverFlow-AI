@@ -174,7 +174,8 @@ def process_event(db: Session, tenant_id: str, event_id: str, body: bytes) -> mo
                 raise ValueError("Payment ID is missing")
             post_entry(db, invoice, kind="payment", amount=Decimal(amount_cents) / 100,
                        source="razorpay", reference=payment_id,
-                       actor="razorpay_webhook", note=f"link:{link.provider_link_id}")
+                       actor="razorpay_webhook", note=f"link:{link.provider_link_id}",
+                       currency=link.currency)
             if invoice.source_system == "shopify":
                 # Shopify remains read-only. Staff must reconcile its balance with
                 # the local ledger before this case can resume contact.

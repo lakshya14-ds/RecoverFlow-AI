@@ -1,9 +1,11 @@
+from app.services.case_lifecycle import checkpoint
 """Bounded, typed upload intake. Bytes are never served from the web root."""
 import csv
 import io
 import json
 import re
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -102,6 +104,9 @@ async def upload(request: Request, db: Session = Depends(get_db),
         db.rollback()
         stored.unlink(missing_ok=True)
         raise
+    from app.services.supervisor import request_intake_task
+    request_intake_task(db, identity.tenant_id, job_id, identity.actor)
+    db.commit()
     return _public(row)
 
 
@@ -157,6 +162,11 @@ def confirm_invoice(job_id: str, db: Session = Depends(get_db),
         claim_type="invoice_total").all():
         if evidence.source_reference == f"/api/v1/intake/uploads/{job_id}/file":
             evidence.verified = True
+            evidence.trust_state = "verified"
+            evidence.decided_by = identity.actor
+            evidence.decided_at = datetime.now(timezone.utc)
+            evidence.decision_reason = "Staff confirmed the extracted invoice after review"
+            evidence.currency = evidence.currency or invoice.currency or "INR"
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
         action="uploaded_invoice_confirmed", entity_type="invoice",
         entity_id=str(invoice.id), details=f"upload_id={job_id}"))
@@ -165,6 +175,7 @@ def confirm_invoice(job_id: str, db: Session = Depends(get_db),
         prepare_draft(db, invoice)
     except ValueError:
         pass
+    checkpoint(db, invoice, "invoice_confirmed", identity.actor)
     db.commit()
     return {"invoice_id": invoice.id, "confirmed": True}
 
@@ -187,12 +198,18 @@ def confirm_receipt(job_id: str, db: Session = Depends(get_db),
         invoice = candidates[0]
         entry = post_entry(db, invoice, kind="payment", amount=document["total_amount"],
             source="staff_confirmed_upload", reference=job_id, actor=identity.actor,
-            note="Staff confirmed uploaded receipt; not an autonomous payment post")
+            note="Staff confirmed uploaded receipt; not an autonomous payment post",
+            currency=document.get("currency") or invoice.currency or "INR")
         for evidence in db.query(models.CaseEvidence).filter_by(
             tenant_id=identity.tenant_id, invoice_id=invoice.id,
             claim_type="received_payment",
             source_reference=f"/api/v1/intake/uploads/{job_id}/file").all():
             evidence.verified = True
+            evidence.trust_state = "accepted"
+            evidence.decided_by = identity.actor
+            evidence.decided_at = datetime.now(timezone.utc)
+            evidence.decision_reason = f"Staff-confirmed receipt posted as ledger entry {entry.id}"
+            evidence.currency = invoice.currency or "INR"
         row.status = "ready_for_review"
         row.stage = "Ready for review"
         row.error = None

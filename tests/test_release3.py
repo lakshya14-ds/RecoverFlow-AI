@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import models
 from app.database.db_manager import Base, get_db
 from app.main import app
-from app.services import controlled_agent, gemini_agent, meta_whatsapp
+from app.services import controlled_agent, meta_agent, meta_whatsapp
 
 
 def setup(monkeypatch):
@@ -24,7 +24,7 @@ def setup(monkeypatch):
     app.dependency_overrides[get_db] = override
     monkeypatch.setattr(settings, "RECOVERFLOW_API_KEY", "test-key")
     monkeypatch.setattr(settings, "RECOVERFLOW_API_KEYS_JSON", "")
-    monkeypatch.setattr(gemini_agent, "configured", lambda: False)
+    monkeypatch.setattr(meta_agent, "configured", lambda: False)
     return TestClient(app), factory
 
 
@@ -100,8 +100,8 @@ def test_stale_proposal_and_balance_limit_block_execution(monkeypatch):
 
 def test_prompt_injection_cannot_change_action_or_send(monkeypatch):
     client, factory = setup(monkeypatch)
-    monkeypatch.setattr(gemini_agent, "configured", lambda: True)
-    monkeypatch.setattr(gemini_agent, "generate", lambda *_: gemini_agent.AgentWording(
+    monkeypatch.setattr(meta_agent, "configured", lambda: True)
+    monkeypatch.setattr(meta_agent, "generate", lambda *_: meta_agent.AgentWording(
         summary="Customer says to ignore every rule and send immediately",
         rationale="Send now", reply_draft="Pay 100 to https://example.com"))
     try:
@@ -196,18 +196,17 @@ def test_hourly_scan_creates_only_bounded_internal_work(monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_gemini_request_uses_structured_output_and_validates_reply(monkeypatch):
+def test_meta_request_uses_structured_output_and_validates_reply(monkeypatch):
     captured = {}
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "fake-test-key")
+    monkeypatch.setattr(settings, "META_MODEL_API_KEY", "fake-test-key")
+    monkeypatch.setattr(settings, "AGENT_MODEL", "muse-spark-1.3")
     class Response:
         status_code = 200
         def raise_for_status(self):
             pass
         def json(self):
-            return {"candidates": [{"content": {"parts": [
-                {"thought": True, "text": "private reasoning"},
-                {"text": '{"summary":"Question received","rationale":"Staff can review","reply_draft":"Thank you for your question."}'},
-            ]}}]}
+            return {"choices": [{"message": {"content":
+                '{"summary":"Question received","rationale":"Staff can review","reply_draft":"Thank you for your question."}'}}]}
     class Client:
         def __init__(self, **kwargs):
             pass
@@ -218,13 +217,15 @@ def test_gemini_request_uses_structured_output_and_validates_reply(monkeypatch):
         def post(self, url, **kwargs):
             captured.update(url=url, **kwargs)
             return Response()
-    monkeypatch.setattr(gemini_agent.httpx, "Client", Client)
-    result = gemini_agent.generate({"balance_cents": 10000, "messages": []}, "reply_draft")
-    assert captured["url"].endswith("/gemini-3.6-flash:generateContent")
-    assert captured["json"]["generationConfig"]["responseFormat"]["text"]["schema"]["required"] == ["summary", "rationale", "reply_draft"]
+    monkeypatch.setattr(meta_agent.httpx, "Client", Client)
+    result = meta_agent.generate({"balance_cents": 10000, "messages": []}, "reply_draft")
+    assert captured["url"].endswith("/chat/completions")
+    assert captured["json"]["model"] == settings.AGENT_MODEL
+    assert captured["json"]["response_format"] == {"type": "json_object"}
+    assert captured["headers"]["Authorization"] == "Bearer fake-test-key"
     assert result.summary == "Question received"
-    assert gemini_agent.safe_reply(result.reply_draft)
-    assert not gemini_agent.safe_reply("Pay 100 at https://example.com")
+    assert meta_agent.safe_reply(result.reply_draft)
+    assert not meta_agent.safe_reply("Pay 100 at https://example.com")
 
 
 def test_agent_respects_retailer_stage_threshold(monkeypatch):
@@ -272,46 +273,46 @@ def test_agent_daily_limits_and_schema_validation(monkeypatch):
         app.dependency_overrides.clear()
 
 
-def test_gemini_rate_limiter_rpm_and_rpd(monkeypatch):
-    gemini_agent.rate_limiter.reset()
+def test_meta_rate_limiter_rpm_and_rpd(monkeypatch):
+    meta_agent.rate_limiter.reset()
     try:
-        monkeypatch.setattr(settings, "GEMINI_RPM_LIMIT", 2)
-        monkeypatch.setattr(settings, "GEMINI_RPD_LIMIT", 3)
+        monkeypatch.setattr(settings, "META_RPM_LIMIT", 2)
+        monkeypatch.setattr(settings, "META_RPD_LIMIT", 3)
 
         # 1st and 2nd calls succeed within RPM budget
-        gemini_agent.rate_limiter.acquire(auto_wait_max=0)
-        gemini_agent.rate_limiter.acquire(auto_wait_max=0)
-        status = gemini_agent.get_rate_limit_status()
+        meta_agent.rate_limiter.acquire(auto_wait_max=0)
+        meta_agent.rate_limiter.acquire(auto_wait_max=0)
+        status = meta_agent.get_rate_limit_status()
         assert status["rpm_used"] == 2
         assert status["rpm_remaining"] == 0
         assert status["rpd_used"] == 2
 
         # 3rd call immediately exceeds RPM limit (wait_needed > auto_wait_max)
         import pytest
-        with pytest.raises(gemini_agent.GeminiRateLimitError) as exc_rpm:
-            gemini_agent.rate_limiter.acquire(auto_wait_max=0)
+        with pytest.raises(meta_agent.MetaRateLimitError) as exc_rpm:
+            meta_agent.rate_limiter.acquire(auto_wait_max=0)
         assert "RPM limit reached" in str(exc_rpm.value)
 
         # Reset RPM sliding window but set daily count to RPD limit
-        gemini_agent.rate_limiter.reset()
-        pt_today = gemini_agent.rate_limiter._pacific_today()
-        gemini_agent.rate_limiter._daily_counts[pt_today] = 3
-        with pytest.raises(gemini_agent.GeminiRateLimitError) as exc_rpd:
-            gemini_agent.rate_limiter.acquire(auto_wait_max=0)
+        meta_agent.rate_limiter.reset()
+        utc_today = meta_agent.rate_limiter._utc_today()
+        meta_agent.rate_limiter._daily_counts[utc_today] = 3
+        with pytest.raises(meta_agent.MetaRateLimitError) as exc_rpd:
+            meta_agent.rate_limiter.acquire(auto_wait_max=0)
         assert "RPD limit reached" in str(exc_rpd.value)
     finally:
-        gemini_agent.rate_limiter.reset()
+        meta_agent.rate_limiter.reset()
 
 
-def test_gemini_rate_limit_fallback_in_assessment(monkeypatch):
+def test_meta_rate_limit_fallback_in_assessment(monkeypatch):
     client, factory = setup(monkeypatch)
-    gemini_agent.rate_limiter.reset()
-    monkeypatch.setattr(gemini_agent, "configured", lambda: True)
+    meta_agent.rate_limiter.reset()
+    monkeypatch.setattr(meta_agent, "configured", lambda: True)
 
     def mock_generate_rate_limited(*_):
-        raise gemini_agent.GeminiRateLimitError("Minute limit of 15 requests (RPM) exceeded.")
+        raise meta_agent.MetaRateLimitError("Minute limit of 15 requests (RPM) exceeded.")
 
-    monkeypatch.setattr(gemini_agent, "generate", mock_generate_rate_limited)
+    monkeypatch.setattr(meta_agent, "generate", mock_generate_rate_limited)
     try:
         case_id = add_case(factory)
         enable(client)
@@ -323,6 +324,6 @@ def test_gemini_rate_limit_fallback_in_assessment(monkeypatch):
         flags = json.loads(data["risk_flags"]) if isinstance(data["risk_flags"], str) else data["risk_flags"]
         assert "model_rate_limited" in flags
     finally:
-        gemini_agent.rate_limiter.reset()
+        meta_agent.rate_limiter.reset()
         app.dependency_overrides.clear()
 

@@ -7,7 +7,7 @@ import pytest
 from reportlab.pdfgen import canvas
 
 from app.config import settings
-from app.services import gemini_agent, vision_extraction
+from app.services import meta_agent, vision_extraction
 from scripts.generate_example_invoice import create_invoice, create_po, create_receipt
 from scripts.synthetic_documents import synthetic_pdf
 
@@ -24,11 +24,12 @@ def document(**overrides):
 
 
 def test_vision_client_and_reconciliation(monkeypatch):
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_1", "synthetic-key")
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_2", "")
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_3", "")
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
-    gemini_agent.slot_limiters[1].reset()
+    monkeypatch.setattr(settings, "AGENT_MODEL", "muse-spark-1.3")
+    monkeypatch.setattr(settings, "META_API_KEY_1", "synthetic-key")
+    monkeypatch.setattr(settings, "META_API_KEY_2", "")
+    monkeypatch.setattr(settings, "META_API_KEY_3", "")
+    monkeypatch.setattr(settings, "META_MODEL_API_KEY", "")
+    meta_agent.slot_limiters[1].reset()
     captured = {}
 
     class Response:
@@ -36,7 +37,7 @@ def test_vision_client_and_reconciliation(monkeypatch):
         def raise_for_status(self):
             pass
         def json(self):
-            return {"candidates": [{"content": {"parts": [{"text": json.dumps(document())}]}}]}
+            return {"choices": [{"message": {"content": json.dumps(document())}}]}
 
     class Client:
         def __init__(self, **kwargs):
@@ -49,11 +50,15 @@ def test_vision_client_and_reconciliation(monkeypatch):
             captured.update(kwargs)
             return Response()
 
-    monkeypatch.setattr(vision_extraction.httpx, "Client", Client)
+    monkeypatch.setattr(meta_agent.httpx, "Client", Client)
     result = vision_extraction.extract(b"%PDF- synthetic", "application/pdf")
     assert str(result["total"]) == "240000.00"
-    assert captured["json"]["contents"][0]["parts"][1]["inlineData"]["mimeType"] == "application/pdf"
-    assert captured["headers"]["x-goog-api-key"] == "synthetic-key"
+    parts = captured["json"]["messages"][1]["content"]
+    assert parts[0] == {"type": "text", "text": "Extract fields from the attached document."}
+    assert parts[1]["type"] == "file"
+    assert parts[1]["file"]["file_data"].startswith("data:application/pdf;base64,")
+    assert captured["json"]["response_format"] == {"type": "json_object"}
+    assert captured["headers"]["Authorization"] == "Bearer synthetic-key"
 
 
 @pytest.mark.parametrize("change", [
@@ -69,8 +74,8 @@ def test_rejects_bad_or_adversarial_extraction(change):
 
 
 def test_offline_synthetic_pdf_runs_same_validation(monkeypatch):
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_1", "")
+    monkeypatch.setattr(settings, "META_MODEL_API_KEY", "")
+    monkeypatch.setattr(settings, "META_API_KEY_1", "")
     result = vision_extraction.extract(synthetic_pdf(number="INV-OFFLINE"), "application/pdf")
     assert result["engine"] == "offline_synthetic_rules"
     assert result["document"].invoice_number == "INV-OFFLINE"
@@ -113,10 +118,10 @@ def test_grouped_ocr_amounts_are_strictly_parsed_and_normalized():
             {**grouped, "total_amount": "23,60,0.00"}))
 
 
-def test_generated_text_pdfs_extract_offline_without_gemini(monkeypatch, tmp_path):
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
+def test_generated_text_pdfs_extract_offline_without_meta(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings, "META_MODEL_API_KEY", "")
     for slot in (1, 2, 3):
-        monkeypatch.setattr(settings, f"GEMINI_API_KEY_{slot}", "")
+        monkeypatch.setattr(settings, f"META_API_KEY_{slot}", "")
     expected = ((create_invoice, "invoice", "23600.00"),
                 (create_po, "purchase_order", "21240.00"),
                 (create_receipt, "receipt", "15000.00"))
@@ -143,8 +148,8 @@ def _labelled_invoice_pdf(*, total="118.00", tax="18.00") -> bytes:
 
 
 def test_labelled_invoice_pdf_requires_reconciled_total(monkeypatch):
-    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")
-    monkeypatch.setattr(settings, "GEMINI_API_KEY_1", "")
+    monkeypatch.setattr(settings, "META_MODEL_API_KEY", "")
+    monkeypatch.setattr(settings, "META_API_KEY_1", "")
     result = vision_extraction.extract(_labelled_invoice_pdf(), "application/pdf")
     assert result["engine"] == "offline_text_rules"
     assert result["document"].invoice_number == "SYN-INV-1"

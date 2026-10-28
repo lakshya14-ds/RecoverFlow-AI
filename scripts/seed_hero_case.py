@@ -9,6 +9,7 @@ Case Profile:
 """
 import sys
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 # Add project root to path
@@ -75,9 +76,29 @@ def seed_hero_case() -> models.Invoice:
                 db.query(models.AgentCaseNote).filter_by(tenant_id=tenant_id, proposal_id=p.id).delete()
                 db.query(models.AgentExecution).filter_by(tenant_id=tenant_id, proposal_id=p.id).delete()
             db.query(models.AgentProposal).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.ClarificationTask).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.PromiseToPay).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.AllocationLeg).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.CaseEvidence).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.CustomerMessage).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.ReceivableEntry).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            for _proposal in db.query(models.AllocationProposal).filter_by(
+                    tenant_id=tenant_id).all():
+                if not db.query(models.AllocationLeg).filter_by(
+                        proposal_id=_proposal.id).first():
+                    db.delete(_proposal)
+            db.query(models.CaseWorkflow).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.FraudAlert).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.CompetingExplanation).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.Reconciliation).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.PaymentLink).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.OutboundMessage).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.InboundMessage).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.SandboxOutbox).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            for _session in db.query(models.NegotiationSession).filter_by(
+                    tenant_id=tenant_id, invoice_id=inv_id).all():
+                db.query(models.NegotiationTurn).filter_by(session_id=_session.id).delete()
+                db.delete(_session)
             db.query(models.DunningCampaign).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.delete(existing)
             db.commit()
@@ -93,7 +114,7 @@ def seed_hero_case() -> models.Invoice:
                 phone="+91 98200 12345",
                 tax_id="27AABCA1234F1Z5",
                 payment_terms=30,
-                credit_limit=500000.00,
+                credit_limit=Decimal("500000.00"),
             )
             db.add(counterparty)
             db.flush()
@@ -109,8 +130,8 @@ def seed_hero_case() -> models.Invoice:
             counterparty_tax_id="27AABCA1234F1Z5",
             issue_date=date.today() - timedelta(days=45),
             due_date=date.today() - timedelta(days=15),
-            amount=240000.00,
-            total_amount=240000.00,
+            amount=Decimal("240000.00"),
+            total_amount=Decimal("240000.00"),
             face_amount_cents=24000000,
             currency="INR",
             status="disputed",
@@ -132,6 +153,8 @@ def seed_hero_case() -> models.Invoice:
             invoice_id=hero_id,
             kind="payment",
             amount_cents=-15000000,  # Negative in ledger for credit
+            allocation="undisputed_first",
+            disputed_delta_cents=0,
             currency="INR",
             source="bank_feed",
             reference="UTR-AXIS-20261015-99214",
@@ -219,6 +242,11 @@ def seed_hero_case() -> models.Invoice:
                 verified=True,
             ),
         ]
+        for item in evidence_items:
+            item.trust_state = "verified"
+            item.decided_by = "seed_hero_case"
+            item.decision_reason = "Synthetic demo fixture reviewed at seed time"
+            item.currency = "INR"
         db.add_all(evidence_items)
 
         # Audit Event
@@ -228,7 +256,7 @@ def seed_hero_case() -> models.Invoice:
             action="hero_case_seeded",
             entity_type="invoice",
             entity_id=str(hero_id),
-            details="Seeded hero case INV-2026-HERO: 2.40L total, 1.50L paid, 30k disputed, 60k undisputed",
+            details="Seeded hero case INV-2026-HERO: 2.40L total, 1.50L paid, 30k disputed, 60k undisputed; payment allocation=undisputed_first disputed_delta=0",
         ))
 
         db.commit()

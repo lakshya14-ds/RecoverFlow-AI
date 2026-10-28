@@ -1,3 +1,4 @@
+from decimal import Decimal
 """
 RecoverFlow - Receivables and Collections
 Semantic Approval Agent (Epic 5)
@@ -12,7 +13,7 @@ def evaluate_invoice(state: Dict[str, Any], invoice_data: Dict[str, Any]) -> Dic
     vendor = invoice_data.get("counterparty_name") or "unknown"
     
     # Deterministic review policy; no LLM approval is claimed.
-    if amount is None or float(amount) <= 0 or float(amount) > 5000 or any(
+    if amount is None or Decimal(str(amount)) <= 0 or Decimal(str(amount)) > 5000 or any(
         word in vendor.lower() for word in ("urgent", "urgente")
     ):
         approval_status = "MANUAL_REVIEW"

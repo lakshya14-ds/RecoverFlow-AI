@@ -113,8 +113,8 @@ def import_record(db: Session, tenant_id: str, order: dict, counts: dict) -> Non
             counterparty_name=customer.get("displayName") or order["name"],
             counterparty_email=customer.get("email") or order.get("email"),
             counterparty_phone=customer.get("phone") or order.get("phone"),
-            issue_date=issued, due_date=due, amount=amount / 100,
-            total_amount=amount / 100, face_amount_cents=amount,
+            issue_date=issued, due_date=due, amount=Decimal(amount) / 100,
+            total_amount=Decimal(amount) / 100, face_amount_cents=amount,
             currency="INR", status="pending", source="retail_sync",
             source_system="shopify", source_record_id=external_id,
             source_order_id=gid))
