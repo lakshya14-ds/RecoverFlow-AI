@@ -4,6 +4,11 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Port 8002 safe restart on current code (2026-10-28, Antigravity):** Full port and process audit completed. Live DB backed up to `backups/apex_ar-20261028-2331.db` (with `-wal` and `-shm` sidecars). Verified stale PID 37256 stopped gracefully. App cleanly restarted on current working tree code under PID 33808; health 200, authenticated case API 200 (`INV-2026-HERO` split 240000/150000/90000/30000/60000), frontend served (`/`) with Intake/Review-and-Negotiate/Control navigation present, Meta agent active (`muse-spark-1.3`), all 5 DB migrations applied cleanly, zero `gemini` import errors, sibling services (8000/8001) and unrelated processes untouched, zero orphan test servers.
+
+- **Meta Model API swap complete (2026-10-28, Muse Code):** Full Gemini replacement per explicit user request. New `app/services/meta_agent.py` (OpenAI-compatible `muse-spark-1.3` via `https://api.meta.ai/v1`, same slot/rate-limit architecture); vision extraction via multimodal image/PDF parts; config/docs/tests/frontend repointed; live key verified (classify, generate, image + PDF vision). 158/158 tests pass. `.env` model updated; old Gemini keys left unused. Tree still dirty.
+- **P1 Milestone 5 complete (2026-10-28, Muse Code):** 38-case three-arm evaluation (rules/single/specialist, fixed seeds, Wilson intervals, per-case failures in `docs/p1-evaluation.md`); failure-testing fixed zero-claim overlap, damage-idempotency stall, and ISO promise dates; 9-beat showcase + walkthrough + architecture docs. 158/158 tests pass (7 new M5 + 2 M2 regressions). Next: review/commit the dirty tree. Tree still dirty.
+- **P1 Milestone 4 complete (2026-10-28, Muse Code):** Multilingual (en/hi/Hinglish) validated drafting, owner queue + activity view, `generic_csv` import adapter; live-verified on isolated port-8019 app. 149/149 tests pass (14 new + 1 M1). Next: M5 evaluation + showcase. Tree still dirty.
 - **P1 Milestone 3 complete (2026-10-28, Muse Code):** Transfer allocation (scored candidates, splits, ambiguity held for staff, guarded staff approval through `post_entry`) + nonfinancial promise tracking (extract/confirm/remind/kept/broken); migration `20261031_allocation_v5`. 135/135 tests pass (13 new); isolated demo regression passes. Razorpay still SIMULATED. Next: M4 multilingual + queues + import adapter. Tree still dirty.
 
 - **P1 Milestone 2 complete (2026-10-28, Muse Code):** Evidence-led investigation: pure `line_matching` (SKU/unit/qty/price/tax/freight/rounding, no silent conversion or apportionment), competing explanations + clarification tasks + staff unit rules (migration `20261030_investigation_v4`), damage claims, multi-SKU attribution, duplicate/unreadable handling, unsent drafts only. 122/122 tests pass (15 new); isolated demo regression passes. Next: M3 payment allocation + promises. Tree still dirty.
@@ -385,6 +390,7 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - M3 one-to-many/many-to-one allocation, scored candidates, ambiguity held, tenant/currency/idempotency guards, SIMULATED Razorpay, nonfinancial promises: implemented + tested (13 M3 tests).
 - M4 en/hi/Hinglish classify/draft, structured message + triple validation, approval-time verification, owner queue + activity view, generic_csv import adapter: implemented + tested (14 M4 tests, live verified). Vendor formats (Tally/Busy/Zoho): blocked, needs sanitized export.
 - M5 held-out + adversarial sets, three-arm comparison on all listed measures, expanded showcase, walkthrough, architecture explanation, hero regression: implemented + tested (7 M5 tests). Live-model advantage: blocked, needs measured Meta run (env has a key; eval forced offline by design).
+- Running the agent: `python -m venv`, install requirements, `seed_hero_case.py`, `python run.py` on 8002 with `RECOVERFLOW_API_KEY`; demos via `demo_hero.py` / `demo_p1_showcase.py`; evals via `run_evaluation.py` / `run_p1_evaluation.py`.
 
 ### 2026-10-28 — Muse Code — Meta Model API swap (full Gemini replacement)
 
@@ -393,4 +399,34 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Verification:** Live key verified: classify (valid labels), generate (validates, sensible empty-draft behavior), PNG vision (transport + JSON + server validation + low-confidence staff fallback), PDF vision (file part read the invoice number). Full suite 158 passed; `node --check` and `git diff --check` clean; isolated hero demo passes; showcase passes; P1 report regenerated offline with identical behavior and no Gemini remnants. Repo-wide sweep: no `gemini|GEMINI|generativelanguage|x-goog` left outside generated `docs/evaluation.md` / `frontend/evaluation.*` (refresh on next demo run) and one intentional history note in `.codex/prompt.md`.
 - **Decisions / limits:** Single Meta key maps through the legacy-key path (works; slots 1-3 ready for more keys). Timeouts raised for reasoning latency (30s text, 60s vision). Daily reset moved PT->UTC (Meta reset window undocumented). Live-model eval advantage still unmeasured (runner forces offline by design); rerun P1 eval with keys enabled to measure it. Tree still dirty.
 - **Next:** Review/commit the dirty tree; restart the port-8002 app to pick up the swap; optionally run a keys-enabled P1 eval to measure live-model behavior.
-- Running the agent: `python -m venv`, install requirements, `seed_hero_case.py`, `python run.py` on 8002 with `RECOVERFLOW_API_KEY`; demos via `demo_hero.py` / `demo_p1_showcase.py`; evals via `run_evaluation.py` / `run_p1_evaluation.py`.
+
+### 2026-10-28 — Muse Code — README rewrite and .codex sync
+
+- **Objective:** Study the whole project, make the README impressive and understandable, and bring `.codex` files up to the work done.
+- **Changed:** Rewrote `README.md` (pitch, two demos, fixed Mermaid node-id collision on the supervisor node, condensed feature table, Meta config, measured-numbers section with P1 citations, grouped docs map; still one page, no emojis). `.codex/handoff.md`: prepended Meta-swap/M5/M4 Current-state bullets (section was stale at M3), moved the dangling "Running the agent" line back under the P1 checklist, appended this entry. `.codex/prompt.md` left unchanged (already Meta-current; brief scope is historical by design).
+- **Verification:** 158 tests collected (count cited in README verified); P1 numbers rechecked against `docs/p1-evaluation.md`; every README doc link verified to exist; `git diff --check` clean. No code changed, so no suite/demo rerun (last full run: 158 passed).
+- **Decisions / limits:** Older handoff entries kept verbatim as history; stale model references in old bullets are superseded by the new top bullets. README claims stay inside measured evidence (synthetic fixtures only).
+- **Next:** Review/commit the dirty tree; restart the port-8002 app to pick up the Meta swap.
+
+### 2026-10-28 — Antigravity — Port audit, live DB backup, and safe restart of port-8002 app
+
+- **Objective:** Audit listening ports and Python processes across the machine; verify port 8002 listener; safely back up the live database and its sidecars; terminate only the verified repo-serving Python process; restart the application on current working tree code; verify health, authenticated case API, frontend navigation, Meta agent init, migration consistency, and absence of Gemini import errors; confirm no orphan test servers remain.
+- **Changed:**
+  - Backed up live database `apex_ar.db` along with `-wal` and `-shm` sidecars to `backups/apex_ar-20261028-2331.db`, `backups/apex_ar-20261028-2331.db-wal`, `backups/apex_ar-20261028-2331.db-shm`.
+  - Stopped stale Python PID 37256 (`"C:\Users\Lakshya Arora\Documents\anaconda\python.exe" run.py`, cwd `C:\Users\Lakshya Arora\Documents\GitHub\RecoverFlow-AI`, started 2026-10-27 22:39) gracefully.
+  - Restarted live server via `python run.py` on current working-tree code under PID 33808.
+  - No application code, `.env`, or database records modified; no git commits, resets, or stashes made.
+- **Verification:**
+  - Port & Process Audit: Before restart, port 8002 was held by PID 37256 (cwd matched repo root). Sibling services on ports 8000 (AFIS) and 8001 (AXIS) were not listening and left untouched. Port 8019 was empty (0 listeners). System/unrelated listening ports (135, 139, 445, 1521, 3306, 5040, 6463, 7680, 8080, 9222, 19292, 33060, 42050, 49664-49680, 53896-65191) were mapped and left untouched.
+  - Backup: Verified backup files exist on disk: `apex_ar-20261028-2331.db` (102,400 bytes), `apex_ar-20261028-2331.db-shm` (32,768 bytes), `apex_ar-20261028-2331.db-wal` (3,275,432 bytes).
+  - Stop Target: Terminated PID 37256 gracefully; verified port 8002 was cleanly freed before restart.
+  - Fresh Startup: Server started on PID 33808. Port 8002 listening verified. Old PID 37256 verified gone. Exactly 1 repo-serving Python process active.
+  - Health check: `GET http://127.0.0.1:8002/api/v1/system/health` returned HTTP 200 `{"status":"ok","service":"RecoverFlow"}` (31.28 ms).
+  - Authenticated Case API: `GET http://127.0.0.1:8002/api/v1/cases/1` using `X-RECOVERFLOW-API-KEY` returned HTTP 200 (44.23 ms), status `disputed`, invoice `INV-2026-HERO`, split: total ₹2,40,000 / received ₹1,50,000 / credits ₹0 / outstanding ₹90,000 / disputed ₹30,000 / undisputed ₹60,000, 5 evidence records.
+  - Frontend: `GET http://127.0.0.1:8002/` returned HTTP 200 (22,081 bytes) with Intake, Review and Negotiate, and Control navigation present.
+  - Meta Agent & Schema Migrations: `GET http://127.0.0.1:8002/api/v1/agent/status` returned HTTP 200, `model: "muse-spark-1.3"`, `model_configured: true`. Database revisions verified applied: `20261027_foundations_v1`, `20261028_trust_states_v2`, `20261029_supervisor_v3`, `20261030_investigation_v4`, `20261031_allocation_v5`; `PRAGMA foreign_key_check` returned 0 violations.
+  - Clean Logs: Startup log shows clean uvicorn initialization (`Started server process [33808]`, `Starting RecoverFlow...`, `Application startup complete`). Zero `gemini` references or import errors.
+  - Orphan Sweep: Port 8019 verified free. Zero orphan test processes found.
+- **Decisions / limits:** No live Razorpay, WhatsApp, or PostgreSQL access used (payments remain SIMULATED). Tree remains dirty as requested (uncommitted work preserved). Rollback target remains `backups/apex_ar-20261028-2331.db`.
+- **Next:** Review uncommitted tree changes; test Meta model extraction with live provider traffic if desired; rehearse demo scripts prior to hackathon presentation.
+
