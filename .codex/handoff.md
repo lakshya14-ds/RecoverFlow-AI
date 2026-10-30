@@ -4,6 +4,8 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **GitHub remote synchronized (2026-10-30, Antigravity):** Pushed commit 7e09d41 (P2 implementation covering 17 workstreams, 342 passing tests, and independent verification documentation) to origin/master. Working tree clean.
+
 - **Independent verification (2026-10-30, Codex):** 342 tests pass after seven fixes (migration bootstrap binding, debit-aware reversal ceiling, reversal retry identity, privacy party scoping, economics signs, active-lease recovery, expired supervisor pickup). Both demos and 38-case offline evaluation rerun; desktop/mobile and isolated API smoke pass. README rewritten; current 17-workstream status and remaining limitations in docs/verification-2026-10-30.md. Port 8002/live DB untouched. No commits; existing work preserved.
 
 - **P2 B2 done (2026-10-29, Muse Code):** Indian document model — persisted alleged/verified lines, invoice GST/freight split, credit/debit notes (alleged→accepted→posted, SoD accept, admin post, idempotent), supporting docs, debit-kind ledger support (`0 ≤ disputed ≤ outstanding ≤ face + debits`), investigation uses persisted lines + challan/scheme/freight handling + enriched tax clarifications, 6 reconciliation fixtures. Migration `20261105_documents_v10`. 15 new tests; full suite 232 passed. Next: B3 installments.
@@ -652,3 +654,11 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Verification:** Final hero rerun passes (30/30 split, 10/10 routing, 5/10 review). P1 evaluator completed 38 cases x 3 arms offline with published behavioral scores reproduced; zero model calls. Five checkout evaluation files remain byte-identical. Fresh port-8139 smoke passes health/case/privacy/economics, 18 migrations/zero pending, 401/400 negatives and positive gross receipt volume. Both owned servers stopped; temporary smoke/default test DBs removed. README/report/matrix links and no-emoji checks pass; git diff --check passes.
 - **Final state:** 342 passed (177 existing/runtime warnings). Seven defects fixed with pre-fix reproduction; five new regression tests. Full details in docs/verification-2026-10-30.md. Known synthetic evaluation decision errors and metering gaps remain explicit; no production-complete, live-provider, PostgreSQL, field-accuracy or legal-compliance claim. No live DB access, customer send, commit or push.
 - **Next:** Review the local changes. Production/provider/pilot validation needs the specific external inputs listed in the report; internal follow-ups include complete model metering and the disclosed benchmark limitations.
+
+
+### 2026-10-30 — Antigravity — GitHub push of commit 7e09d41
+
+- **Objective:** Synchronize the repository with GitHub per user request.
+- **Changed:** Pushed commit 7e09d418a8fba7f5168c4bdff3fc0bd4e3578438 (feat: initialize application core, API routes, services, database models, tests, and documentation) to origin/master.
+- **Verification:** Verified git push origin master succeeded (4f28ad6..7e09d41 master -> master). git status confirms branch is clean and up to date with origin/master. No secrets or .env files were tracked or pushed.
+- **Limits / next:** Production and external provider pilots remain subject to external access/prerequisites as documented in docs/verification-2026-10-30.md.
