@@ -3,23 +3,53 @@
 Run during a maintenance window, with a backup and only one starting process.
 SQLite rebuilds preserve the original constraints, indexes and triggers.
 """
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import re
 from sqlalchemy import inspect, text
 from sqlalchemy.schema import CreateColumn
 from app.database.money import Money
 
-REVISION = "20261031_allocation_v5"
+REVISION = "20261113_privacy_v18"
 REVISIONS = ["20261027_foundations_v1", "20261028_trust_states_v2",
-             "20261029_supervisor_v3", "20261030_investigation_v4", REVISION]
+             "20261029_supervisor_v3", "20261030_investigation_v4",
+             "20261031_allocation_v5", "20261101_tenancy_v6",
+             "20261102_auth_v7", "20261103_team_v8",
+             "20261104_identity_v9", "20261105_documents_v10",
+             "20261106_installments_v11", "20261107_portal_v12",
+             "20261108_docstore_v13", "20261109_import_runs_v14",
+             "20261110_payments_v15", "20261111_comms_v16",
+             "20261112_workers_v17", REVISION]
 ADDITIONS = {
-    "invoices": {"investigation_hold": "BOOLEAN NOT NULL DEFAULT false", "investigation_reason": "TEXT", "investigation_decision_hash": "VARCHAR(64)"},
+    "invoices": {"investigation_hold": "BOOLEAN NOT NULL DEFAULT false", "investigation_reason": "TEXT", "investigation_decision_hash": "VARCHAR(64)", "counterparty_id": "INTEGER REFERENCES counterparties(id)",
+        "cgst_cents": "INTEGER DEFAULT 0", "sgst_cents": "INTEGER DEFAULT 0", "igst_cents": "INTEGER DEFAULT 0",
+        "freight_cents": "INTEGER DEFAULT 0", "roundoff_cents": "INTEGER DEFAULT 0"},
     "receivable_entries": {"allocation": "VARCHAR NOT NULL DEFAULT 'legacy'",
         "disputed_delta_cents": "INTEGER NOT NULL DEFAULT 0", "reversal_of_id": "INTEGER REFERENCES receivable_entries(id)"},
     "negotiation_turns": {"context_hash": "VARCHAR(64)", "offer_json": "TEXT"},
+    "counterparties": {"gstin": "VARCHAR(15)", "legal_name": "VARCHAR",
+        "display_name": "VARCHAR", "billing_address": "TEXT", "shipping_address": "TEXT",
+        "status": "VARCHAR NOT NULL DEFAULT 'active'",
+        "merged_into_id": "INTEGER REFERENCES counterparties(id)"},
     "case_evidence": {"trust_state": "VARCHAR NOT NULL DEFAULT 'alleged'",
         "decided_by": "VARCHAR", "decided_at": "TIMESTAMP", "decision_reason": "TEXT",
         "currency": "VARCHAR"},
+    "customer_messages": {"source": "VARCHAR NOT NULL DEFAULT 'staff'"},
+    "intake_uploads": {"sha256": "VARCHAR(64)"},
+    "provider_events": {"mode": "VARCHAR NOT NULL DEFAULT 'test'"},
+    "payment_links": {"mode": "VARCHAR NOT NULL DEFAULT 'test'",
+                      "last_error": "TEXT"},
+    "outbound_messages": {"language": "VARCHAR NOT NULL DEFAULT 'en'",
+                          "template_id": "INTEGER REFERENCES message_templates(id)",
+                          "delivered_at": "TIMESTAMP", "failure_reason": "TEXT",
+                          "held_until": "TIMESTAMP"},
+    "intake_uploads": {"claimed_by": "VARCHAR", "claimed_at": "TIMESTAMP",
+                       "heartbeat_at": "TIMESTAMP",
+                       "lease_expires_at": "TIMESTAMP",
+                       "not_before": "TIMESTAMP"},
+    "supervisor_tasks": {"claimed_by": "VARCHAR", "claimed_at": "TIMESTAMP",
+                         "heartbeat_at": "TIMESTAMP",
+                         "lease_expires_at": "TIMESTAMP",
+                         "not_before": "TIMESTAMP", "elapsed_ms": "INTEGER"},
 }
 
 
@@ -56,7 +86,10 @@ def _sqlite_money(engine, metadata):
                     values = list(row)
                     for index, name in enumerate(names):
                         if name in money and values[index] is not None:
-                            value = Decimal(str(values[index]))
+                            try:
+                                value = Decimal(str(values[index]))
+                            except InvalidOperation:
+                                raise ValueError(f"Invalid legacy money in {table.name}.{name}")
                             if not value.is_finite():
                                 raise ValueError(f"Invalid legacy money in {table.name}.{name}")
                             values[index] = format(value.quantize(Decimal(".01"), rounding=ROUND_HALF_UP), ".2f")
@@ -102,7 +135,20 @@ def migrate(engine, metadata):
             return
         for table in ("supervisor_tasks", "competing_explanations",
                       "clarification_tasks", "unit_rules", "allocation_proposals",
-                      "allocation_legs", "payer_aliases", "promises_to_pay"):
+                      "allocation_legs", "payer_aliases", "promises_to_pay",
+                      "tenant_secrets", "tenant_settings", "login_attempts",
+                      "user_recovery_tokens", "case_assignments", "staff_tasks",
+                      "staff_notes", "case_escalations",
+                      "counterparty_branches", "counterparty_external_ids",
+                      "counterparty_merges", "invoice_line_items",
+                      "credit_debit_notes", "supporting_documents",
+                      "installment_schedules", "installment_legs",
+                      "installment_applications", "portal_tokens",
+                      "portal_attempts", "stored_documents",
+                      "document_access_log", "import_runs",
+                      "import_conflicts", "payment_discrepancies",
+                      "settlement_lines", "message_templates",
+                      "comms_preferences", "privacy_requests"):
             if table in metadata.tables:
                 metadata.tables[table].create(bind=conn, checkfirst=True)
         for table, additions in ADDITIONS.items():
@@ -142,6 +188,7 @@ def migrate(engine, metadata):
             conn.execute(text("UPDATE receivable_entries SET reversal_of_id=:original WHERE id=:id AND EXISTS (SELECT 1 FROM receivable_entries e WHERE e.id=:original AND e.tenant_id=:tenant AND e.invoice_id=:invoice AND e.kind IN ('payment','credit'))"),
                 {"original": int(row["reference"]), "id": row["id"], "tenant": row["tenant_id"], "invoice": row["invoice_id"]})
         conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_entry_reversal ON receivable_entries(tenant_id, reversal_of_id) WHERE reversal_of_id IS NOT NULL"))
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_counterparty_tenant_gstin ON counterparties(tenant_id, gstin) WHERE gstin IS NOT NULL"))
     if dialect == "sqlite":
         _sqlite_money(engine, metadata)
     # Existing inconsistent disputes are NOT silently reduced. Flag them for repair.
@@ -151,3 +198,18 @@ def migrate(engine, metadata):
         for revision in REVISIONS:
             if not _applied(conn, revision):
                 conn.execute(text("INSERT INTO schema_revisions(revision) VALUES (:r)"), {"r": revision})
+
+
+def status(engine):
+    """Read-only migration state. Safe on fresh databases without a revisions table."""
+    dialect = engine.dialect.name
+    with engine.connect() as conn:
+        if not inspect(conn).has_table("schema_revisions"):
+            return {"dialect": dialect, "current_revision": REVISION,
+                    "applied": [], "pending": list(REVISIONS), "unknown": []}
+        rows = conn.execute(text("SELECT revision FROM schema_revisions")).all()
+    applied_set = {row[0] for row in rows}
+    return {"dialect": dialect, "current_revision": REVISION,
+            "applied": [r for r in REVISIONS if r in applied_set],
+            "pending": [r for r in REVISIONS if r not in applied_set],
+            "unknown": sorted(applied_set - set(REVISIONS))}

@@ -34,10 +34,11 @@ def configured() -> bool:
                 settings.SHOPIFY_ADMIN_ACCESS_TOKEN)
 
 
-def verify_signature(body: bytes, signature: str) -> bool:
-    if not settings.SHOPIFY_WEBHOOK_SECRET or not signature:
+def verify_signature(body: bytes, signature: str, secret: str | None = None) -> bool:
+    key = secret if secret is not None else settings.SHOPIFY_WEBHOOK_SECRET
+    if not key or not signature:
         return False
-    expected = base64.b64encode(hmac.new(settings.SHOPIFY_WEBHOOK_SECRET.encode(), body,
+    expected = base64.b64encode(hmac.new(key.encode(), body,
                                           hashlib.sha256).digest()).decode()
     return hmac.compare_digest(signature, expected)
 

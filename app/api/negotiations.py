@@ -249,6 +249,12 @@ def approve_turn(invoice_id: int, turn_id: int, payload: ApproveInput,
     turn = db.get(models.NegotiationTurn, turn_id)
     if not turn or turn.session_id != session.id or turn.status != "pending_approval":
         raise HTTPException(status_code=409, detail="Current draft version is not pending approval")
+    from app.services import team_ops
+    _sod_ok, _sod_reason = team_ops.sod_allows(
+        db, identity.tenant_id, turn.actor, identity.actor,
+        "negotiation approval", f"turn:{turn_id}")
+    if not _sod_ok:
+        raise HTTPException(status_code=409, detail=_sod_reason)
     if turn.body_hash != payload.body_hash:
         raise HTTPException(status_code=409, detail="Draft version hash changed")
     if not turn.context_hash or turn.context_hash != _context(db, invoice, session):

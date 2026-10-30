@@ -595,5 +595,7 @@ def build_case(db, spec, afis_path):
     connection.close()
     # Setup-time postings queue supervisor tasks; arms must start from none.
     db.query(models.SupervisorTask).filter_by(tenant_id=TENANT).delete()
+    db.add(models.TenantSetting(tenant_id=TENANT, key="afis_db_path",
+                                value=str(afis_path), updated_by="evaluation"))
     db.commit()
     return {"ids": ids, "snapshot": write_snapshot(db)}

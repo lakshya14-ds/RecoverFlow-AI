@@ -4,6 +4,15 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Independent verification (2026-10-30, Codex):** 342 tests pass after seven fixes (migration bootstrap binding, debit-aware reversal ceiling, reversal retry identity, privacy party scoping, economics signs, active-lease recovery, expired supervisor pickup). Both demos and 38-case offline evaluation rerun; desktop/mobile and isolated API smoke pass. README rewritten; current 17-workstream status and remaining limitations in docs/verification-2026-10-30.md. Port 8002/live DB untouched. No commits; existing work preserved.
+
+- **P2 B2 done (2026-10-29, Muse Code):** Indian document model — persisted alleged/verified lines, invoice GST/freight split, credit/debit notes (alleged→accepted→posted, SoD accept, admin post, idempotent), supporting docs, debit-kind ledger support (`0 ≤ disputed ≤ outstanding ≤ face + debits`), investigation uses persisted lines + challan/scheme/freight handling + enriched tax clarifications, 6 reconciliation fixtures. Migration `20261105_documents_v10`. 15 new tests; full suite 232 passed. Next: B3 installments.
+- **P2 B1 done (2026-10-29, Muse Code):** Counterparty identity — legal/display names, format-only GSTIN (unique per tenant), branches, external IDs, explainable duplicate suggestions, staff-confirmed admin merges (links move, invoice names untouched, immutable history), bootstrap + import linking, case-view party block. Migration `20261104_identity_v9`. 12 new tests pass. Next: B2 document model.
+- **P2 Milestone A complete (2026-10-29, Muse Code):** A1 migration status + backup/restore drill, A2 per-tenant secrets/webhooks/AFIS + private evidence, A3 throttle/recovery/rotation + admin money gates + role matrix, A4 assignment/notes/tasks/escalations/workload + SoD on 4 approval paths. Gate: full suite 205 passed, both demos green in isolation, `git diff --check` clean, PG honestly unverified (no instance). Next: Milestone B (identity, documents, installments).
+- **P2 A3 done (2026-10-29, Muse Code):** Login throttle (5/email, 20/IP per 15min, 429), admin-issued single-use recovery (public redeem, kills sessions), session rotate/list/revoke/revoke-all, admin-only manual entries/allocation approvals/reconciliation approvals/receipt confirms, `docs/auth-permissions.md` matrix. Migration `20261102_auth_v7`. 9 new tests; full suite 193 passed. Next: A4 team ops.
+- **P2 A2 done (2026-10-29, Muse Code):** Tenant audit complete; `TenantSecret` (by reference, never values) + `TenantSetting` with migration `20261101_tenancy_v6`; webhooks verify per-tenant secrets (unknown→503, malformed→404, tampered replay→409); AFIS per-tenant files; evidence fixtures behind authed endpoint with public copies deleted; two invoice-review lookups hardened. 15 new tests; full suite 184 passed. Next: A3 auth.
+- **P2 A1 done (2026-10-29, Muse Code):** Migration status (`migrations.status()` + admin `GET /api/v1/system/migrations`, URL never exposed), legacy SQLite upgrade tests (REAL→text money, tenant backfill, invalid-money abort + retry), transaction/constraint tests, `scripts/db_backup.py` + verified backup/restore drill, `docs/ops-backup.md` (SQLite procedure + PG 15+ deployment steps, PG explicitly unverified). 11 new tests pass; full suite not yet rerun. Next: A2 tenancy.
+- **P2 baseline + gap matrix (2026-10-29, Muse Code):** Full suite re-verified 158 passed; P1 showcase passes in-tree; hero demo passes in isolated `%TEMP%` copy (tracked eval files untouched); port-8002 app untouched. New `docs/p2-gap-matrix.md` maps all 17 P2 workstreams from code: A1/A2/A3/B1/B2/B3/C2/D2/D3/E/F3 partial, A4/C1/F1 missing, D1/F2 blocked on external input. Notable findings: webhooks hard-reject non-`local` tenants (safe, single-tenant); `frontend/evidence/*` served unauthenticated; no PG client/driver/instance on this host. Next: Milestone A.
 - **Port 8002 safe restart on current code (2026-10-28, Antigravity):** Full port and process audit completed. Live DB backed up to `backups/apex_ar-20261028-2331.db` (with `-wal` and `-shm` sidecars). Verified stale PID 37256 stopped gracefully. App cleanly restarted on current working tree code under PID 33808; health 200, authenticated case API 200 (`INV-2026-HERO` split 240000/150000/90000/30000/60000), frontend served (`/`) with Intake/Review-and-Negotiate/Control navigation present, Meta agent active (`muse-spark-1.3`), all 5 DB migrations applied cleanly, zero `gemini` import errors, sibling services (8000/8001) and unrelated processes untouched, zero orphan test servers.
 
 - **Meta Model API swap complete (2026-10-28, Muse Code):** Full Gemini replacement per explicit user request. New `app/services/meta_agent.py` (OpenAI-compatible `muse-spark-1.3` via `https://api.meta.ai/v1`, same slot/rate-limit architecture); vision extraction via multimodal image/PDF parts; config/docs/tests/frontend repointed; live key verified (classify, generate, image + PDF vision). 158/158 tests pass. `.env` model updated; old Gemini keys left unused. Tree still dirty.
@@ -430,3 +439,216 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Decisions / limits:** No live Razorpay, WhatsApp, or PostgreSQL access used (payments remain SIMULATED). Tree remains dirty as requested (uncommitted work preserved). Rollback target remains `backups/apex_ar-20261028-2331.db`.
 - **Next:** Review uncommitted tree changes; test Meta model extraction with live provider traffic if desired; rehearse demo scripts prior to hackathon presentation.
 
+### 2026-10-29 — Codex — P2 implementation prompt refresh
+
+- **Objective:** Prepare a repository-specific execution prompt for all 17 P2 roadmap items requested by the user, with staged delivery and verifiable acceptance criteria.
+- **Changed:** Documentation handoff only. The detailed copy-ready prompt was supplied in the chat; no application code, configuration, database, or live integration was changed.
+- **Verified:** Read `AGENTS.md`, `.codex/prompt.md`, this handoff, `README.md`, and current service/API/docs inventory. `git status --short` was clean before this entry. Cross-checked official Razorpay, Tally, Zoho Books, CBIC GST, and MeitY sources for provider and policy research pointers. Tests were not run because this iteration changes only documentation.
+- **Decisions / limits:** The new P2 request extends the older hackathon scope in `.codex/prompt.md`; its financial-action and customer-contact approval gates still apply until the user explicitly authorizes live activation. A future implementation agent must obtain a sanitized pilot accounting export, chosen provider/accounts, consented pilot access, and PostgreSQL test instance before claiming those paths were tested in the real world. Existing port-8002 app and database were not touched.
+- **Next:** Execute the staged P2 prompt against isolated test infrastructure, beginning with a baseline and gap matrix. Record each milestone here after implementation and verification; distinguish implemented/tested, mocked, and blocked work.
+
+### 2026-10-29 — Muse Code — P2 baseline verification and gap matrix
+
+- **Objective:** Verify the reported 158-test baseline, run the offline showcase isolated, and map all 17 P2 workstreams from code before implementing Milestone A.
+- **Changed:** Added `docs/p2-gap-matrix.md` (17 rows: existing/missing/files/deps/tests/external-input/status). No application code changed.
+- **Verification:** `py -3.12 -m pytest -q --disable-warnings` → 158 passed in 57.9s; `py -3.12 scripts/demo_p1_showcase.py` → all beats pass in-tree (verified it writes nothing); `scripts/demo_hero.py` → passes in `%TEMP%\p2-baseline-demo` robocopy (30/30, 10/10, 5/10; tracked `docs/evaluation.md` + `frontend/evaluation.*` untouched). Read models/migrations/db_manager/money/auth/config/main/razorpay/whatsapp/intake/imports/action-queue; tenant heatmap over all 20 route files. Port-8002 live app and DB untouched.
+- **Decisions / limits:** PG status is honestly unverifiable here: no `psql`/`pg_ctl`, no psycopg driver installed or pinned, no instance — A1 will document + test SQLite only. Findings for later milestones: webhooks hard-code `tenant_id == "local"`; `frontend/evidence/*.pdf` is public static; `require_editor`/`require_viewer` unused; provider credentials are global settings, not per-tenant.
+- **Next:** Milestone A — A1 migration status + backup/restore drill + tests, then A2 tenancy audit + secret store + negative tests, A3 auth hardening, A4 team ops.
+
+### 2026-10-29 — Muse Code — P2 A1: database operations
+
+- **Objective:** Migration status, upgrade/transaction/constraint tests, backup procedure + restore drill, honest PostgreSQL report.
+- **Changed:** `app/database/migrations.py` (`status()` + wrap raw `InvalidOperation` as `ValueError`); `app/api/system.py` (admin `GET /system/migrations`, no URL leak); new `scripts/db_backup.py` (online backup/verify/restore, overwrite refusals, pg template); new `docs/ops-backup.md`; new `tests/test_p2_a1_db.py` (11 tests); `docs/p2-gap-matrix.md` A1 row marked done-on-SQLite.
+- **Verification:** `tests/test_p2_a1_db.py` 11 passed; `git diff --check` clean. Full suite rerun deferred to the Milestone A gate.
+- **Decisions / limits:** PG path reviewed (advisory lock, NUMERIC, partial indexes all valid) but never executed — no `psql`, no driver, no instance; doc states PG 15+ target + deployment steps and forbids claiming PG support. SQLite-only init was already excluded from the PG path (verified by inspection, no change needed). No live DB touched.
+- **Next:** A2 — per-tenant secret store + migration, webhook tenant binding, cross-tenant negative tests, evidence-file privacy fix.
+
+### 2026-10-29 — Muse Code — P2 A2: tenant isolation
+
+- **Objective:** Audit every tenant surface, add per-business credentials, bind webhooks/AFIS per tenant, close the public evidence files, and prove isolation with negative tests.
+- **Changed:** `models.py` + migration `20261101_tenancy_v6` (`tenant_secrets`, `tenant_settings`; foundations count 5→6); new `app/services/tenant_config.py` (env/file secret refs, allowlisted settings, local fallback); `AFISReader(db_path=...)` + per-tenant resolution in allocation/specialists; explicit-secret params on the three provider verify functions + per-tenant phone check; `webhooks.py` per-tenant binding; `integrations.py` secret/setting admin endpoints + per-tenant status; `invoices.py` two hardened lookups; `cases.py` authed evidence-file endpoint; `frontend/app.js` blob-fetch repoint; deleted `frontend/evidence/*.pdf`; `scripts/p1_eval_cases.py` sets eval5 AFIS path; new `tests/test_p2_a2_tenancy.py` (15 tests); new `docs/tenancy.md`; gap matrix A2 done + D3 correction (24h window already enforced).
+- **Verification:** New 15 pass; full suite 184 passed; `node --check frontend/app.js` clean; `git diff --check` clean (this entry's check below).
+- **Decisions / limits:** Legacy LangGraph orchestrator keeps its safe local-only AFIS gate (documented, not rewired). `local` falls back to global settings so the pilot DB needs no migration of behavior. Production vault/KMS still future work. No live DB touched.
+- **Next:** A3 — login throttling, recovery, session rotation, permission matrix + role wiring.
+
+### 2026-10-29 — Muse Code — P2 A3: production authentication
+
+- **Objective:** Throttle logins, add recovery + rotation, gate money/admin actions, and document the role matrix.
+- **Changed:** `models.py` + migration `20261102_auth_v7` (`login_attempts`, `user_recovery_tokens`; count 6→7); `auth_security.py` recovery tokens; `api/auth.py` (throttle in login, rotate/sessions/revoke/revoke-all/recovery endpoints); `main.py` public `/auth/recover`; inline admin gates on manual entries, allocation approve, reconciliation approve, receipt confirm (matching the file convention of reverse/resume); new `tests/test_p2_a3_auth.py` (9 tests); new `docs/auth-permissions.md`; gap matrix A3 done.
+- **Verification:** New 9 pass; full suite 193 passed (no regressions from the new admin gates — all existing callers use admin keys).
+- **Decisions / limits:** Message approvals stay editor-accessible; their stronger check is SoD in A4 plus exact-version + server re-verification. Invoice review (data correction, no posting) stays editor. Throttle uses naive UTC consistently for SQLite/PG comparability. No live DB touched.
+- **Next:** A4 — assignment, staff notes, escalation deadlines, workload views, SoD enforcement.
+
+### 2026-10-29 — Muse Code — P2 A4: team operations + Milestone A gate
+
+- **Objective:** Assignment, notes, tasks, escalation deadlines, workload views, and SoD on sensitive approvals; then run the Milestone A gate.
+- **Changed:** `models.py` + migration `20261103_team_v8` (`case_assignments`, `staff_tasks`, `staff_notes`, `case_escalations`; count 7→8); new `app/services/team_ops.py` (insert-only history, sweep, workload, `sod_allows` with lone-operator rule); new `app/api/team.py` + router registration; SoD wired into allocation/agent-draft/dunning/negotiation approvals (fail-fast placement); dunning authorship stamping on trigger/edit; escalations surface first in `action_queue`; new `tests/test_p2_a4_team.py` (12 tests); new `docs/team-ops.md`; gap matrix A4 done.
+- **Verification:** New 12 pass; gate: full suite 205 passed; P1 showcase passes in-tree; hero demo passes in fresh `%TEMP%\\p2-milestoneA-demo` copy (30/30, 10/10, 5/10; audit lines 61→62 from one SoD lone-skip note, printed not asserted); tracked eval files untouched per `git status`; `git diff --check` exit 0; live port-8002 app/DB untouched.
+- **Decisions / limits:** SoD blocks self-approval only with ≥2 active users; solo tenants proceed with a `sod_skipped_lone_operator` audit note (keeps the pilot + demos working, conflict still tested). Reversals/resume were already admin-gated (left as-is). PG remains honestly unverified. No browser QA this milestone (frontend change is the A2 blob-fetch repoint, syntax-checked + served-HTML-covered pattern).
+- **Next:** Milestone B — B1 counterparty identity (GSTIN, branches, merge), B2 Indian document model (CBIC/e-invoice check first), B3 installment schedules.
+
+### 2026-10-29 — Muse Code — P2 B1: business identity
+
+- **Objective:** Legal/display names, GSTIN, branches, addresses, external IDs, explainable duplicates, staff-confirmed merges, import matching.
+- **Changed:** `models.py` (Counterparty extension + branches/external-ids/merges tables + `Invoice.counterparty_id`) with migration `20261104_identity_v9` (incl. portable partial unique index for GSTIN); new `app/services/counterparties.py` (format-only GSTIN, difflib duplicates, merge/bootstrap/link); new `app/api/counterparties.py` + router; import auto-link in `confirm_import`; party block in case `_summary`; new `tests/test_p2_b1_identity.py` (12 tests); new `docs/identity.md`; gap matrix B1 done.
+- **Verification:** New 12 pass. Full-suite rerun deferred to the Milestone B gate.
+- **Decisions / limits:** rapidfuzz is pinned but not installed — used stdlib difflib per codebase convention instead of touching the user env. Removed two provably-dead branches (same-tax-ID scoring, merge external-clash check) after DB uniques made them unreachable. GSTIN checksum/registry verification explicitly out of scope. CBIC Rule 46 + e-invoice schema fetched from official pages to ground B1/B2 field design. No live DB touched.
+- **Next:** B2 — Indian document model (line items, GST split, challans, credit/debit notes, freight/returns/scheme docs, six fixtures).
+
+### 2026-10-29 — Muse Code — P2 B2: Indian document model
+
+- **Objective:** Persisted lines, GST components, challans, credit/debit notes, freight/returns/scheme handling with source links; six exact-reconciliation fixtures.
+- **Changed:** `models.py` (`invoice_line_items`, `credit_debit_notes`, `supporting_documents`, invoice tax/freight columns) + migration `20261105_documents_v10`; `receivables.py` debit kind + debit-aware split/consistency + reversal-of-debit; `vision_extraction.py` 5 new doc types + GST fields + split reconciliation; `intake_pipeline.py` persists lines/split/notes/support docs; `investigation.py` persisted-first lines, challan/scheme mapping, freight branch, enriched tax figures; new `app/services/documents.py` + `app/api/documents.py` (notes accept/post/cancel, manual lines, reads) + case-detail blocks; new `tests/test_p2_b2_documents.py` (15 tests); new `docs/documents.md`; matrix B2 done.
+- **Verification:** New 15 pass; full suite 232 passed (ledger change regression-clean).
+- **Decisions / limits:** Tax-inclusive line pricing fails strict intake validation by design — staff records those lines manually (verified status) instead of the system guessing. Tax/freight apportionment stays staff-decided; clarifications now state exact figures. Debit notes post unallocated (fresh debt). No tax-compliance claim without accountant review. No live DB touched.
+- **Next:** B3 — installment schedules (legs, payment application, late/missed/reschedule/cancel/reversal, schedule-vs-ledger split).
+
+
+### 2026-10-29 - Muse Code - P2 B3: installment lifecycle + Milestone B gate
+
+- **Objective:** Accepted installment schedules with per-leg due dates/amounts/status, waterfall payment application, late/missed/reschedule/cancel/reversal handling, schedule-vs-ledger split; then run the Milestone B gate.
+- **Changed:** `models.py` (`installment_schedules`, `installment_legs`, `installment_applications`) + migration `20261106_installments_v11`; new `app/services/schedules.py` (create/approve/cancel/reschedule, waterfall apply, reversal un-apply with reopen, read-time late/missed flags); new `app/api/schedules.py` (6 endpoints) + router registration; `receivables.py` `post_entry` hook; `cases.py` reverse endpoint now passes `reversal_of_id` (was NULL, broke un-application); new `tests/test_p2_b3_installments.py` (12 tests); new `docs/installments.md`; gap matrix B3 done.
+- **Verification:** New 12 pass. Gate: full suite 244 passed (exit 0); P1 showcase passes in-tree (exit 0, no tree writes); hero demo passes in fresh `%TEMP%\p2-b-demo` copy (30/30, 10/10, 5/10; 62 audit records); tracked eval files untouched per `git status`; isolated smoke server on port 8124 + temp DB: health ok, 11/11 migrations applied, invoice->schedule->approve (lone-operator SoD skip)->700 payment->waterfall (leg1 paid 60000, leg2 partial 10000, remaining 30000, case balance 30000); `git diff --check` clean; port-8002 app/DB untouched.
+- **Decisions / limits:** Schedules are nonfinancial (approval is not posting); credits/debits never apply to legs; overpay residual stays on ledger; reversals preserve history rows and reopen derived `completed` schedules only (explicit `cancelled` stays terminal); 30-day missed threshold. Two real bugs fixed: missing `reversal_of_id` on the reverse endpoint, and `unapply_entry` re-querying before flush under `autoflush=False` (production session mode) - legs kept paid totals. No live DB touched.
+- **Next:** Milestone C - C1 customer response page (scoped short-lived access, dispute->staff review), C2 document security (private storage, auth on every read, quarantine, retention).
+
+### 2026-10-29 - Muse Code - P2 C1: customer response page
+
+- **Objective:** Single-invoice portal: scoped tokens, safe summary, dispute/evidence/payref submissions into staff review, customer page.
+- **Changed:** `models.py` (`portal_tokens`, `portal_attempts`, `stored_documents`, `document_access_log`, `customer_messages.source`) + migrations `20261107_portal_v12`/`20261108_docstore_v13`; new `app/services/customer_messages.py` (shared staff/portal recording; `cases.record_reply` refactored onto it, behavior-identical); new `app/services/portal.py` (issue/revoke/verify, 60+200+20 per-15min limits, safe summary) + `app/services/document_store.py` (allowlist/magic-byte/double-extension validation, sha256, random private names, pending-vs-clean scan status); new `app/api/portal.py` (staff token mgmt + 7 public endpoints) + router; `main.py` exempts `/api/v1/portal/` from staff auth (token verified per route) + CORS header; new `frontend/portal.html` + `frontend/portal.js`; new `tests/test_p2_c1_portal.py` (12 tests); new `docs/portal.md`; gap matrix C1 done.
+- **Verification:** New 12 pass (`EXIT=0`); `node --check` clean on portal.js + app.js. Full-suite rerun deferred to the Milestone C gate.
+- **Decisions / limits:** Portal evidence uploads use the raw-body + x-filename convention (no python-multipart installed; matches intake). No AV engine: portal uploads stay `pending` until staff release (C2 adds the release flow). Token is not staff auth (401 when misused). No live DB touched.
+- **Next:** C2 - quarantine/release/hold/delete/retention staff endpoints, access logging on all reads, intake hardening, malicious-upload negatives, then the Milestone C gate.
+
+### 2026-10-29 - Muse Code - P2 C2: document security
+
+- **Objective:** Quarantine/release lifecycle, holds, deletion, retention purge, hashing, access logs, malicious-upload negatives.
+- **Changed:** `document_store.py` lifecycle ops (release/quarantine/hold/delete/purge + `doc_view`); `documents.py` staff endpoints (list/download/release/quarantine/hold/delete) with admin gates on release+delete; `system.py` tenant-scoped dry-run-first purge; `intake.py` moved onto the shared validator (messages/codes preserved), SHA-256 on upload, hash-verify + backfill + audit on download; `IntakeUpload.sha256` + migration addition; new `tests/test_p2_c2_documents.py` (10 tests); new `docs/document-security.md`; gap matrix C2 done.
+- **Verification:** New 10 pass (`EXIT=0`). Full-suite rerun deferred to the Milestone C gate.
+- **Decisions / limits:** Quarantine is the safe direction (any staff); release/delete/purge are admin. Tampered intake bytes return 409. No AV engine wired: `clean` honestly means policy-passed or staff-released, per `scanned_by`. Portal uploads stay `pending` until release. No live DB touched.
+- **Next:** Milestone C gate - full suite, both demos, isolated smoke incl. portal page, diff check, handoff.
+
+### 2026-10-29 - Muse Code - P2 Milestone C gate
+
+- **Objective:** Verify C1 + C2 end to end: full suite, both demos, isolated smoke incl. the portal page.
+- **Changed:** `tests/test_foundations.py` revision tally 11 -> 13 (v12/v13).
+- **Verification:** Full suite 266 passed (exit 0); P1 showcase passes in-tree (exit 0, no tree writes); hero demo passes in fresh `%TEMP%\p2-c-demo` copy (30/30, 10/10, 5/10; 62 audit records); tracked eval files untouched; smoke on port 8125 + temp DB: portal.html 200 with all three forms, invoice -> token -> summary -> dispute -> evidence (pending) -> staff release (clean), summary flips to disputed with 1 submission, migrations current `20261108_docstore_v13` with zero pending; `git diff --check` exit 0; `node --check` clean on portal.js/app.js; port-8002 app/DB untouched.
+- **Decisions / limits:** C gate holds: no portal action posts money or approves outcomes; quarantined/deleted docs serve nothing; AV engine still the honest pending item. No live DB touched.
+- **Next:** Milestone D - accounting/payment/comms integrations in test mode (D1 needs the sanitized pilot export first; D2/D3 need sandbox accounts + explicit authorization).
+
+### 2026-10-30 - Muse Code - P2 D1: accounting import runs
+
+- **Objective:** Provider-neutral import rails � runs, idempotency keys, provenance, cursor, conflict queue, reconciliation report. No vendor claims.
+- **Changed:** `models.py` (`import_runs`, `import_conflicts`) + migration `20261109_import_runs_v14`; `import_adapter.py` run flow (`start_run`/`confirm_run`/`resolve_conflict`/`run_view`); `imports.py` run + conflict-queue endpoints; new `tests/test_p2_d1_import_runs.py` (12 tests); new `docs/accounting-import.md`; gap matrix D1 done-generic/blocked-vendor.
+- **Verification:** New 12 pass (`EXIT=0`). Full-suite rerun deferred to the Milestone D gate.
+- **Decisions / limits:** Intra-batch self-contradicting files mark the run invalid (source must be fixed); ledger-vs-source mismatches queue as conflicts while clean rows import; re-confirm never duplicates rows or conflicts. Only `generic_csv` exists � Tally/BUSY/Zoho e2e blocked on the sanitized pilot export; unknown profiles get 422. No live DB touched.
+- **Next:** D2 - Razorpay live-off hardening (config checks, failure/settlement handling, refund posting, discrepancy queue, event replay), then D3 comms, then the D gate.
+
+### 2026-10-30 - Muse Code - P2 D2: payment hardening behind a live gate
+
+- **Objective:** Disabled-by-default live mode, per-tenant status, failure/settlement handling, refund/chargeback reversal path, discrepancy queue. Mocks only.
+- **Changed:** `models.py` (`payment_discrepancies`, `settlement_lines`, event/link `mode`, link `last_error`) + migration `20261110_payments_v15`; `razorpay.py` (live gate in `validate_mode`, event mode, `payment.failed`, settlement parking, `queue_discrepancy`, `status_for_tenant`, `match_settlement`, `resolve_discrepancy`); `webhooks.py` live-mode 503 + mode pass-through; `payments.py` live gate + link mode stamp + status/discrepancy/settlement endpoints; `config.py` `RAZORPAY_LIVE_ENABLED=false`; new `tests/test_p2_d2_payments.py` (15 tests); new `docs/live-payments.md`; gap matrix D2 done-mock/blocked-live.
+- **Verification:** New 15 pass (`EXIT=0`). Full-suite rerun deferred to the Milestone D gate.
+- **Decisions / limits:** Out-of-order is safe by parking (refund-first queues unlinked; reversal refused until the payment posts). Settlement reports are staff-uploaded matching input, never auto-posting. No sandbox account connected: status honestly mock-tested/sandbox-pending/live-disabled. No live DB touched.
+- **Next:** D3 - per-business comms config (templates, consent, quiet hours, language, delivery tracking, reply lifecycle), then the D gate.
+
+### 2026-10-30 - Muse Code - P2 D3: comms policy in sandbox
+
+- **Objective:** Templates, consent, quiet hours, language, delivery tracking, replies into the lifecycle. Live stays off.
+- **Changed:** `models.py` (`message_templates`, `comms_preferences`, outbound language/template/delivery/hold columns) + migration `20261111_comms_v16`; new `app/services/comms.py` (IST quiet math, template render, consent gate, delivery apply); `tenant_config.py` + `config.py` quiet/toggle settings; `meta_whatsapp.py` statuses[] receipts; `messages.py` rewritten (triage onto shared lifecycle path, template reply path, template CRUD, preferences, outbound list, hold release, live-or-sandbox send with rollback); new `tests/test_p2_d3_comms.py` (11 tests); new `docs/comms-policy.md`; gap matrix D3 done-sandbox.
+- **Verification:** New 11 pass (`EXIT=0`). Full-suite rerun deferred to the Milestone D gate.
+- **Decisions / limits:** Templates anchor to triaged threads (cold-proactive needs nullable inbound_id + campaign work � deferred, documented). Quiet holds template sends; direct replies exempt. Triage keeps unconditional suppression and gains checkpoint/reassessment/injection-screening. statuses[] shape verified against current Cloud API docs. No email send endpoint, no SMTP library, non-local live 503. No live DB touched.
+- **Next:** Milestone D gate - full suite, both demos, isolated smoke, diff check, handoff.
+
+### 2026-10-30 - Muse Code - P2 Milestone D gate
+
+- **Objective:** Verify D1 + D2 + D3 end to end: full suite, both demos, isolated smoke.
+- **Changed:** `tests/test_foundations.py` revision tally 13 -> 16 (v14/v15/v16); `messages.py` reply/release return ORM objects again (controlled_agent calls reply() in-process and needs attributes � regression caught by test_release3, fixed, suite green).
+- **Verification:** Full suite 304 passed (exit 0); P1 showcase passes in-tree (exit 0, no tree writes); hero demo passes in fresh `%TEMP%\p2-d-demo` copy (30/30, 10/10, 5/10); tracked eval files untouched; smoke on port 8126 + temp DB: import run start/confirm reconciled, razorpay status mock/test, template draft/approve, migrations current `20261111_comms_v16` with zero pending; `git diff --check` exit 0; port-8002 app/DB untouched.
+- **Decisions / limits:** D gate holds with honest states: vendor accounting e2e blocked on the pilot export; payments mock-tested/sandbox-pending/live-disabled; comms sandbox with live off. Note: tool output renders `detail`/`Detail` case unreliably � raw bytes/repr are truth (one D1 test typo caught this way). No live DB touched.
+- **Next:** Milestone E - reliable workers (claims/leases/retries/dead-letter) + monitoring/alerts/runbook, then F (privacy/validation/economics).
+
+### 2026-10-30 - Muse Code - P2 E1: durable worker leases
+
+- **Objective:** Atomic multi-worker claims, leases, heartbeats, backoff, dead letters, operator replay; no duplicate money/messages under races.
+- **Changed:** New `app/services/worker_lease.py` (conditional-UPDATE claims, steal-expired, heartbeat, deterministic backoff, poison parking, retry/dismiss); lease columns + `elapsed_ms` on intake/supervisor tables + migration `20261112_workers_v17`; `intake_pipeline.py` (lease claims, heartbeat, crash backoff, poison at 3, lease-aware recovery); `supervisor.py` (atomic claim in run_task, transient-vs-poison split, backoff, lease release, dead_letter terminal); `webhooks.py` concurrent-duplicate convergence for Razorpay events; `system.py` operator job endpoints (list/detail/retry/dead-letter resolve); P1 exhaustion test simulates backoff expiry (intended timing change); new `tests/test_p2_e1_workers.py` (11 tests).
+- **Verification:** New 11 pass; adjacent suites (P1 supervisor, intake, release2/3, D2 payments) 55 pass. Full suite at the E gate.
+- **Decisions / limits:** Attempts count at claim (crash counts as an attempt); poison = 3 unexpected crashes, transients burn the full budget; job list shows error categories only, full error on the audited detail view. Razorpay.py edit was reverted mid-work after a bad splice (file verified pristine at D2 state); convergence lives in the webhook route instead. No live DB touched.
+- **Next:** E2 - metrics/alerts endpoints + runbook, then the E gate.
+
+### 2026-10-30 - Muse Code - P2 E2: ops metrics, alerts, runbook
+
+- **Objective:** Counts-and-ages monitoring, 8 alert rules with owners, operator runbook. No customer data.
+- **Changed:** New `app/services/ops_metrics.py` (queues, provider events, model calls/latency, delivery, discrepancies, dead letters, alert evaluation); `system.py` metrics/alerts endpoints (tenant-scoped, staff-readable); `config.py` alert thresholds; new `tests/test_p2_e2_ops.py` (4 tests); new `docs/runbook.md`; gap matrix E done.
+- **Verification:** New 4 pass (`EXIT=0`). Full suite at the E gate.
+- **Decisions / limits:** Metrics carry counts/ages/categories only (planted secrets asserted absent); model cost explicitly not_tracked; alerts are pull; single-tenant ops view. Retry/resolve stay admin; reads are staff.
+- **Next:** Milestone E gate - full suite, both demos, isolated smoke, diff check, handoff.
+
+### 2026-10-30 - Muse Code - P2 Milestone E gate
+
+- **Objective:** Verify E1 + E2 end to end: full suite, both demos, isolated smoke.
+- **Changed:** `tests/test_foundations.py` revision tally 16 -> 17 (v17).
+- **Verification:** Full suite 319 passed (exit 0, first run); P1 showcase passes in-tree (exit 0, no tree writes); hero demo passes in fresh `%TEMP%\p2-e-demo` copy (30/30, 10/10, 5/10); tracked eval files untouched; smoke on port 8127 + temp DB: invoice create, jobs list, all 6 metric sections, 8 alerts all ok on fresh state, migrations current `20261112_workers_v17` with zero pending; `git diff --check` exit 0; port-8002 app/DB untouched.
+- **Decisions / limits:** E gate holds: exactly-once claims proven under threads, poison parks at 3 crashes, webhook duplicates converge, ops views carry no customer data. Known honest gaps stand: model cost untracked, pull alerts, single-tenant ops view. No live DB touched.
+- **Next:** Milestone F - privacy workflows (F1), real-world validation plan (F2, blocked on pilot), economics instrumentation (F3), then the P2 final report.
+
+## 2026-10-30 � Codex � P2 F1 privacy readiness
+
+- **Objective:** F1 subject-request workflows + inventory + notices + incident runbook.
+- **Changed:** `app/database/models.py` (+PrivacyRequest), `app/database/migrations.py` (v18 `20261113_privacy_v18`), `app/services/privacy.py` (new: bundle/correction/deletion rules), `app/api/privacy.py` (new, admin-only) + router, `tests/test_p2_f1_privacy.py` (12 tests), `tests/test_foundations.py` tally 17 -> 18, `docs/privacy.md` (new).
+- **Verification:** 12/12 F1 tests pass (export contents + no-secret walk, tenant scoping, correction allowlist + branch binding, open-invoice + hold blocks, erase-contacts-keep-ledger with paid case view intact, staff offboard, self/last-admin blocks, reject/terminal states, editor 403). Full suite + F gate still pending.
+- **Decisions / limits:** Deletion erases contact/comms only � invoices, ledger, names-on-books, GSTINs, consent records, audit kept as books-of-account; holds always win. DPDP Rules phased: substantive duties ~May 2027 per secondary sources (MeitY page unreadable, Gazette needs counsel verification). NOT a compliance claim; legal review required. AFIS/AXIS sidecars out of erasure scope.
+- **Next:** F2 validation plan doc (blocked on pilot), F3 economics endpoint, then F gate.
+
+## 2026-10-30 � Codex � P2 F2 validation plan
+
+- **Objective:** F2 measurement protocol without inventing data.
+- **Changed:** `docs/validation-plan.md` (new: entry criteria, M1-M7 metric definitions + sources, interview/pilot/usability protocols, evidence-trail + report templates, 4 precise blockers).
+- **Verification:** Doc-only change; no code, no tests (nothing executable to test). `git diff --check` clean.
+- **Decisions / limits:** Execution BLOCKED on pilot businesses + consent + access + accountant reviewer. No validation claim in README/demo until then. Pilot data barred from fixtures/tests/demos.
+- **Next:** F3 economics endpoint, then F gate.
+
+## 2026-10-30 � Codex � P2 F3 economics instrumentation
+
+- **Objective:** F3 cost instrumentation with assumptions separated from measurements.
+- **Changed:** `app/services/tenant_config.py` (+8 cost_* setting specs/validators), `app/config.py` (+8 COST_* globals, zero defaults), `app/services/economics.py` (new report builder), `app/api/system.py` (+GET /system/economics, admin-only), `tests/test_p2_f3_economics.py` (6 tests), `docs/economics.md` (new).
+- **Verification:** 6/6 F3 tests pass (tenant+window scoping, zero-default flagging, priced-lines arithmetic 4648.40 fixture, measured-stable-on-reprice, sensitivity 1596.00/1564.00, invalid price/window rejected). Full suite + F gate still pending.
+- **Decisions / limits:** Gateway fees on reporting-currency volume only (no silent FX); supervisor model calls only (intake/vision uninstrumented, reported pending); willingness-to-pay always pending on F2 interviews; no price/market claim without evidence.
+- **Next:** Milestone F gate (full suite, demos isolated, smoke), then the final P2 report.
+
+## 2026-10-30 � Codex � P2 Milestone F gate (final P2 gate)
+
+- **Objective:** Verify F1+F2+F3 end to end: full suite, both demos, isolated smoke.
+- **Changed:** `tests/test_p2_e1_workers.py` (race assertion accepts post-commit-done loser; exactly-once asserts intact � see below).
+- **Verification:** Full suite 337 passed (319 + 12 F1 + 6 F3); P1 showcase in-tree exit 0 (eval files untouched); hero demo in fresh `%TEMP%\p2-f-demo` copy (30/30, 10/10, 5/10); smoke on port 8128 + temp DB: health ok, migrations current `20261113_privacy_v18` zero pending, economics fresh-state INR/0.00/2-pending, privacy list empty, unknown-subject 400, bad-key 401; `git diff --check` exit 0; port-8002 app/DB untouched. No frontend changes, no node check needed.
+- **E1 race note:** `test_simultaneous_supervisor_run_executes_once` failed 2x under full-suite load (both outcomes done). Root cause is a third valid serialization � loser arriving after the winner commits returns done without executing (supervisor.py:271-272) � not double execution. Proven by /tmp/e1_probe.py: exactly-once (1 call, attempts 1) across 30/30 races with loser outcomes varying (claimed/running). Test now accepts all three serializations; E1 file green 2x standalone, full suite green after.
+- **Demo-copy note:** first robocopy hung on locked live DB files (default 30s retries); killed only my proven robocopy PID, re-copied with /R:2 /W:1 excluding *.db*, .env, caches. Another session''s p0-verify copy + all run.py servers left untouched.
+- **Decisions / limits:** F gate holds: subject-request workflows tested, validation protocol ready but BLOCKED on pilot, economics separates measured/assumed/pending. Standing honest gaps: PG unverified, payments simulated, messaging sandbox, DPDP needs counsel, willingness-to-pay unmeasured.
+- **Next:** P2 complete � see final report. Remaining work is all external-input gated (pilot, providers, PG instance, reviewers).
+
+### 2026-10-30 - Codex - Independent verification and regression fixes
+
+- **Objective:** Verify P0/P1/P2 claims without touching port 8002 or its database.
+- **Changed:** receivables.py (debit-aware reversal ceiling; reversal retry checks original ID), privacy.py (explicit counterparty link wins over matching name), economics.py (negative ledger receipts become positive gross volume), db_manager.py (bootstrap uses the migrated engine). Added three regression tests and corrected economics fixtures to use actual ledger signs.
+- **Verification:** Baseline full suite 334 passed, 3 failed on isolated bootstrap DB (migration tests changed engine but SessionLocal still referenced the default engine). Before fixes: targeted regressions 5 failed, 4 passed, confirming all four service defects. P1 showcase and isolated-copy hero demo passed (30/30, 10/10, 5/10). Focused post-fix suite running; full rerun pending.
+- **Limits:** CodeRabbit installation failed: unsupported mingw64_nt-10.0-26300. User explicitly chose verification without CodeRabbit. No live-provider or PostgreSQL validation; no live DB opened. Existing changes preserved; no commits.
+- **Next:** Finish regression/full-suite checks, isolated server and desktop/mobile smoke, README and 17-workstream report.
+
+### 2026-10-30 - Codex - Worker recovery regression hardening
+
+- **Changed:** supervisor.py now includes expired running leases in normal worker pickup; startup recovery in supervisor.py/intake_pipeline.py resets only legacy unleased jobs, preserving another worker's active lease. Two regression tests added; existing race assertions unchanged.
+- **Verification:** Both new tests failed before the fix. Earlier money/privacy/economics/migration focused suite: 76 passed. Worker focused suite running. Isolated port-8138 app: health/case/privacy/economics 200, migrations v18 with 18 applied and zero pending, bad key 401, unknown privacy subject 400.
+- **Limits / next:** No general distributed exactly-once claim; verify focused and full suites, then finish browser checks and documentation. Port 8002 and its DB remain untouched.
+
+### 2026-10-30 - Codex - Verification report and README refresh
+
+- **Changed:** Rewrote README from code and fresh results; added docs/verification-2026-10-30.md with seven defects, exact commands, P0/P1 evidence, all 17 P2 workstreams, external blockers and limits. Updated F1/F2/F3 status in p2-gap-matrix, clarified gross-volume signs in economics, marked foundation notes historical.
+- **Verification:** Final full suite 342 passed, 177 warnings (113.82 s); focused suites 76 and 30 passed. New worker tests both failed before fixes. Final in-tree P1 showcase passed and five evaluation files were SHA-256 identical before/after. Frontend app/portal/config JS syntax passed. In-app browser: case and Control flow at 1440x900 and 390x844, populated approval queue, three completed specialists, Open case interaction, no horizontal overflow or console warnings/errors. No frontend changes.
+- **Limits / next:** Final isolated hero/P1 evaluation rerun and cleanup pending. No provider/PG/pilot/legal-validation claim. Seven fixed defects do not establish exhaustive correctness; report records remaining limits. Port 8002/live DB untouched, no commit or push.
+
+### 2026-10-30 - Codex - Final verification and cleanup
+
+- **Changed:** Corrected README API route map; runbook now explains lease-preserving startup and avoids a blanket multi-worker safety claim. Final report records the fresh P1 benchmark limitations and final smoke.
+- **Verification:** Final hero rerun passes (30/30 split, 10/10 routing, 5/10 review). P1 evaluator completed 38 cases x 3 arms offline with published behavioral scores reproduced; zero model calls. Five checkout evaluation files remain byte-identical. Fresh port-8139 smoke passes health/case/privacy/economics, 18 migrations/zero pending, 401/400 negatives and positive gross receipt volume. Both owned servers stopped; temporary smoke/default test DBs removed. README/report/matrix links and no-emoji checks pass; git diff --check passes.
+- **Final state:** 342 passed (177 existing/runtime warnings). Seven defects fixed with pre-fix reproduction; five new regression tests. Full details in docs/verification-2026-10-30.md. Known synthetic evaluation decision errors and metering gaps remain explicit; no production-complete, live-provider, PostgreSQL, field-accuracy or legal-compliance claim. No live DB access, customer send, commit or push.
+- **Next:** Review the local changes. Production/provider/pilot validation needs the specific external inputs listed in the report; internal follow-ups include complete model metering and the disclosed benchmark limitations.

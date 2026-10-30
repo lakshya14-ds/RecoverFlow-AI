@@ -1,13 +1,18 @@
 """Assisted collection cases, staff-recorded payments, and customer replies."""
+import json
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import Identity, get_identity
+from app.config import settings
 from app.database import models
 from app.database.db_manager import get_db
 from app.services.receivables import balance_cents, post_entry, split_balance
@@ -109,12 +114,24 @@ def _invoice(db: Session, invoice_id: int, identity: Identity) -> models.Invoice
     return invoice
 
 
+def _party_view(db: Session, invoice: models.Invoice):
+    if not invoice.counterparty_id:
+        return None
+    party = db.get(models.Counterparty, invoice.counterparty_id)
+    if not party or party.tenant_id != invoice.tenant_id:
+        return None
+    return {"id": party.id, "name": party.name,
+            "display_name": party.display_name or party.name,
+            "gstin": party.gstin, "status": party.status}
+
+
 def _summary(db: Session, invoice: models.Invoice) -> dict:
     split = split_balance(db, invoice, allow_inconsistent=True)
     return {
         "invoice_id": invoice.id,
         "invoice_number": invoice.invoice_number,
         "customer": invoice.counterparty_name,
+        "counterparty": _party_view(db, invoice),
         "email": invoice.counterparty_email,
         "phone": invoice.counterparty_phone,
         "currency": invoice.currency or "INR",
@@ -147,6 +164,30 @@ def _summary(db: Session, invoice: models.Invoice) -> dict:
     }
 
 
+EVIDENCE_DOC_DIRS = ("invoices", "po")
+
+
+@router.get("/{invoice_id}/evidence-files/{filename}")
+def get_evidence_file(invoice_id: int, filename: str,
+                      db: Session = Depends(get_db),
+                      identity: Identity = Depends(get_identity)):
+    """Serve a synthetic doc fixture linked to this tenant's own evidence row."""
+    invoice = _invoice(db, invoice_id, identity)
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.pdf", filename or ""):
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    refs = {row.source_reference for row in db.query(models.CaseEvidence).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id).all()}
+    match = next((f"docs/{d}/{filename}" for d in EVIDENCE_DOC_DIRS
+                  if f"docs/{d}/{filename}" in refs), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    docs_root = (Path(settings.BASE_DIR) / "docs").resolve()
+    path = (docs_root / match[5:]).resolve()
+    if docs_root not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="Evidence file not found")
+    return FileResponse(path, media_type="application/pdf", filename=filename)
+
+
 @router.get("")
 def list_cases(db: Session = Depends(get_db), identity: Identity = Depends(get_identity)):
     invoices = db.query(models.Invoice).filter_by(
@@ -161,6 +202,35 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
     result = _summary(db, invoice)
     result["workflow"] = db.query(models.CaseWorkflow).filter_by(tenant_id=identity.tenant_id, invoice_id=invoice_id).first()
     result["investigation_reason"] = invoice.investigation_reason
+    result["line_items"] = [{
+        "line_no": row.line_no, "sku": row.sku, "description": row.description,
+        "hsn": row.hsn,
+        "quantity": str(row.quantity) if row.quantity is not None else None,
+        "unit": row.unit, "unit_price_cents": row.unit_price_cents,
+        "amount_cents": row.amount_cents, "tax_rate_bps": row.tax_rate_bps,
+        "cgst_cents": row.cgst_cents, "sgst_cents": row.sgst_cents,
+        "igst_cents": row.igst_cents, "status": row.status} for row in
+        db.query(models.InvoiceLineItem).filter_by(
+            tenant_id=identity.tenant_id, invoice_id=invoice.id).order_by(
+            models.InvoiceLineItem.line_no).all()]
+    result["tax_split"] = {"cgst_cents": int(invoice.cgst_cents or 0),
+                           "sgst_cents": int(invoice.sgst_cents or 0),
+                           "igst_cents": int(invoice.igst_cents or 0),
+                           "freight_cents": int(invoice.freight_cents or 0),
+                           "roundoff_cents": int(invoice.roundoff_cents or 0)}
+    result["credit_debit_notes"] = [{
+        "id": row.id, "note_type": row.note_type, "number": row.number,
+        "amount_cents": row.amount_cents, "status": row.status,
+        "entry_id": row.entry_id} for row in
+        db.query(models.CreditDebitNote).filter_by(
+            tenant_id=identity.tenant_id, invoice_id=invoice.id).order_by(
+            models.CreditDebitNote.id).all()]
+    result["supporting_documents"] = [{
+        "id": row.id, "doc_type": row.doc_type, "number": row.number,
+        "status": row.status, "summary": json.loads(row.summary_json or "{}")}
+        for row in db.query(models.SupportingDocument).filter_by(
+            tenant_id=identity.tenant_id, invoice_id=invoice.id).order_by(
+            models.SupportingDocument.id).all()]
     result["entries"] = db.query(models.ReceivableEntry).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.ReceivableEntry.id).all()
     result["messages"] = db.query(models.CustomerMessage).filter_by(
@@ -558,6 +628,8 @@ def cancel_promise(invoice_id: int, promise_id: int, payload: PromiseCancel,
 def record_entry(invoice_id: int, payload: BalanceAdjustment, db: Session = Depends(get_db),
                  identity: Identity = Depends(get_identity)):
     invoice = _invoice(db, invoice_id, identity)
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin approval required")
     existing = db.query(models.ReceivableEntry).filter_by(
         tenant_id=identity.tenant_id, source="manual", reference=payload.reference.strip()).first()
     try:
@@ -583,78 +655,12 @@ def record_entry(invoice_id: int, payload: BalanceAdjustment, db: Session = Depe
 def record_reply(invoice_id: int, payload: CustomerReply, db: Session = Depends(get_db),
                  identity: Identity = Depends(get_identity)):
     invoice = _invoice(db, invoice_id, identity)
-    is_inj, inj_reason = detect_prompt_injection(payload.body)
-    category = "untrusted_evidence" if is_inj else payload.category
-
-    message = models.CustomerMessage(
-        tenant_id=identity.tenant_id,
-        invoice_id=invoice_id,
-        category=category,
-        body=payload.body,
-        actor=identity.actor,
-        is_injection=is_inj,
-        rejection_reason=inj_reason,
-    )
-    db.add(message)
-
-    if is_inj:
-        invoice.contact_suppressed = True
-        invoice.requires_human_review = True
-        db.add(models.AuditEvent(
-            tenant_id=identity.tenant_id,
-            actor=identity.actor,
-            action="injection_attempt_blocked",
-            entity_type="invoice",
-            entity_id=str(invoice_id),
-            details=inj_reason,
-        ))
-        # Record rejected claim: checked by policy, unusable for financial action.
-        db.add(models.CaseEvidence(
-            tenant_id=identity.tenant_id,
-            invoice_id=invoice_id,
-            claim_type="untrusted_customer_message",
-            title="Adversarial Injection Attempt Blocked",
-            description=f"Customer attempted instruction override: {inj_reason}",
-            source_type="customer_message",
-            source_reference=f"MSG-{payload.body[:20]}",
-            source_snippet=payload.body,
-            verified=False,
-            trust_state="rejected",
-            decided_by=identity.actor,
-            decided_at=datetime.now(timezone.utc),
-            decision_reason=inj_reason or "Policy rejected an instruction override",
-            currency=invoice.currency or "INR",
-        ))
-    else:
-        if payload.category in ("paid_claim", "dispute", "opt_out"):
-            invoice.contact_suppressed = True
-        if payload.category == "opt_out":
-            invoice.contact_opt_out = True
-        if payload.category == "dispute":
-            # A customer allegation reserves attention, never money: it marks the
-            # case disputed and pauses contact; only staff review sets the amount.
-            invoice.dispute_open = True
-            invoice.status = "disputed"
-        db.add(models.AuditEvent(
-            tenant_id=identity.tenant_id,
-            actor=identity.actor,
-            action="customer_reply_recorded",
-            entity_type="invoice",
-            entity_id=str(invoice_id),
-            details=payload.category,
-        ))
-
-    checkpoint(db, invoice, "customer_reply", identity.actor)
-    from app.services.supervisor import request_reassessment
-    request_reassessment(db, invoice, f"reply:{category}", identity.actor)
+    from app.services.customer_messages import record_customer_message
+    result = record_customer_message(
+        db, identity.tenant_id, identity.actor, invoice,
+        payload.category, payload.body, source="staff")
     db.commit()
-    return {
-        "message_id": message.id,
-        "is_injection": is_inj,
-        "rejection_reason": inj_reason,
-        "contact_suppressed": bool(invoice.contact_suppressed),
-        "requires_human_review": bool(invoice.requires_human_review),
-    }
+    return result
 
 
 
@@ -673,7 +679,8 @@ def reverse_entry(invoice_id: int, entry_id: int, payload: ReverseEntry,
     try:
         reversed_entry = post_entry(db, invoice, kind="reversal", amount=Decimal(-original.amount_cents) / 100,
                                     source="reversal", reference=str(original.id),
-                                    actor=identity.actor, note=payload.reason)
+                                    actor=identity.actor, note=payload.reason,
+                                    reversal_of_id=original.id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,

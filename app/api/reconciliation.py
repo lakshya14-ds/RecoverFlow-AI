@@ -23,6 +23,8 @@ def list_pending_reconciliations(db: Session = Depends(get_db), limit: int = 50,
 @router.post("/{reconciliation_id}/approve")
 def approve_reconciliation(reconciliation_id: int, db: Session = Depends(get_db),
                            identity: Identity = Depends(get_identity)):
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin approval required")
     rec = db.query(models.Reconciliation).filter(models.Reconciliation.id == reconciliation_id).first()
     if not rec or rec.tenant_id != identity.tenant_id:
         raise HTTPException(status_code=404, detail="Reconciliation not found")

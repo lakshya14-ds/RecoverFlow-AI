@@ -104,6 +104,14 @@ def approve_proposal(proposal_id: int, payload: ApproveInput,
                      db: Session = Depends(get_db),
                      identity: Identity = Depends(get_identity)):
     proposal = _proposal(db, proposal_id, identity)
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin approval required")
+    from app.services import team_ops
+    _sod_ok, _sod_reason = team_ops.sod_allows(
+        db, identity.tenant_id, proposal.created_by, identity.actor,
+        "allocation approval", f"proposal:{proposal_id}")
+    if not _sod_ok:
+        raise HTTPException(status_code=409, detail=_sod_reason)
     if proposal.status == "ambiguous" and payload.legs is None:
         raise HTTPException(status_code=409,
                             detail="Ambiguous proposal: staff must choose explicit legs")

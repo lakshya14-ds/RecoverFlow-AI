@@ -22,10 +22,12 @@ def outbound_configured() -> bool:
                                  re.fullmatch(r"v\d+\.\d+", settings.META_GRAPH_API_VERSION))
 
 
-def verify_signature(body: bytes, signature: str) -> bool:
-    if not configured() or not signature.startswith("sha256="):
+def verify_signature(body: bytes, signature: str, app_secret: str | None = None) -> bool:
+    key = app_secret if app_secret is not None else (
+        settings.META_WHATSAPP_APP_SECRET if configured() else "")
+    if not key or not signature.startswith("sha256="):
         return False
-    expected = hmac.new(settings.META_WHATSAPP_APP_SECRET.encode(), body,
+    expected = hmac.new(key.encode(), body,
                         hashlib.sha256).hexdigest()
     return hmac.compare_digest(signature[7:], expected)
 
@@ -34,16 +36,27 @@ def normalize_phone(value: str) -> str:
     return re.sub(r"\D", "", value or "")
 
 
-def receive(db: Session, body: bytes, tenant_id: str = "local") -> dict:
+def receive(db: Session, body: bytes, tenant_id: str = "local",
+            phone_number_id: str | None = None) -> dict:
     """Record signed inbound text, pause matching cases, and wait for staff triage."""
+    expected_phone = (phone_number_id if phone_number_id is not None
+                      else settings.META_WHATSAPP_PHONE_NUMBER_ID)
     payload = json.loads(body)
-    received = duplicated = ignored = 0
+    received = duplicated = ignored = status_updates = 0
     for entry in payload.get("entry", []):
         for change in entry.get("changes", []):
             value = change.get("value") or {}
-            if str((value.get("metadata") or {}).get("phone_number_id")) != settings.META_WHATSAPP_PHONE_NUMBER_ID:
+            if str((value.get("metadata") or {}).get("phone_number_id")) != expected_phone:
                 ignored += 1
                 continue
+            for update in value.get("statuses", []):
+                from app.services.comms import apply_delivery
+                if apply_delivery(db, tenant_id, update.get("id"),
+                                  update.get("status"),
+                                  update.get("errors") or []):
+                    status_updates += 1
+                else:
+                    ignored += 1
             for message in value.get("messages", []):
                 if message.get("type") != "text" or not message.get("id"):
                     ignored += 1
@@ -77,7 +90,8 @@ def receive(db: Session, body: bytes, tenant_id: str = "local") -> dict:
                                          entity_id=message_id))
                 received += 1
     db.commit()
-    return {"received": received, "duplicated": duplicated, "ignored": ignored}
+    return {"received": received, "duplicated": duplicated,
+            "ignored": ignored, "status_updates": status_updates}
 
 
 def send_reply(outbound: models.OutboundMessage) -> str:

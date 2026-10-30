@@ -24,6 +24,19 @@ def next_action(db, invoice):
     split = split_balance(db, invoice, allow_inconsistent=True)
     outstanding = split["outstanding_cents"]
     tenant, iid = invoice.tenant_id, invoice.id
+    escalation = db.query(models.CaseEscalation).filter(
+        models.CaseEscalation.tenant_id == tenant,
+        models.CaseEscalation.invoice_id == iid,
+        models.CaseEscalation.status.in_(("open", "escalated"))).order_by(
+        models.CaseEscalation.deadline).first()
+    if escalation:
+        return _entry(invoice, outstanding, "Resolve escalation",
+                      escalation.reason, "staff", escalation.deadline,
+                      outstanding,
+                      ["overdue"] if escalation.status == "escalated" or (
+                          escalation.deadline and
+                          escalation.deadline < date.today()) else ["escalated"],
+                      f"escalation {escalation.id}", False)
     if split["reconciliation_error"] or invoice.requires_human_review \
             or invoice.investigation_hold:
         return _entry(invoice, outstanding, "Complete staff review",

@@ -1,5 +1,10 @@
 # Foundation repair and verification — 2026-10-27
 
+> Historical milestone record. For the current 342-test verification, subsequent
+> authentication/backup/operations implementation and remaining blockers, see
+> [the 2026-10-30 report](verification-2026-10-30.md). Preserve the results below
+> as evidence of their original run, not current roadmap status.
+
 The local pilot now reports cash receipts separately from credit notes. An invoice's opening amount plus signed ledger entries determines outstanding; each new receipt or credit records how much of the disputed balance it settles. Reversals reference their original entry and restore its dispute allocation. A legacy dispute larger than the remaining balance is shown as a staff reconciliation case with no eligible undisputed amount. Staff can review the source and record the corrected open dispute.
 
 Money columns formerly stored as floating point use exact decimal text in SQLite. The migration rebuilds affected legacy tables, preserves indexes and foreign keys, validates references, and records a schema revision. Run it against a backup and in a maintenance window. A PostgreSQL upgrade path is implemented but was not validated with a PostgreSQL instance because this verification used SQLite. The receivables ledger is an immutable adjustment log, not a double-entry accounting ledger.

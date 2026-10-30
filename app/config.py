@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     PDF_STORAGE_PATH: str = "data/invoices"          # local invoice storage
     INTAKE_STORAGE_PATH: str = "data/intake"         # durable intake evidence
     INCOMING_STORAGE_PATH: str = "data/incoming"     # temporary invoice upload staging
+    DOCUMENT_STORAGE_PATH: str = "data/documents"    # private evidence store (never web-served)
+    DOC_RETENTION_DAYS: int = 2920                   # 8-year default retention for evidence
+    PORTAL_TOKEN_EXPIRE_HOURS: int = 72              # short-lived customer access
+    PORTAL_TOKEN_LIMIT: int = 60                   # requests per token per window
+    PORTAL_IP_LIMIT: int = 200                     # requests per IP per window
+    PORTAL_GUESS_LIMIT: int = 20                   # invalid-token guesses per IP per window
+    PORTAL_WINDOW_MINUTES: int = 15
     AUTH_TOKEN_EXPIRE_HOURS: int = 24
 
     # LLM
@@ -61,6 +68,22 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     EMAIL_FROM: str = ""                    # sender address for collection emails
     EMAIL_DRY_RUN: bool = True              # True prevents actual delivery
+    COMMS_QUIET_START: str = "21:00"        # IST; proactive sends hold overnight
+    COMMS_QUIET_END: str = "09:00"          # IST; held queue releases after this
+    WHATSAPP_ENABLED: bool = False          # live WA sends stay off unless enabled
+    EMAIL_ENABLED: bool = False             # live email stays off unless enabled
+    OPS_QUEUE_STALL_MINUTES: int = 30       # oldest queued job age that pages
+    OPS_PROVIDER_REVIEW_THRESHOLD: int = 5  # needs_review provider events / 24h
+    OPS_MODEL_LATENCY_MS: int = 120000      # average specialist latency alert
+    OPS_ALLOCATION_BACKLOG: int = 10        # open allocation proposals alert
+    COST_CURRENCY: str = "INR"              # unit-economics reporting currency
+    COST_PER_1K_MODEL_CALLS: str = "0"      # per 1000 supervisor model calls
+    COST_PER_OUTBOUND_MSG: str = "0"        # per outbound message, any channel
+    COST_PAYMENT_FEE_PCT: str = "0"         # gateway % on posted volume
+    COST_PAYMENT_FEE_FLAT: str = "0"        # gateway flat fee per payment
+    COST_PER_GB_MONTH_STORAGE: str = "0"    # per GB-month of stored bytes
+    COST_MONTHLY_INFRA: str = "0"           # fixed infra per 30 days
+    COST_MONTHLY_SUPPORT: str = "0"         # fixed support per 30 days
 
     # Collection stages in days after the due date
     DUNNING_STAGE1_DAYS: int = 7
@@ -92,6 +115,7 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
     RAZORPAY_MODE: str = "test"
+    RAZORPAY_LIVE_ENABLED: bool = False           # live charges stay off unless explicitly enabled
     META_WHATSAPP_ACCESS_TOKEN: str = ""
     META_WHATSAPP_PHONE_NUMBER_ID: str = ""
     META_WHATSAPP_APP_SECRET: str = ""

@@ -24,9 +24,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${value < 0n ? '-' : ''}${whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction}`;
     };
     const money = (currency, cents) => `${currency === 'INR' ? '₹' : escapeHtml(currency) + ' '}${formatCents(cents)}`;
-    const localEvidence = new Map([
-        ['docs/invoices/INV-2026-HERO.pdf', '/evidence/INV-2026-HERO.pdf'],
-        ['docs/po/PO-2026-HERO.pdf', '/evidence/PO-2026-HERO.pdf']
+    const localEvidence = new Set([
+        'docs/invoices/INV-2026-HERO.pdf',
+        'docs/po/PO-2026-HERO.pdf'
     ]);
     async function apiFetch(url, options = {}) {
         if (!apiKey) throw new Error('Enter your API key first.');
@@ -364,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(data.evidence || []).map(ev => `
                         <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
-                                <strong>${localEvidence.has(ev.source_reference) ? `<a class="document-link" href="${localEvidence.get(ev.source_reference)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ev.title)} · Open PDF</a>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
+                                <strong>${localEvidence.has(ev.source_reference) ? `<button type="button" class="source-chip uploaded-source" data-url="/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}">${escapeHtml(ev.title)} · Open PDF</button>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>

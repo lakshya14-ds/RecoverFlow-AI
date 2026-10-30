@@ -8,7 +8,6 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import models
@@ -124,6 +123,7 @@ def _process_csv(db, job):
 
 
 def _process_vision(db, job):
+    from app.services import documents as document_records
     validated = vision_extraction.extract(Path(job.source_path).read_bytes(), job.mime_type)
     document = validated["document"]
     job.extraction_json = json.dumps(document.model_dump(), ensure_ascii=False)
@@ -167,9 +167,10 @@ def _process_vision(db, job):
             source_type="uploaded_invoice", source_reference=f"/api/v1/intake/uploads/{job.id}/file",
             amount_cents=amount_cents, verified=False, trust_state="extracted",
             currency=document.currency))
+        document_records.persist_invoice_lines(db, invoice, document, job.id)
         _audit(db, job, "Matched", "New invoice; no receipt match inferred")
         _advance(db, job, invoice)
-    elif document.document_type in ("receipt", "purchase_order", "message", "delivery_note", "return_note", "discount_agreement"):
+    elif document.document_type in ("receipt", "purchase_order", "message", "delivery_note", "return_note", "discount_agreement", "credit_note", "debit_note", "delivery_challan", "freight_bill", "scheme_letter"):
         if not document.invoice_reference:
             raise ValueError("Document has no invoice reference; ambiguous match")
         candidates = db.query(models.Invoice).filter_by(tenant_id=job.tenant_id,
@@ -179,7 +180,10 @@ def _process_vision(db, job):
         invoice = candidates[0]
         claim = {"receipt": "received_payment", "purchase_order": "purchase_order",
                  "message": "customer_message", "delivery_note": "delivery_note",
-                 "return_note": "return_note", "discount_agreement": "discount_agreement"}[document.document_type]
+                 "return_note": "return_note", "discount_agreement": "discount_agreement",
+                 "credit_note": "credit_note", "debit_note": "debit_note",
+                 "delivery_challan": "delivery_challan", "freight_bill": "freight_bill",
+                 "scheme_letter": "discount_agreement"}[document.document_type]
         db.add(models.CaseEvidence(tenant_id=job.tenant_id, invoice_id=invoice.id,
             claim_type=claim, title="Uploaded " + document.document_type,
             description="Machine extracted document; staff confirmation pending",
@@ -189,6 +193,20 @@ def _process_vision(db, job):
             amount_cents=cents(validated["total"]) if validated["total"] else None,
             verified=False, trust_state="extracted",
             currency=document.currency or invoice.currency or "INR"))
+        if document.document_type in ("credit_note", "debit_note"):
+            document_records.create_note(
+                db, invoice, document.document_type.replace("_note", ""),
+                document.invoice_number or job.id, validated["total"],
+                f"Uploaded {document.document_type.replace('_', ' ')}; staff acceptance pending",
+                "intake_agent", cgst=document.cgst_amount or "0",
+                sgst=document.sgst_amount or "0", igst=document.igst_amount or "0",
+                source_upload_id=job.id)
+        elif document.document_type in ("delivery_challan", "freight_bill", "scheme_letter"):
+            document_records.record_supporting_document(
+                db, invoice, document.document_type, job.id,
+                number=document.invoice_number or None,
+                summary={"total": str(validated["total"]) if validated["total"] else "",
+                         "lines": len(document.line_items)})
         _audit(db, job, "Matched", f"invoice_id={invoice.id}; evidence only")
         if document.document_type == "receipt":
             job.status = "needs_attention"
@@ -198,25 +216,24 @@ def _process_vision(db, job):
             _advance(db, job, invoice)
 
 
-def claim_job(db, job_id: str):
-    """Atomically claim one queued upload in the caller's session."""
-    claimed = db.execute(update(models.IntakeUpload).where(
-        models.IntakeUpload.id == job_id,
-        models.IntakeUpload.status == "queued").values(
-        status="processing", attempts=models.IntakeUpload.attempts + 1))
-    db.commit()
-    if not claimed.rowcount:
-        return None
-    return db.get(models.IntakeUpload, job_id)
+def claim_job(db, job_id: str, worker=None):
+    """Atomically claim one queued upload (or steal its expired lease)."""
+    from app.services import worker_lease
+    return worker_lease.claim_job(db, "intake", job_id, worker=worker)
 
 
-def process_job(db, job) -> None:
+def process_job(db, job, worker=None) -> None:
     """Run extraction/matching for a claimed job in the caller's session."""
+    from app.services import worker_lease
+    worker = worker or worker_lease.worker_id()
     try:
         if job.mime_type in ("text/csv", "application/csv", "application/vnd.ms-excel"):
             _process_csv(db, job)
         else:
+            worker_lease.heartbeat(db, "intake", job.id, worker)
             _process_vision(db, job)
+        fresh = db.get(models.IntakeUpload, job.id)
+        worker_lease.release_lease(db, fresh)
         db.commit()
     except (ValueError, UnicodeDecodeError, csv.Error, IntegrityError, OSError,
             MetaRateLimitError, httpx.HTTPError, ValidationError) as exc:
@@ -236,41 +253,55 @@ def process_job(db, job) -> None:
         if isinstance(exc, httpx.HTTPStatusError):
             detail += f"; http_status={exc.response.status_code}"
         _audit(db, job, "Needs attention", detail)
+        worker_lease.release_lease(db, job)
         db.commit()
-    except Exception:
+    except Exception as exc:
+        # Unexpected crash: back off and retry; three crashes parks the poison.
         db.rollback()
         job = db.get(models.IntakeUpload, job.id)
-        job.status = "needs_attention"
-        job.stage = "Needs attention"
-        job.error = "Document processing failed; staff review required"
-        _audit(db, job, "Needs attention", "unexpected processor failure")
+        _audit(db, job, "Needs attention",
+               f"unexpected processor failure (attempt {job.attempts})")
+        if (job.attempts or 0) >= worker_lease.POISON_ATTEMPTS:
+            job.stage = "Dead letter"
+            worker_lease.fail_poison(
+                db, job, f"{type(exc).__name__}: processor crashed", worker)
+        else:
+            job.stage = "Uploaded"
+            worker_lease.fail_transient(
+                db, job, f"{type(exc).__name__}: processor crashed; retrying",
+                worker)
         db.commit()
 
 
-def process_one() -> bool:
+def process_one(worker=None) -> bool:
     """Claim one DB job; API startup loop calls this with bounded concurrency."""
+    from app.services import worker_lease
+    worker = worker or worker_lease.worker_id()
     with SessionLocal() as db:
-        candidate = db.query(models.IntakeUpload.id).filter_by(status="queued").order_by(
-            models.IntakeUpload.created_at).first()
-        if not candidate:
-            return False
-        job_id = candidate[0]
-    with SessionLocal() as db:
-        job = claim_job(db, job_id)
+        job = worker_lease.claim_next(db, "intake", worker=worker)
         if job is None:
-            return True
-        process_job(db, job)
+            return False
+        job_id = job.id
+    with SessionLocal() as db:
+        job = db.get(models.IntakeUpload, job_id)
+        process_job(db, job, worker)
     return True
 
 
 def recover_interrupted_jobs() -> int:
-    """Return jobs interrupted by process shutdown to the durable queue."""
+    """Recover legacy unleased jobs; another process may still own active leases.
+
+    Leased jobs recover through the atomic expiry claim in the normal worker."""
+    from app.services import worker_lease
     with SessionLocal() as db:
-        rows = db.query(models.IntakeUpload).filter_by(status="processing").all()
+        rows = db.query(models.IntakeUpload).filter_by(status="processing").filter(
+            models.IntakeUpload.lease_expires_at.is_(None)).all()
         for row in rows:
             row.status = "queued"
             row.stage = "Uploaded"
             row.error = "Worker restarted; processing will retry"
+            row.not_before = None
+            worker_lease.release_lease(db, row)
             db.add(models.AuditEvent(tenant_id=row.tenant_id, actor="intake_worker",
                 action="intake_requeued_after_restart", entity_type="intake_upload",
                 entity_id=row.id))

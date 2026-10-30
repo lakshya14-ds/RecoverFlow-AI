@@ -152,7 +152,12 @@ def test_retry_exhaustion_holds_the_case(db, monkeypatch):
     row = invoice(db)
     sourced(db, row)
     queued = supervisor.reassess(db, row, "test")
-    outcomes = [supervisor.run_task(db, queued["task_id"])["outcome"] for _ in range(3)]
+    outcomes = []
+    for _ in range(3):
+        # Retries back off; the loop simulates the wait expiring each time.
+        db.get(models.SupervisorTask, queued["task_id"]).not_before = None
+        db.commit()
+        outcomes.append(supervisor.run_task(db, queued["task_id"])["outcome"])
     assert outcomes == ["queued", "queued", "failed"]
     assert row.investigation_hold
     assert "failed after 3 attempts" in (row.investigation_reason or "")

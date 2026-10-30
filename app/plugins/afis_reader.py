@@ -9,8 +9,8 @@ from app.config import settings
 class AFISReader:
     """Read transactions from the AFIS database."""
 
-    def __init__(self):
-        self.db_path = Path(settings.AFIS_DB_PATH).resolve()
+    def __init__(self, db_path=None):
+        self.db_path = Path(db_path if db_path is not None else settings.AFIS_DB_PATH).resolve()
 
     def is_connected(self) -> bool:
         return self.db_path.exists()

@@ -18,6 +18,7 @@ from app.services.auth_security import (
     verify_password,
     generate_api_key,
     generate_session_token,
+    generate_recovery_token,
     hash_api_key,
 )
 
@@ -75,15 +76,26 @@ class ApiKeyResponse(BaseModel):
 
 # Public Endpoint: Login
 @router.post("/login", response_model=LoginResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     """Authenticate user with email and password, returning an active session token."""
-    user = db.query(models.User).filter_by(email=payload.email.lower()).first()
-    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
+    email = payload.email.lower()
+    ip = request.client.host if request.client else "unknown"
+    if _login_throttled(db, email, ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts; try again later",
+        )
+    user = db.query(models.User).filter_by(email=email).first()
+    valid = bool(user and user.is_active
+                 and verify_password(payload.password, user.password_hash))
+    if not valid:
+        _record_login_attempt(db, email, ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
+    _clear_login_failures(db, email)
     # Update last login timestamp
     now = datetime.now(timezone.utc)
     user.last_login_at = now
@@ -298,3 +310,195 @@ def revoke_api_key(
     key.is_active = False
     db.commit()
     return {"status": "revoked", "id": key_id}
+
+
+LOGIN_EMAIL_LIMIT = 5
+LOGIN_IP_LIMIT = 20
+LOGIN_WINDOW_MINUTES = 15
+
+
+def _naive_utc():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _login_throttled(db: Session, email: str, ip: str) -> bool:
+    now = _naive_utc()
+    since = now - timedelta(minutes=LOGIN_WINDOW_MINUTES)
+    db.query(models.LoginAttempt).filter(
+        models.LoginAttempt.created_at < now - timedelta(hours=24)).delete()
+    email_fails = db.query(models.LoginAttempt).filter(
+        models.LoginAttempt.email == email,
+        models.LoginAttempt.success.is_(False),
+        models.LoginAttempt.created_at >= since).count()
+    if email_fails >= LOGIN_EMAIL_LIMIT:
+        db.commit()
+        return True
+    ip_fails = db.query(models.LoginAttempt).filter(
+        models.LoginAttempt.ip == ip,
+        models.LoginAttempt.success.is_(False),
+        models.LoginAttempt.created_at >= since).count()
+    db.commit()
+    return ip_fails >= LOGIN_IP_LIMIT
+
+
+def _record_login_attempt(db: Session, email: str, ip: str) -> None:
+    db.add(models.LoginAttempt(email=email, ip=ip, success=False))
+    db.commit()
+
+
+def _clear_login_failures(db: Session, email: str) -> None:
+    db.query(models.LoginAttempt).filter(
+        models.LoginAttempt.email == email,
+        models.LoginAttempt.success.is_(False)).delete()
+    db.commit()
+
+
+def _raw_token(request: Request) -> str:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:].strip()
+    return (request.headers.get("X-RECOVERFLOW-API-KEY", "") or
+            request.headers.get("X-APEX-API-KEY", ""))
+
+
+# Protected: Rotate Session
+@router.post("/rotate")
+def rotate_session(
+    request: Request,
+    identity: Identity = Depends(get_identity),
+    db: Session = Depends(get_db),
+):
+    """Swap the current session token for a fresh one; the old token dies."""
+    raw = _raw_token(request)
+    session = db.query(models.UserSession).filter_by(
+        token_hash=hash_api_key(raw), is_revoked=False).first() if raw else None
+    if not session:
+        raise HTTPException(status_code=409,
+                            detail="Only active session tokens rotate; API keys do not")
+    now = datetime.now(timezone.utc)
+    session.is_revoked = True
+    raw_token, token_hash = generate_session_token()
+    expires_at = now + timedelta(hours=settings.AUTH_TOKEN_EXPIRE_HOURS)
+    db.add(models.UserSession(
+        tenant_id=session.tenant_id, user_id=session.user_id,
+        token_hash=token_hash, created_at=now, expires_at=expires_at,
+        is_revoked=False))
+    db.add(models.AuditEvent(tenant_id=session.tenant_id, actor=identity.actor,
+                             action="session_rotated", entity_type="user_session",
+                             entity_id=str(session.id)))
+    db.commit()
+    return {"token": raw_token, "token_type": "bearer",
+            "expires_at": expires_at.isoformat()}
+
+
+# Protected: List Own Sessions
+@router.get("/sessions")
+def list_sessions(
+    request: Request,
+    identity: Identity = Depends(get_identity),
+    db: Session = Depends(get_db),
+):
+    """List the caller's sessions. Token values are never returned."""
+    if not identity.user_id:
+        raise HTTPException(status_code=409, detail="API keys have no sessions")
+    raw = _raw_token(request)
+    current = hash_api_key(raw) if raw else None
+    rows = db.query(models.UserSession).filter_by(
+        user_id=identity.user_id).order_by(models.UserSession.id.desc()).all()
+    return [{"id": row.id,
+             "created_at": row.created_at.isoformat() if row.created_at else None,
+             "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+             "is_revoked": row.is_revoked,
+             "current": bool(current) and row.token_hash == current}
+            for row in rows]
+
+
+# Protected: Revoke One Session
+@router.delete("/sessions/{session_id}")
+def revoke_session(
+    session_id: int,
+    identity: Identity = Depends(get_identity),
+    db: Session = Depends(get_db),
+):
+    """Revoke one of the caller's own sessions (idempotent)."""
+    row = db.query(models.UserSession).filter_by(
+        id=session_id, user_id=identity.user_id or -1).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Session not found")
+    row.is_revoked = True
+    db.commit()
+    return {"status": "revoked", "id": session_id}
+
+
+# Protected: Revoke All Sessions
+@router.post("/revoke-all")
+def revoke_all_sessions(
+    identity: Identity = Depends(get_identity),
+    db: Session = Depends(get_db),
+):
+    """Revoke every session of the caller, including the current one."""
+    if not identity.user_id:
+        raise HTTPException(status_code=409, detail="API keys have no sessions")
+    rows = db.query(models.UserSession).filter_by(
+        user_id=identity.user_id, is_revoked=False).all()
+    for row in rows:
+        row.is_revoked = True
+    db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
+                             action="sessions_revoked_all", entity_type="user",
+                             entity_id=str(identity.user_id),
+                             details=f"count={len(rows)}"))
+    db.commit()
+    return {"status": "revoked_all", "count": len(rows)}
+
+
+class RecoverInput(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+# Admin Only: Issue Recovery Token
+@router.post("/users/{user_id}/recovery", status_code=status.HTTP_201_CREATED)
+def issue_recovery(
+    user_id: int,
+    identity: Identity = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Issue a single-use recovery token. The raw token is shown once only."""
+    target = db.get(models.User, user_id)
+    if not target or target.tenant_id != identity.tenant_id:
+        raise HTTPException(status_code=404, detail="User not found")
+    raw_token, token_hash = generate_recovery_token()
+    now = datetime.now(timezone.utc)
+    db.add(models.UserRecoveryToken(
+        tenant_id=target.tenant_id, user_id=target.id, token_hash=token_hash,
+        expires_at=now + timedelta(hours=1), created_by=identity.actor))
+    db.add(models.AuditEvent(tenant_id=target.tenant_id, actor=identity.actor,
+                             action="recovery_token_issued", entity_type="user",
+                             entity_id=str(target.id), details="valid 1 hour"))
+    db.commit()
+    return {"user_id": target.id, "recovery_token": raw_token,
+            "expires_at": (now + timedelta(hours=1)).isoformat()}
+
+
+# Public: Redeem Recovery Token
+@router.post("/recover")
+def recover_account(payload: RecoverInput, db: Session = Depends(get_db)):
+    """Reset a password with a recovery token; kills all user sessions."""
+    row = db.query(models.UserRecoveryToken).filter_by(
+        token_hash=hash_api_key(payload.token)).first()
+    user = db.get(models.User, row.user_id) if row else None
+    if (not row or row.used_at is not None or not user or not user.is_active
+            or row.expires_at.replace(tzinfo=None) < _naive_utc()
+            or user.tenant_id != row.tenant_id):
+        raise HTTPException(status_code=422,
+                            detail="Recovery token is invalid or expired")
+    user.password_hash = hash_password(payload.new_password)
+    row.used_at = datetime.now(timezone.utc)
+    for session in db.query(models.UserSession).filter_by(
+            user_id=user.id, is_revoked=False).all():
+        session.is_revoked = True
+    db.add(models.AuditEvent(tenant_id=user.tenant_id, actor=user.email,
+                             action="password_recovered", entity_type="user",
+                             entity_id=str(user.id)))
+    db.commit()
+    return {"status": "password_reset"}

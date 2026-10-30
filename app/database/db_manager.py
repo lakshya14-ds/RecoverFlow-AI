@@ -54,7 +54,8 @@ def init_db() -> None:
     migrate(engine, Base.metadata)
 
     # Bootstrap default admin user and API key if not present
-    with SessionLocal() as db:
+    # Bootstrap the same engine that was migrated, including isolated callers.
+    with Session(bind=engine) as db:
         admin_user = db.query(models.User).filter_by(email="admin@recoverflow.in").first()
         if not admin_user and settings.ADMIN_BOOTSTRAP_PASSWORD:
             admin_user = models.User(

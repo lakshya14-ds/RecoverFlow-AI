@@ -110,6 +110,7 @@ def trigger_dunning_stage(invoice_id: int, stage: int, db: Session = Depends(get
         email_subject=result["email_data"]["subject"],
         email_body=result["email_data"]["body"],
         balance_cents_at_draft=balance,
+        generated_by=identity.actor,
         status="draft"
     )
     db.add(campaign)
@@ -137,6 +138,7 @@ def edit_campaign(campaign_id: int, payload: DraftEdit, db: Session = Depends(ge
         raise HTTPException(status_code=409, detail=reason)
     campaign.email_subject = payload.subject
     campaign.email_body = payload.body
+    campaign.generated_by = identity.actor
     campaign.status = "draft"
     campaign.approved_by = None
     campaign.approved_at = None
@@ -153,6 +155,12 @@ def approve_campaign(campaign_id: int, db: Session = Depends(get_db),
     campaign = db.get(models.DunningCampaign, campaign_id)
     if not campaign or campaign.tenant_id != identity.tenant_id:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    from app.services import team_ops
+    _sod_ok, _sod_reason = team_ops.sod_allows(
+        db, identity.tenant_id, campaign.generated_by, identity.actor,
+        "campaign approval", f"campaign:{campaign_id}")
+    if not _sod_ok:
+        raise HTTPException(status_code=409, detail=_sod_reason)
     if campaign.status != "draft":
         raise HTTPException(status_code=409, detail="Campaign is not a draft")
     invoice = db.get(models.Invoice, campaign.invoice_id)

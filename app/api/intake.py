@@ -1,7 +1,6 @@
 from app.services.case_lifecycle import checkpoint
 """Bounded, typed upload intake. Bytes are never served from the web root."""
-import csv
-import io
+import hashlib
 import json
 import re
 import uuid
@@ -29,25 +28,14 @@ MIMES = {
 }
 
 
-def _validate(data: bytes, suffix: str) -> None:
-    if not data:
-        raise HTTPException(status_code=422, detail="Empty upload")
-    if suffix == ".pdf" and not data.startswith(b"%PDF-"):
-        raise HTTPException(status_code=415, detail="Invalid PDF signature")
-    if suffix in (".jpg", ".jpeg") and not data.startswith(b"\xff\xd8\xff"):
-        raise HTTPException(status_code=415, detail="Invalid JPEG signature")
-    if suffix == ".png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise HTTPException(status_code=415, detail="Invalid PNG signature")
-    if suffix == ".csv":
-        try:
-            decoded = data.decode("utf-8-sig")
-            if "\x00" in decoded:
-                raise ValueError("NUL byte")
-            headers = next(csv.reader(io.StringIO(decoded)), [])
-            if len(headers) < 2 or any(not cell.strip() for cell in headers):
-                raise ValueError("CSV header is missing")
-        except (UnicodeDecodeError, csv.Error, ValueError) as exc:
-            raise HTTPException(status_code=415, detail="Invalid UTF-8 CSV") from exc
+def _validate(data: bytes, suffix: str, filename: str) -> None:
+    from app.services.document_store import DocumentRejected, validate_content
+    try:
+        validate_content(data, suffix, filename, portal=False)
+    except DocumentRejected as exc:
+        if str(exc) == "Empty upload":
+            raise HTTPException(status_code=422, detail=str(exc))
+        raise HTTPException(status_code=415, detail=str(exc))
 
 
 def _public(row: models.IntakeUpload) -> dict:
@@ -84,7 +72,7 @@ async def upload(request: Request, db: Session = Depends(get_db),
             raise HTTPException(status_code=413, detail="File exceeds upload size cap")
         chunks.append(chunk)
     data = b"".join(chunks)
-    _validate(data, suffix)
+    _validate(data, suffix, filename)
     storage = Path(settings.INTAKE_STORAGE_PATH)
     storage.mkdir(parents=True, exist_ok=True)
     job_id = str(uuid.uuid4())
@@ -94,7 +82,8 @@ async def upload(request: Request, db: Session = Depends(get_db),
         row = models.IntakeUpload(id=job_id, tenant_id=identity.tenant_id,
                                   actor=identity.actor, filename=filename,
                                   mime_type=mime, source_path=str(stored),
-                                  size_bytes=size, status="queued", stage="Uploaded")
+                                  size_bytes=size, status="queued", stage="Uploaded",
+                                  sha256=hashlib.sha256(data).hexdigest())
         db.add(row)
         db.add(models.AuditEvent(tenant_id=identity.tenant_id,
             actor=identity.actor, action="intake_uploaded", entity_type="intake_upload",
@@ -139,6 +128,17 @@ def get_upload_file(job_id: str, db: Session = Depends(get_db),
     storage = Path(settings.INTAKE_STORAGE_PATH).resolve()
     if storage not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Stored file not found")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if row.sha256 is None:
+        row.sha256 = digest
+    elif row.sha256 != digest:
+        raise HTTPException(
+            status_code=409,
+            detail="Stored file failed its integrity check; quarantined for review")
+    db.add(models.AuditEvent(tenant_id=identity.tenant_id,
+        actor=identity.actor, action="intake_file_downloaded",
+        entity_type="intake_upload", entity_id=row.id))
+    db.commit()
     return FileResponse(path, media_type=row.mime_type, filename=row.filename)
 
 
@@ -187,6 +187,8 @@ def confirm_receipt(job_id: str, db: Session = Depends(get_db),
     if not row or row.tenant_id != identity.tenant_id:
         raise HTTPException(status_code=404, detail="Upload not found")
     try:
+        if identity.role != "admin":
+            raise HTTPException(status_code=403, detail="Admin approval required")
         document = json.loads(row.extraction_json or "{}")
         if document.get("document_type") != "receipt" or not document.get("invoice_reference"):
             raise ValueError("Upload is not a matched receipt")

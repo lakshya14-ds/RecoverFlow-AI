@@ -81,3 +81,13 @@ def generate_session_token() -> Tuple[str, str]:
     raw_token = f"rfs_{secrets.token_urlsafe(32)}"
     token_hash = hash_api_key(raw_token)
     return raw_token, token_hash
+
+
+def generate_recovery_token():
+    """
+    Generate a single-use password recovery token for admin issuance.
+    Returns: (raw_token, token_hash). The raw token is shown once only.
+    """
+    raw_token = f"rfr_{secrets.token_urlsafe(32)}"
+    token_hash = hash_api_key(raw_token)
+    return raw_token, token_hash

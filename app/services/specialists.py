@@ -258,10 +258,15 @@ def _tool_match_score_candidates(db, ctx, limit: int = 5):
     invoice = _invoice(db, ctx)
     try:
         from app.plugins.afis_reader import AFISReader
+        from app.services.tenant_config import afis_path_for_tenant
         from datetime import date as _date, timedelta as _td
         start = invoice.issue_date - _td(days=30)
         end = invoice.due_date + _td(days=60)
-        txns = AFISReader().get_transactions(
+        path = afis_path_for_tenant(db, invoice.tenant_id)
+        if path is None:
+            return {"available": False, "reason": "AFIS is not configured for this business",
+                    "candidates": []}
+        txns = AFISReader(db_path=path).get_transactions(
             start.isoformat(), end.isoformat(),
             tx_type="income" if invoice.invoice_type == "AR" else "expense")
     except Exception as exc:

@@ -42,7 +42,7 @@ def split_balance(db: Session, invoice: models.Invoice, *, allow_inconsistent: b
     entries = db.query(models.ReceivableEntry).filter_by(
         tenant_id=invoice.tenant_id, invoice_id=invoice.id).all()
     by_id = {entry.id: entry for entry in entries}
-    net = {"payment": 0, "credit": 0, "unallocated": 0}
+    net = {"payment": 0, "credit": 0, "debit": 0, "unallocated": 0}
     for entry in entries:
         kind = entry.kind
         if kind == "reversal":
@@ -50,14 +50,21 @@ def split_balance(db: Session, invoice: models.Invoice, *, allow_inconsistent: b
             if original is None and entry.source == "reversal" and entry.reference.isdigit():
                 original = by_id.get(int(entry.reference))
             kind = original.kind if original else "unallocated"
-        net[kind if kind in net else "unallocated"] -= entry.amount_cents
+        bucket = kind if kind in net else "unallocated"
+        if bucket == "debit":
+            net[bucket] += entry.amount_cents
+        else:
+            net[bucket] -= entry.amount_cents
     outstanding = opening + int(adjustments)
+    debited = net["debit"]
+    invoiced = opening + debited
     disputed = int(invoice.disputed_cents or 0)
-    inconsistent = not 0 <= disputed <= outstanding <= opening
+    inconsistent = not 0 <= disputed <= outstanding <= invoiced
     if inconsistent and not allow_inconsistent:
         raise ValueError("Ledger/dispute allocation is inconsistent; reconcile before continuing")
     values = {"invoice_total": opening, "received": net["payment"],
-              "credits": net["credit"], "unallocated_adjustments": net["unallocated"],
+              "credits": net["credit"], "debits": debited,
+              "unallocated_adjustments": net["unallocated"],
               "outstanding": outstanding, "disputed": disputed,
               "undisputed": 0 if inconsistent else outstanding - disputed}
     return {"reconciliation_error": inconsistent,
@@ -71,7 +78,7 @@ def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: objec
                currency: str | None = None) -> models.ReceivableEntry:
     if invoice.invoice_type != "AR":
         raise ValueError("Receivable entries require an AR invoice")
-    if kind not in ("payment", "credit", "reversal"):
+    if kind not in ("payment", "credit", "debit", "reversal"):
         raise ValueError("Unsupported receivable entry kind")
     expected = (invoice.currency or "INR").upper()
     if currency is not None and str(currency).upper() != expected:
@@ -79,19 +86,36 @@ def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: objec
     amount_cents = cents(amount)
     existing = db.query(models.ReceivableEntry).filter_by(
         tenant_id=invoice.tenant_id, source=source, reference=reference).first()
-    signed = amount_cents if kind == "reversal" else -amount_cents
+    early_original = None
+    if kind == "reversal":
+        lookup_id = reversal_of_id
+        if lookup_id is None and source == "reversal" and reference.isdigit():
+            lookup_id = int(reference)
+        early_original = db.get(models.ReceivableEntry, lookup_id) if lookup_id else None
+    if kind == "debit":
+        signed = amount_cents
+    elif kind == "reversal" and early_original is not None and early_original.kind == "debit":
+        signed = -amount_cents
+    else:
+        signed = amount_cents if kind == "reversal" else -amount_cents
     if existing:
-        if (existing.invoice_id, existing.kind, existing.amount_cents) == (invoice.id, kind, signed) and (kind == "reversal" or existing.allocation in (allocation, "legacy")):
+        same_original = (kind != "reversal" or
+                         (early_original is not None and existing.reversal_of_id == early_original.id))
+        if (existing.invoice_id, existing.kind, existing.amount_cents) == (invoice.id, kind, signed) and same_original and (kind == "reversal" or existing.allocation in (allocation, "legacy")):
             return existing
         raise ValueError("Reference already belongs to a different receivable entry")
     # Lock the parent before computing allocations; SQLite serializes writers.
     db.query(models.Invoice).filter_by(id=invoice.id, tenant_id=invoice.tenant_id).with_for_update().one()
     if allocation not in ("undisputed_first", "disputed_first", "undisputed", "disputed"):
         raise ValueError("Unknown allocation policy")
+    if kind == "debit" and allocation != "undisputed_first":
+        raise ValueError("Debit notes post without allocation")
     balance = balance_cents(db, invoice)
     if signed < 0 and amount_cents > balance:
         raise ValueError("Amount exceeds the outstanding balance")
-    if signed > 0 and balance + signed > opening_cents(invoice):
+    receivable_ceiling = opening_cents(invoice) + split_balance(
+        db, invoice, allow_inconsistent=True)["debits_cents"]
+    if signed > 0 and kind == "reversal" and balance + signed > receivable_ceiling:
         raise ValueError("Reversal exceeds the original receivable")
     disputed = int(invoice.disputed_cents or 0)
     if not 0 <= disputed <= balance:
@@ -102,8 +126,8 @@ def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: objec
             reversal_of_id = int(reference)
         original = db.get(models.ReceivableEntry, reversal_of_id) if reversal_of_id else None
         if (not original or original.tenant_id != invoice.tenant_id or
-                original.invoice_id != invoice.id or original.kind not in ("payment", "credit") or
-                -original.amount_cents != amount_cents):
+                original.invoice_id != invoice.id or original.kind not in ("payment", "credit", "debit") or
+                abs(original.amount_cents) != amount_cents):
             raise ValueError("A reversal must exactly reference an original payment or credit")
         if db.query(models.ReceivableEntry).filter_by(tenant_id=invoice.tenant_id,
                                                     reversal_of_id=original.id).first():
@@ -118,7 +142,7 @@ def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: objec
             raise ValueError("Amount exceeds the disputed allocation")
         allocated = (min(amount_cents, disputed) if allocation in ("disputed_first", "disputed")
                      else max(0, amount_cents - undisputed))
-        delta = -allocated
+        delta = 0 if kind == "debit" else -allocated
     if not 0 <= disputed + delta <= balance + signed:
         raise ValueError("Reversal conflicts with current dispute; staff reconciliation required")
     entry = models.ReceivableEntry(
@@ -140,4 +164,6 @@ def post_entry(db: Session, invoice: models.Invoice, *, kind: str, amount: objec
     request_reassessment(db, invoice, f"ledger:{kind}:{entry.id}", actor)
     from app.services.promises import refresh as refresh_promises
     refresh_promises(db, invoice)
+    from app.services import schedules as installment_schedules
+    installment_schedules.apply_posting(db, entry)
     return entry

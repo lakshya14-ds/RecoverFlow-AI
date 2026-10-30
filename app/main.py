@@ -30,7 +30,7 @@ if allowed_origins:
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-RECOVERFLOW-API-KEY", "X-APEX-API-KEY", "X-Filename"],
+        allow_headers=["Authorization", "Content-Type", "X-RECOVERFLOW-API-KEY", "X-APEX-API-KEY", "X-Filename", "X-PORTAL-TOKEN"],
     )
 
 @app.middleware("http")
@@ -39,12 +39,17 @@ async def protect_api(request: Request, call_next):
     public_paths = (
         "/api/v1/system/health",
         "/api/v1/auth/login",
+        "/api/v1/auth/recover",
     )
     if request.method != "OPTIONS" and request.url.path.startswith("/api/v1/") and request.url.path not in public_paths:
         # Public callbacks perform their own raw-body provider signature verification.
         if (request.url.path.startswith("/api/v1/webhooks/razorpay/") or
                 request.url.path.startswith("/api/v1/webhooks/meta-whatsapp/") or
-                request.url.path.startswith("/api/v1/webhooks/shopify/")):
+                request.url.path.startswith("/api/v1/webhooks/shopify/") or
+                request.url.path.startswith("/api/v1/portal/")):
+            # Webhooks verify provider signatures; portal routes verify the
+            # single-invoice token themselves. Staff token management under
+            # /cases/.../portal-tokens/* stays behind staff auth.
             return await call_next(request)
         
         # Extract credentials from X-API-KEY headers or Authorization: Bearer <token>

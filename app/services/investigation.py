@@ -7,7 +7,7 @@ an allegation, parsed fields are extracted, staff confirmations are verified,
 dispute decisions are accepted, and only post_entry creates ledger entries.
 """
 from datetime import date, timedelta
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 import re
@@ -53,6 +53,48 @@ def _source(row):
     return f"/api/v1/intake/uploads/{row.id}/file"
 
 
+def _invoice_lines(db, invoice, original):
+    """Persisted invoice lines when recorded, else the extracted lines."""
+    rows = db.query(models.InvoiceLineItem).filter_by(
+        tenant_id=invoice.tenant_id, invoice_id=invoice.id).order_by(
+        models.InvoiceLineItem.line_no).all()
+    if not rows:
+        return original.get("line_items", [])
+    lines = []
+    for row in rows:
+        lines.append({"sku": row.sku or "", "description": row.description,
+                      "quantity": str(row.quantity) if row.quantity is not None else "",
+                      "unit": row.unit or "",
+                      "unit_price": f"{Decimal(row.unit_price_cents) / 100:.2f}"
+                      if row.unit_price_cents is not None else "",
+                      "amount": f"{Decimal(row.amount_cents) / 100:.2f}"})
+    return lines
+
+
+def _tax_figures(db, invoice, identity, aliases):
+    """Exact stated figures a staff tax/freight decision must cover."""
+    parts = []
+    for row in db.query(models.InvoiceLineItem).filter_by(
+            tenant_id=invoice.tenant_id, invoice_id=invoice.id).order_by(
+            models.InvoiceLineItem.line_no).all():
+        if identity_key({"sku": row.sku, "description": row.description},
+                        aliases) != identity:
+            continue
+        rate = f"{Decimal(row.tax_rate_bps) / 100:g}%" if row.tax_rate_bps else "unstated rate"
+        parts.append(
+            f"line {row.line_no}: qty {row.quantity} {row.unit or ''} @ "
+            f"{(Decimal(row.unit_price_cents or 0) / 100):.2f}, GST {rate} "
+            f"(CGST {(Decimal(row.cgst_cents or 0) / 100):.2f} "
+            f"SGST {(Decimal(row.sgst_cents or 0) / 100):.2f} "
+            f"IGST {(Decimal(row.igst_cents or 0) / 100):.2f})")
+    parts.append(
+        f"invoice tax split CGST {(Decimal(invoice.cgst_cents or 0) / 100):.2f} "
+        f"SGST {(Decimal(invoice.sgst_cents or 0) / 100):.2f} "
+        f"IGST {(Decimal(invoice.igst_cents or 0) / 100):.2f}, "
+        f"freight {(Decimal(invoice.freight_cents or 0) / 100):.2f}")
+    return "; ".join(parts)[:800]
+
+
 def _ensure_explanation(db, invoice, identity, category, hypotheses):
     row = db.query(models.CompetingExplanation).filter_by(
         tenant_id=invoice.tenant_id, invoice_id=invoice.id, identity=identity,
@@ -69,13 +111,13 @@ def _ensure_explanation(db, invoice, identity, category, hypotheses):
     return row
 
 
-def _ensure_clarification(db, invoice, key, title, owner, source, affected_cents=0):
+def _ensure_clarification(db, invoice, key, title, owner, source, affected_cents=0, detail=""):
     row = db.query(models.ClarificationTask).filter_by(
         tenant_id=invoice.tenant_id, invoice_id=invoice.id, key=key,
         status="open").first()
     draft = (f"Unsent draft - {title} (invoice {invoice.invoice_number}, "
              f"affects {affected_cents} cents). Source: {source}. Staff must "
-             f"review and approve before any customer contact.")
+             f"review and approve before any customer contact.") + (f" Figures: {detail}" if detail else "")
     if row:
         row.title = title
         row.affected_cents = affected_cents
@@ -97,7 +139,7 @@ def investigate(db, invoice):
         return int(invoice.disputed_cents or 0)
     original = next((doc for row, doc in linked if row.source_path == invoice.source_path
                      and doc.get("document_type") == "invoice"), {})
-    lines = original.get("line_items", [])
+    lines = _invoice_lines(db, invoice, original)
     aliases = {a.alias: a.canonical_sku for a in db.query(models.ItemAlias).filter_by(
         tenant_id=invoice.tenant_id).all()}
     unit_rules = [(r.from_unit, r.to_unit, r.factor) for r in db.query(models.UnitRule).filter_by(
@@ -129,7 +171,7 @@ def investigate(db, invoice):
                        to_decimal(original.get("shipping_amount") or "0"))
     scheme_amounts = {}
     for _, doc in linked:
-        if doc.get("document_type") != "discount_agreement":
+        if doc.get("document_type") not in ("discount_agreement", "scheme_letter"):
             continue
         for line in doc.get("line_items", []):
             try:
@@ -140,7 +182,9 @@ def investigate(db, invoice):
     seen_documents = set()
     touched_explanations = set()
     for row, doc in linked:
-        kind = doc.get("document_type")
+        kind = {"delivery_challan": "delivery_note",
+                "scheme_letter": "discount_agreement"}.get(
+            doc.get("document_type"), doc.get("document_type"))
         if kind in ("invoice", "receipt"):
             continue
         if doc.get("currency") and doc["currency"] != invoice.currency:
@@ -161,6 +205,22 @@ def investigate(db, invoice):
                 "staff", _source(row))
             continue
         try:
+            if kind == "freight_bill":
+                try:
+                    billed = to_cents(to_decimal(doc.get("total_amount") or "0"))
+                except (ValueError, InvalidOperation):
+                    issues.append("Freight bill total is missing or invalid")
+                    continue
+                invoiced_freight = int(invoice.freight_cents or 0)
+                if billed != invoiced_freight:
+                    note_hypotheses("freight", "freight", [{
+                        "key": "freight_difference",
+                        "label": f"Billed freight {billed} differs from invoice freight {invoiced_freight}",
+                        "amount_cents": abs(billed - invoiced_freight),
+                        "needs_staff": True, "supporting": [_source(row)],
+                        "contradicting": []}])
+                    issues.append("Freight difference requires a staff decision")
+                continue
             if kind in ("purchase_order", "delivery_note", "return_note", "discount_agreement"):
                 if not lines:
                     issues.append("Invoice lines are required to investigate supporting documents")
@@ -232,7 +292,8 @@ def investigate(db, invoice):
                                 affected = 0
                             _ensure_clarification(db, invoice, f"allocate:{identity}",
                                 f"Obtain a staff tax and freight allocation for {identity or 'item'}",
-                                "staff", "invoice tax and freight schedule", affected)
+                                "staff", "invoice tax and freight schedule", affected,
+                                detail=_tax_figures(db, invoice, identity, aliases))
                         else:
                             hyps = fulfilment_hypotheses(identity, missing, price,
                                                          _source(row), kind, damage_hint)

@@ -91,6 +91,34 @@ def test_reversal_restores_its_own_dispute_allocation(db):
             reference="second-reversal", actor="staff", reversal_of_id=original.id)
 
 
+def test_payment_reversal_preserves_outstanding_debit(db):
+    row = invoice(db)
+    post_entry(db, row, kind="debit", amount="200", source="manual",
+        reference="DN-1", actor="staff")
+    payment = post_entry(db, row, kind="payment", amount="100", source="manual",
+        reference="PAY-1", actor="staff")
+    post_entry(db, row, kind="reversal", amount="100", source="reversal",
+        reference="REV-1", actor="staff", reversal_of_id=payment.id)
+    split = split_balance(db, row)
+    assert split["outstanding_cents"] == 120000
+    assert split["debits_cents"] == 20000
+    assert split["received_cents"] == 0
+
+
+def test_reversal_retry_rejects_a_different_original(db):
+    row = invoice(db)
+    payments = [post_entry(db, row, kind="payment", amount="100", source="manual",
+        reference=f"PAY-{i}", actor="staff") for i in range(2)]
+    reversal = post_entry(db, row, kind="reversal", amount="100", source="reversal",
+        reference="REV-1", actor="staff", reversal_of_id=payments[0].id)
+    assert post_entry(db, row, kind="reversal", amount="100", source="reversal",
+        reference="REV-1", actor="staff", reversal_of_id=payments[0].id).id == reversal.id
+    with pytest.raises(ValueError, match="different receivable entry"):
+        post_entry(db, row, kind="reversal", amount="100", source="reversal",
+            reference="REV-1", actor="staff", reversal_of_id=payments[1].id)
+    assert split_balance(db, row)["received_cents"] == 10000
+
+
 def test_inconsistent_legacy_case_remains_reviewable(db):
     row = invoice(db, disputed=30000)
     db.add(models.ReceivableEntry(tenant_id="local", invoice_id=row.id, kind="payment",
@@ -192,7 +220,7 @@ def test_fresh_sqlite_startup_migrates_float_columns_and_is_repeatable(tmp_path)
         columns = dict((name, column_type) for _, name, column_type, *_ in connection.execute("PRAGMA table_info(invoices)"))
         assert "CHAR" in columns["amount"].upper()
         assert connection.execute("SELECT amount FROM invoices WHERE invoice_number='LEGACY-1'").fetchone()[0] == "100.10"
-        assert connection.execute("SELECT COUNT(*) FROM schema_revisions").fetchone()[0] == 5
+        assert connection.execute("SELECT COUNT(*) FROM schema_revisions").fetchone()[0] == 18
 
 
 def test_credit_without_cash_is_not_a_verified_payment(db):

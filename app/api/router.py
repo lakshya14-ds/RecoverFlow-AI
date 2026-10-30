@@ -24,6 +24,12 @@ from .intake import router as intake_router
 from .negotiations import router as negotiations_router
 from .supervisor import router as supervisor_router
 from .allocations import router as allocations_router
+from .team import router as team_router
+from .counterparties import router as counterparties_router
+from .documents import router as documents_router
+from .schedules import router as schedules_router
+from .portal import router as portal_router
+from .privacy import router as privacy_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -48,3 +54,9 @@ api_router.include_router(intake_router)
 api_router.include_router(negotiations_router)
 api_router.include_router(supervisor_router)
 api_router.include_router(allocations_router)
+api_router.include_router(team_router)
+api_router.include_router(counterparties_router)
+api_router.include_router(documents_router)
+api_router.include_router(schedules_router)
+api_router.include_router(portal_router)
+api_router.include_router(privacy_router)

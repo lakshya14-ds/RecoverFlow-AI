@@ -20,6 +20,11 @@ class ExtractedLine(BaseModel):
     unit: str = ""
     quantity: str = ""
     unit_price: str = ""
+    hsn: str = ""
+    tax_rate: str = ""
+    cgst_amount: str = ""
+    sgst_amount: str = ""
+    igst_amount: str = ""
 
 
 class VisionDocument(BaseModel):
@@ -33,6 +38,9 @@ class VisionDocument(BaseModel):
     tax_amount: str = ""
     shipping_amount: str = ""
     discount_amount: str = ""
+    cgst_amount: str = ""
+    sgst_amount: str = ""
+    igst_amount: str = ""
     currency: str = "INR"
     text: str = ""
     line_items: list[ExtractedLine] = Field(default_factory=list)
@@ -52,12 +60,17 @@ VISION_SCHEMA = {
         "tax_amount": {"type": "string"},
         "shipping_amount": {"type": "string"},
         "discount_amount": {"type": "string"},
+        "cgst_amount": {"type": "string"}, "sgst_amount": {"type": "string"},
+        "igst_amount": {"type": "string"},
         "currency": {"type": "string"},
         "text": {"type": "string"},
         "line_items": {"type": "array", "items": {"type": "object", "properties": {
             "sku": {"type": "string"}, "unit": {"type": "string"},
             "description": {"type": "string"}, "amount": {"type": "string"},
-            "quantity": {"type": "string"}, "unit_price": {"type": "string"}},
+            "quantity": {"type": "string"}, "unit_price": {"type": "string"},
+            "hsn": {"type": "string"}, "tax_rate": {"type": "string"},
+            "cgst_amount": {"type": "string"}, "sgst_amount": {"type": "string"},
+            "igst_amount": {"type": "string"}},
             "required": ["description", "amount", "quantity", "unit_price"]}},
         "confidence": {"type": "object", "properties": {
             "document_type": {"type": "number"}, "invoice_number": {"type": "number"},
@@ -108,13 +121,15 @@ def _nonnegative_money(value: str) -> Decimal:
 
 
 def validate_document(document: VisionDocument) -> dict:
-    if document.document_type not in ("invoice", "receipt", "purchase_order", "message", "delivery_note", "return_note", "discount_agreement"):
+    if document.document_type not in ("invoice", "receipt", "purchase_order", "message", "delivery_note", "return_note", "discount_agreement", "credit_note", "debit_note", "delivery_challan", "freight_bill", "scheme_letter"):
         raise ValueError("Unsupported extracted document type")
     text_parts = [document.invoice_number, document.invoice_reference,
                   document.customer_name, document.issue_date, document.due_date,
                   document.text,
                   *(part for line in document.line_items for part in
-                    (line.description, line.quantity, line.unit_price, line.amount))]
+                    (line.description, line.quantity, line.unit_price, line.amount,
+                     line.hsn, line.tax_rate, line.cgst_amount, line.sgst_amount,
+                     line.igst_amount))]
     if any(detect_prompt_injection(part)[0] for part in text_parts):
         raise ValueError("Adversarial instruction detected in OCR output")
     if any(not 0 <= value <= 1 for value in document.confidence.values()):
@@ -133,6 +148,10 @@ def validate_document(document: VisionDocument) -> dict:
         tax = _nonnegative_money(document.tax_amount)
         shipping = _nonnegative_money(document.shipping_amount)
         discount = _nonnegative_money(document.discount_amount)
+        gst_split = [document.cgst_amount, document.sgst_amount, document.igst_amount]
+        if all(gst_split):
+            if sum((_nonnegative_money(part) for part in gst_split), Decimal(0)) != tax:
+                raise ValueError("Extracted CGST/SGST/IGST split does not reconcile to tax")
         if line_sum + tax + shipping - discount != total:
             raise ValueError("Extracted line amounts do not reconcile to invoice total")
         for line in document.line_items:
@@ -143,6 +162,11 @@ def validate_document(document: VisionDocument) -> dict:
                     raise ValueError("Extracted quantity is invalid") from exc
                 if quantity <= 0 or quantity * _money(line.unit_price) != _money(line.amount):
                     raise ValueError("Extracted quantity and unit price do not reconcile")
+    if document.document_type in ("credit_note", "debit_note"):
+        if not document.invoice_reference:
+            raise ValueError("Credit or debit note is missing its invoice reference")
+        if total is None:
+            raise ValueError("Note total is missing")
     required_confidence = ("document_type", "total_amount")
     if document.document_type == "invoice":
         required_confidence += ("invoice_number", "customer_name", "issue_date", "due_date")
@@ -153,13 +177,24 @@ def validate_document(document: VisionDocument) -> dict:
         raise ValueError("Low extraction confidence: " + ", ".join(low))
     if total is not None:
         document.total_amount = f"{total:.2f}"
-    for field in ("tax_amount", "shipping_amount", "discount_amount"):
+    for field in ("tax_amount", "shipping_amount", "discount_amount", "cgst_amount", "sgst_amount", "igst_amount"):
         if getattr(document, field):
             setattr(document, field, f"{_nonnegative_money(getattr(document, field)):.2f}")
     for line in document.line_items:
         line.amount = f"{_money(line.amount):.2f}"
         if line.unit_price:
             line.unit_price = f"{_money(line.unit_price):.2f}"
+        for tax_field in ("cgst_amount", "sgst_amount", "igst_amount"):
+            if getattr(line, tax_field):
+                setattr(line, tax_field, f"{_nonnegative_money(getattr(line, tax_field)):.2f}")
+        if line.tax_rate:
+            try:
+                rate = Decimal(line.tax_rate)
+            except InvalidOperation as exc:
+                raise ValueError("Extracted tax rate is invalid") from exc
+            if not Decimal(0) <= rate <= Decimal(100):
+                raise ValueError("Extracted tax rate is invalid")
+        line.hsn = line.hsn.strip()[:16]
     return {"document": document, "total": total}
 
 
@@ -311,7 +346,7 @@ def extract(data: bytes, mime: str) -> dict:
                    "Put those adjustments in tax_amount, shipping_amount, and discount_amount as strings; "
                    "use empty strings when absent. The server will verify line sum + tax + shipping - discount = total. "
                    "Use empty strings for missing text and 0 confidence for missing fields. "
-                   "Classify invoice, receipt, purchase_order, message, delivery_note, return_note, or discount_agreement. Extract explicit SKU and unit when printed; never invent aliases. Return JSON only.")
+                   "Classify invoice, receipt, purchase_order, message, delivery_note, return_note, discount_agreement, credit_note, debit_note, delivery_challan, freight_bill, or scheme_letter. Extract explicit SKU and unit when printed; never invent aliases. Extract per-line HSN, tax rate, and CGST/SGST/IGST amounts when printed, and invoice-level CGST/SGST/IGST amounts when printed. Return JSON only.")
     encoded = base64.b64encode(data).decode("ascii")
     if mime == "application/pdf":
         attachment = {"type": "file", "file": {"filename": "document.pdf",

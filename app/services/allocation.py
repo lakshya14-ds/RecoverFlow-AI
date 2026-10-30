@@ -2,9 +2,9 @@
 
 Scoring is deterministic and explainable: every candidate carries reasons and
 evidence. Nothing here posts to the ledger; staff approval posts each leg
-through the existing post_entry path. AFIS transfers carry no tenant or
-currency of their own, so proposals record both explicitly and legs can never
-cross them.
+through the existing post_entry path. Each business reads its own AFIS file
+(per-tenant setting, else the global path for `local`), and proposals still
+record tenant and currency explicitly so legs can never cross them.
 """
 import json
 from datetime import date
@@ -21,11 +21,11 @@ def _cents(amount) -> int:
     return int((Decimal(str(amount)) * 100).to_integral_value())
 
 
-def get_transfer(transfer_id: str):
+def get_transfer(transfer_id: str, db_path=None):
     """Fetch one AFIS transfer by id (income side only for AR allocation)."""
     from app.plugins.afis_reader import AFISReader
-    for txn in AFISReader().get_transactions("1900-01-01", "2100-12-31", tx_type="income",
-                                             limit=100000):
+    for txn in AFISReader(db_path=db_path).get_transactions("1900-01-01", "2100-12-31", tx_type="income",
+                                                            limit=100000):
         if str(txn.get("id")) == str(transfer_id):
             return txn
     return None
@@ -34,8 +34,12 @@ def get_transfer(transfer_id: str):
 def unmatched_transfers(db, tenant_id, limit=100):
     """AFIS income transfers without a proposal in this tenant."""
     from app.plugins.afis_reader import AFISReader
-    txns = AFISReader().get_transactions("1900-01-01", "2100-12-31", tx_type="income",
-                                         limit=limit)
+    from app.services.tenant_config import afis_path_for_tenant
+    path = afis_path_for_tenant(db, tenant_id)
+    if path is None:
+        return []
+    txns = AFISReader(db_path=path).get_transactions("1900-01-01", "2100-12-31", tx_type="income",
+                                                     limit=limit)
     known = {row[0] for row in db.query(
         models.AllocationProposal.afis_transaction_id).filter_by(tenant_id=tenant_id).all()}
     return [txn for txn in txns if str(txn.get("id")) not in known]
@@ -157,7 +161,9 @@ def propose(db, tenant_id, transfer_id, actor, currency="INR"):
         tenant_id=tenant_id, afis_transaction_id=str(transfer_id)).first()
     if existing:
         return existing, True
-    txn = get_transfer(transfer_id)
+    from app.services.tenant_config import afis_path_for_tenant
+    path = afis_path_for_tenant(db, tenant_id)
+    txn = get_transfer(transfer_id, db_path=path) if path is not None else None
     if txn is None:
         raise ValueError("Verified transfer not found")
     transfer_cents = _cents(txn.get("amount") or 0)

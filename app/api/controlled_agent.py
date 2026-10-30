@@ -312,6 +312,12 @@ def approve_proposal_draft(proposal_id: int, payload: ApproveDraftInput,
     if not version:
         raise HTTPException(status_code=404, detail=f"Draft version {payload.version_number} not found")
 
+    from app.services import team_ops
+    _sod_ok, _sod_reason = team_ops.sod_allows(
+        db, identity.tenant_id, version.edited_by, identity.actor,
+        "draft approval", f"proposal:{proposal_id}")
+    if not _sod_ok:
+        raise HTTPException(status_code=409, detail=_sod_reason)
     latest = db.query(models.ProposalDraftVersion).filter_by(
         tenant_id=identity.tenant_id, proposal_id=proposal_id).order_by(
         models.ProposalDraftVersion.version_number.desc()).first()
@@ -321,6 +327,7 @@ def approve_proposal_draft(proposal_id: int, payload: ApproveDraftInput,
 
     if version.version_hash != payload.version_hash:
         raise HTTPException(status_code=409, detail="Version hash mismatch; draft was modified after display")
+
     invoice = db.get(models.Invoice, proposal.invoice_id)
     if invoice.investigation_hold:
         raise HTTPException(status_code=409, detail="Investigation requires staff review")

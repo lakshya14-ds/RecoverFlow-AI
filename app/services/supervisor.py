@@ -29,8 +29,13 @@ ESCALATION_RULES = {
     "ambiguous_match": "No single exact payment candidate: staff choose (M3 deepens this).",
 }
 
-TERMINAL = ("done", "failed", "escalated", "stale")
-RUNNABLE = ("queued",)
+TERMINAL = ("done", "failed", "escalated", "stale", "dead_letter")
+RUNNABLE = ("queued", "running")  # running jobs still require an expired lease to claim
+
+# Errors worth burning the full attempt budget on; anything else that crashes
+# repeatedly is poison and dead-letters fast.
+TRANSIENT_ERRORS = ("TimeoutError", "HTTPError", "ConnectError",
+                    "MetaRateLimitError", "ConnectionError", "OSError")
 
 
 def _now():
@@ -187,7 +192,8 @@ def _deps_met(db, task):
     return True
 
 
-def _execute(db, task, actor):
+def _execute(db, task, actor, worker):
+    from app.services import worker_lease
     from app.services.case_lifecycle import fingerprint
     invoice = db.get(models.Invoice, task.invoice_id) if task.invoice_id else None
     if task.invoice_id and (not invoice or invoice.tenant_id != task.tenant_id):
@@ -208,7 +214,6 @@ def _execute(db, task, actor):
            "case_version_hint": task.case_version}
     task.status = "running"
     task.started_at = _now()
-    task.attempts += 1
     if invoice:
         task.case_version = version_at_start
     db.flush()
@@ -216,9 +221,12 @@ def _execute(db, task, actor):
         task_input = json.loads(task.input_json or "{}")
     except ValueError:
         task_input = {}
+    worker_lease.heartbeat(db, "supervisor", task.id, worker)
     output = specialists.run_specialist(db, task, ctx, task_input)
     task.model_calls = ctx.get("model_calls", 0)
     elapsed_ms = (output.get("elapsed_ms") or 0)
+    task.elapsed_ms = int(elapsed_ms)
+    worker_lease.heartbeat(db, "supervisor", task.id, worker)
     if elapsed_ms > task.time_budget_ms:
         raise TimeoutError(f"Task exceeded its {task.time_budget_ms} ms budget")
     if task.kind == "intake" and output.get("case_id") and not task.invoice_id:
@@ -251,8 +259,10 @@ def _execute(db, task, actor):
     return task.status
 
 
-def run_task(db, task_id, actor="supervisor"):
+def run_task(db, task_id, actor="supervisor", worker=None):
     """Execute one queued task with retry, stale, and escalation handling."""
+    from app.services import worker_lease
+    worker = worker or worker_lease.worker_id()
     task = db.get(models.SupervisorTask, task_id)
     if not task:
         raise ValueError("Supervisor task not found")
@@ -260,10 +270,19 @@ def run_task(db, task_id, actor="supervisor"):
         return {"outcome": "paused", "task_id": task.id}
     if task.status not in RUNNABLE:
         return {"outcome": task.status, "task_id": task.id}
+    naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if task.not_before is not None and task.not_before > naive_now:
+        return {"outcome": "backoff", "task_id": task.id}
     if not _deps_met(db, task):
         return {"outcome": "waiting", "task_id": task.id}
+    claimed = worker_lease.claim_job(db, "supervisor", task.id, worker)
+    if claimed is None:
+        return {"outcome": "claimed", "task_id": task.id}
+    task = claimed
     try:
-        outcome = _execute(db, task, actor)
+        outcome = _execute(db, task, actor, worker)
+        worker_lease.release_lease(db, task)
+        db.flush()
         return {"outcome": outcome, "task_id": task.id}
     except (specialists.ToolDenied, specialists.OutputRejected) as exc:
         task.status = "failed"
@@ -273,10 +292,12 @@ def run_task(db, task_id, actor="supervisor"):
         invoice = db.get(models.Invoice, task.invoice_id) if task.invoice_id else None
         if invoice:
             _hold(db, invoice, f"Specialist contract violated: {exc}", actor)
+        worker_lease.release_lease(db, task)
         db.flush()
         return {"outcome": "failed", "task_id": task.id, "error": task.error}
     except Exception as exc:  # noqa: BLE001 - bounded retry with audit
         task.error = f"{type(exc).__name__}: {exc}"[:500]
+        transient = type(exc).__name__ in TRANSIENT_ERRORS or isinstance(exc, TimeoutError)
         if task.attempts >= task.max_attempts:
             task.status = "failed"
             task.completed_at = _now()
@@ -285,19 +306,33 @@ def run_task(db, task_id, actor="supervisor"):
             invoice = db.get(models.Invoice, task.invoice_id) if task.invoice_id else None
             if invoice:
                 _hold(db, invoice, f"Task {task.kind} failed after {task.attempts} attempts", actor)
+            worker_lease.release_lease(db, task)
+        elif not transient and task.attempts >= worker_lease.POISON_ATTEMPTS:
+            task.completed_at = _now()
+            worker_lease.fail_poison(db, task, task.error, worker)
         else:
             task.status = "queued"
             _audit(db, task.tenant_id, actor, "supervisor_task_retry", task,
                    f"attempt {task.attempts}/{task.max_attempts}; {task.error}")
+            worker_lease.fail_transient(db, task, task.error, worker)
         db.flush()
         return {"outcome": task.status, "task_id": task.id, "error": task.error}
 
 
 def run_due_tasks(db, tenant_id, limit=5, actor="supervisor"):
     """Run runnable queued tasks oldest-first; returns per-task outcomes."""
+    from sqlalchemy import or_
+    naive_now = datetime.now(timezone.utc).replace(tzinfo=None)
     outcomes = []
-    queued = db.query(models.SupervisorTask).filter_by(
-        tenant_id=tenant_id, status="queued").order_by(
+    queued = db.query(models.SupervisorTask).filter(
+        models.SupervisorTask.tenant_id == tenant_id,
+        or_(
+            (models.SupervisorTask.status == "queued") &
+            or_(models.SupervisorTask.not_before.is_(None),
+                models.SupervisorTask.not_before <= naive_now),
+            (models.SupervisorTask.status == "running") &
+            (models.SupervisorTask.lease_expires_at < naive_now),
+        )).order_by(
         models.SupervisorTask.id).all()
     for task in queued:
         if len(outcomes) >= max(1, limit):
@@ -320,8 +355,8 @@ def run_due_thread(limit=5):
     with SessionLocal() as db:
         try:
             outcomes = []
-            tenants = [row[0] for row in db.query(models.SupervisorTask.tenant_id).filter_by(
-                status="queued").distinct().all()]
+            tenants = [row[0] for row in db.query(models.SupervisorTask.tenant_id).filter(
+                models.SupervisorTask.status.in_(RUNNABLE)).distinct().all()]
             for tenant in tenants:
                 outcomes.extend(run_due_tasks(db, tenant, limit=limit))
             db.commit()
@@ -332,14 +367,20 @@ def run_due_thread(limit=5):
 
 
 def recover_interrupted_tasks(db=None):
-    """Return tasks left running by a dead process to the durable queue."""
+    """Recover legacy unleased tasks; leased jobs recover through atomic expiry claims."""
     from app.database.db_manager import SessionLocal
     owned = db is None
     db = db or SessionLocal()
     try:
-        rows = db.query(models.SupervisorTask).filter_by(status="running").all()
+        rows = db.query(models.SupervisorTask).filter_by(status="running").filter(
+            models.SupervisorTask.lease_expires_at.is_(None)).all()
         for row in rows:
             row.status = "queued"
+            row.not_before = None
+            row.claimed_by = None
+            row.claimed_at = None
+            row.heartbeat_at = None
+            row.lease_expires_at = None
             _audit(db, row.tenant_id, "supervisor",
                    "supervisor_task_recovered", row,
                    f"attempts={row.attempts}; replay after restart")
@@ -351,9 +392,11 @@ def recover_interrupted_tasks(db=None):
 
 
 def pause_task(db, task, actor):
+    from app.services import worker_lease
     if task.status not in ("queued", "running"):
         raise ValueError("Only queued or running tasks can pause")
     task.status = "paused"
+    worker_lease.release_lease(db, task)
     _audit(db, task.tenant_id, actor, "supervisor_task_paused", task, "")
     db.flush()
     return task
@@ -369,11 +412,14 @@ def resume_task(db, task, actor):
 
 
 def retry_task(db, task, actor):
-    if task.status != "failed":
-        raise ValueError("Only failed tasks can retry")
+    from app.services import worker_lease
+    if task.status not in ("failed", "dead_letter"):
+        raise ValueError("Only failed or dead-letter tasks can retry")
     task.status = "queued"
     task.attempts = 0
     task.error = None
+    task.not_before = None
+    worker_lease.release_lease(db, task)
     _audit(db, task.tenant_id, actor, "supervisor_task_retry", task,
            "manual retry with a fresh attempt budget")
     db.flush()

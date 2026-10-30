@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Respond to your invoice | RecoverFlow</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .portal-wrap { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+        .portal-wrap .card { margin-bottom: 20px; }
+        .portal-balance { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px; margin: 12px 0 4px; }
+        .portal-balance dt { font-size: 13px; color: var(--nb-ink-muted); }
+        .portal-balance dd { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+        .portal-field { margin-bottom: 12px; }
+        .portal-field label { display: block; font-weight: 600; margin-bottom: 4px; }
+        .portal-field input, .portal-field textarea { width: 100%; box-sizing: border-box; padding: 8px; font-size: 15px; border: var(--nb-border-width) solid var(--nb-border); border-radius: var(--nb-radius-sm); background: #fff; color: var(--nb-ink); }
+        .portal-field small { color: var(--nb-ink-muted); }
+        .portal-banner { border: var(--nb-border-width) solid var(--nb-border); border-radius: var(--nb-radius); padding: 12px 14px; margin-bottom: 16px; background: var(--nb-surface-sun); }
+        .portal-banner.error { background: #fde8e8; }
+        .portal-banner.ok { background: #e6f4ea; }
+        .portal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        @media (max-width: 560px) { .portal-balance, .portal-row { grid-template-columns: 1fr; } }
+        .portal-list { list-style: none; padding: 0; margin: 8px 0 0; }
+        .portal-list li { padding: 8px 0; border-top: 1px solid var(--nb-surface-subtle); font-size: 14px; }
+        .portal-muted { color: var(--nb-ink-muted); font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="portal-wrap">
+        <p class="portal-muted">RecoverFlow / Customer response</p>
+        <h2>Respond to your invoice</h2>
+        <div id="portal-banner" class="portal-banner" hidden></div>
+
+        <section class="card" id="bill-card" hidden>
+            <h3>Your bill</h3>
+            <dl class="portal-balance">
+                <div><dt>Invoice</dt><dd id="bill-number">—</dd></div>
+                <div><dt>Status</dt><dd id="bill-status">—</dd></div>
+                <div><dt>Total</dt><dd id="bill-total">—</dd></div>
+                <div><dt>Received</dt><dd id="bill-received">—</dd></div>
+                <div><dt>Outstanding</dt><dd id="bill-outstanding">—</dd></div>
+                <div><dt>Disputed</dt><dd id="bill-disputed">—</dd></div>
+                <div><dt>Due date</dt><dd id="bill-due">—</dd></div>
+                <div><dt>This link expires</dt><dd id="bill-expiry">—</dd></div>
+            </dl>
+            <p class="portal-muted">Only the undisputed part is due while a dispute is under review.</p>
+        </section>
+
+        <section class="card" id="dispute-card" hidden>
+            <h3>Raise a dispute</h3>
+            <form id="dispute-form">
+                <div class="portal-field">
+                    <label for="dispute-amount">Disputed amount (optional)</label>
+                    <input id="dispute-amount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal">
+                </div>
+                <div class="portal-field">
+                    <label for="dispute-body">What is wrong with this bill?</label>
+                    <textarea id="dispute-body" name="body" rows="4" required minlength="3" maxlength="4000" placeholder="For example: 2 of 10 cartons were missing from the delivery."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Send dispute for review</button>
+            </form>
+        </section>
+
+        <section class="card" id="evidence-card" hidden>
+            <h3>Attach evidence</h3>
+            <form id="evidence-form">
+                <div class="portal-field">
+                    <label for="evidence-file">File (PDF, JPG or PNG, up to 10 MB)</label>
+                    <input id="evidence-file" name="file" type="file" accept=".pdf,.jpg,.jpeg,.png" required>
+                </div>
+                <div class="portal-field">
+                    <label for="evidence-note">Note (optional)</label>
+                    <input id="evidence-note" name="note" type="text" maxlength="200" placeholder="For example: signed delivery challan">
+                </div>
+                <button type="submit" class="btn btn-primary">Upload evidence</button>
+            </form>
+            <ul class="portal-list" id="evidence-list"></ul>
+        </section>
+
+        <section class="card" id="payref-card" hidden>
+            <h3>Report a payment you made</h3>
+            <form id="payref-form">
+                <div class="portal-row">
+                    <div class="portal-field">
+                        <label for="payref-reference">Payment reference (UTR / UPI ref)</label>
+                        <input id="payref-reference" name="reference" type="text" required minlength="3" maxlength="120">
+                    </div>
+                    <div class="portal-field">
+                        <label for="payref-amount">Amount (optional)</label>
+                        <input id="payref-amount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal">
+                    </div>
+                </div>
+                <div class="portal-field">
+                    <label for="payref-date">Date paid (optional)</label>
+                    <input id="payref-date" name="paid_date" type="date">
+                </div>
+                <div class="portal-field">
+                    <label for="payref-note">Note (optional)</label>
+                    <input id="payref-note" name="note" type="text" maxlength="1000">
+                </div>
+                <button type="submit" class="btn btn-primary">Submit for verification</button>
+                <p class="portal-muted">A submitted reference is a claim until the business verifies it with the bank.</p>
+            </form>
+        </section>
+
+        <section class="card" id="submissions-card" hidden>
+            <h3>Your submissions</h3>
+            <ul class="portal-list" id="submissions-list"></ul>
+        </section>
+    </div>
+    <script src="portal.js"></script>
+</body>
+</html>

@@ -33,6 +33,11 @@ def create_link(payload: LinkRequest, db: Session = Depends(get_db),
                 identity: Identity = Depends(get_identity)):
     if identity.tenant_id != "local" or not razorpay.configured():
         raise HTTPException(status_code=503, detail="Razorpay is not configured for this tenant")
+    from app.config import settings as _settings
+    from app.services import tenant_config as _tenants
+    link_mode = _tenants.get_setting(db, identity.tenant_id, "razorpay_mode", default="test") or "test"
+    if link_mode == "live" and not _settings.RAZORPAY_LIVE_ENABLED:
+        raise HTTPException(status_code=503, detail="Razorpay live mode is disabled")
     key = str(payload.idempotency_key)
     previous = db.query(models.PaymentLink).filter_by(
         tenant_id=identity.tenant_id, idempotency_key=key).first()
@@ -71,6 +76,7 @@ def create_link(payload: LinkRequest, db: Session = Depends(get_db),
     link = models.PaymentLink(tenant_id=identity.tenant_id, invoice_id=invoice.id,
                               provider="razorpay", idempotency_key=key,
                               amount_cents=target_amount, currency="INR", status="creating",
+                              mode=link_mode if link_mode in ("test", "live") else "test",
                               expires_at=datetime.now(timezone.utc) + timedelta(days=7))
     db.add(link)
     db.commit()
@@ -157,3 +163,73 @@ def legacy_intent():
 @router.post("/schedule")
 def legacy_schedule():
     raise HTTPException(status_code=410, detail="Outgoing payments are outside RecoverFlow collections")
+
+
+@router.get("/razorpay/status")
+def razorpay_status(db: Session = Depends(get_db),
+                    identity: Identity = Depends(get_identity)):
+    return razorpay.status_for_tenant(db, identity.tenant_id)
+
+
+@router.get("/discrepancies")
+def list_discrepancies(status: str = "open", db: Session = Depends(get_db),
+                       identity: Identity = Depends(get_identity)):
+    if status not in ("open", "resolved"):
+        raise HTTPException(status_code=422, detail="Status must be open or resolved")
+    rows = db.query(models.PaymentDiscrepancy).filter_by(
+        tenant_id=identity.tenant_id, status=status).order_by(
+        models.PaymentDiscrepancy.id).all()
+    return [{"id": row.id, "provider": row.provider, "kind": row.kind,
+             "reference": row.reference, "invoice_id": row.invoice_id,
+             "expected_cents": row.expected_cents,
+             "actual_cents": row.actual_cents, "currency": row.currency,
+             "event_id": row.event_id, "note": row.note,
+             "status": row.status, "resolution": row.resolution,
+             "resolved_by": row.resolved_by} for row in rows]
+
+
+class DiscrepancyResolve(BaseModel):
+    action: str = "dismiss"
+    note: str = ""
+
+
+@router.post("/discrepancies/{discrepancy_id}/resolve")
+def resolve_discrepancy(discrepancy_id: int, payload: DiscrepancyResolve,
+                        db: Session = Depends(get_db),
+                        identity: Identity = Depends(get_identity)):
+    if identity.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    disc = db.get(models.PaymentDiscrepancy, discrepancy_id)
+    if not disc or disc.tenant_id != identity.tenant_id:
+        raise HTTPException(status_code=404, detail="Discrepancy not found")
+    try:
+        resolved = razorpay.resolve_discrepancy(
+            db, disc.id, identity.actor, payload.action.strip(),
+            (payload.note or "").strip())
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+    return {"id": resolved.id, "status": resolved.status,
+            "resolution": resolved.resolution}
+
+
+class SettlementInput(BaseModel):
+    settlement_ref: str
+    lines: list = []
+
+
+@router.post("/settlements", status_code=201)
+def upload_settlement(payload: SettlementInput, db: Session = Depends(get_db),
+                      identity: Identity = Depends(get_identity)):
+    if not payload.settlement_ref.strip() or not payload.lines or len(payload.lines) > 500:
+        raise HTTPException(status_code=422, detail="Settlement needs a reference and 1-500 lines")
+    try:
+        report = razorpay.match_settlement(
+            db, identity.tenant_id, identity.actor,
+            payload.settlement_ref.strip(), payload.lines)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    db.commit()
+    return report

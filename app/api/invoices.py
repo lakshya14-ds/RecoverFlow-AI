@@ -267,7 +267,8 @@ def confirm_extracted_invoice(invoice_id: int, payload: ManualInvoice,
         raise HTTPException(status_code=404, detail="Invoice not found")
     if not invoice.requires_human_review:
         raise HTTPException(status_code=409, detail="Invoice is not awaiting review")
-    if db.query(models.ReceivableEntry).filter_by(invoice_id=invoice_id).first():
+    if db.query(models.ReceivableEntry).filter_by(
+            tenant_id=identity.tenant_id, invoice_id=invoice_id).first():
         raise HTTPException(status_code=409, detail="Balance entries prevent amount changes")
     invoice.invoice_number = payload.invoice_number
     invoice.invoice_type = payload.invoice_type
@@ -281,7 +282,8 @@ def confirm_extracted_invoice(invoice_id: int, payload: ManualInvoice,
     invoice.currency = payload.currency
     invoice.requires_human_review = False
     invoice.status = "pending"
-    job = db.query(models.ProcessingJob).filter_by(invoice_id=invoice_id).first()
+    job = db.query(models.ProcessingJob).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice_id).first()
     if job:
         job.status = "completed"
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
