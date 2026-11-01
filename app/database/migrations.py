@@ -119,7 +119,8 @@ def backfill_evidence_trust(conn):
     financial reliance, and ledger postings always use their own authorized path.
     """
     conn.execute(text("UPDATE case_evidence SET trust_state='verified' "
-                      "WHERE trust_state='alleged' AND verified=1"))
+                      "WHERE trust_state='alleged' AND verified = :v"),
+                 {"v": True})
     # Rows already alleged stay alleged; anything unexpected is left untouched.
 
 
