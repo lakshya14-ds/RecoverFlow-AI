@@ -178,8 +178,8 @@ RecoverFlow enforces zero-trust boundaries around AI agents and financial data:
   - Implements API key parsing with `secrets.compare_digest` constant-time comparison.
   - Supports single root keys (`RECOVERFLOW_API_KEY`) and multi-tenant JSON arrays (`RECOVERFLOW_API_KEYS_JSON`).
   - Defines `Identity(actor, tenant_id, role)`.
-- [app/llm_client.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/llm_client.py):
-  - Legacy Anthropic Claude client wrapper with exponential retry decorator (`retry_llm_call`).
+- [app/services/meta_agent.py](file:///c:/Users/Lakshya%20Arora/Documents/GitHub/RecoverFlow-AI/app/services/meta_agent.py):
+  - Pure Meta Model API client (`muse-spark-1.3`) via OpenAI-compatible endpoints with client-side rate limiting (RPM/RPD) and sliding window management. Legacy alternative LLM clients have been retired.
 - [app/worker.py](file:///c:/Users/Lakshya%20Arora/Documents/APEX-main/app/worker.py):
   - Independent background worker daemon.
   - Runs durable 15-minute lease lock processing for queued invoice jobs.

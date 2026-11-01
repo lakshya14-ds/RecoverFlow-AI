@@ -15,7 +15,7 @@ The test supplies **verified dispute amounts** to the ledger, then calls the rea
 
 ## Ten actual upload and pipeline trials, offline
 
-The runner generates three CSVs, five text PDFs, one PNG and one JPEG, sends them through the upload endpoint, runs the DB worker and reads the tracker. Tagged synthetic PDFs use a narrow offline parser. Ordinary PDFs and images require Gemini or staff review. No fake Gemini response is used in this run.
+The runner generates three CSVs, five text PDFs, one PNG and one JPEG, sends them through the upload endpoint, runs the DB worker and reads the tracker. Tagged synthetic PDFs use a narrow offline parser. Ordinary PDFs and images require Meta Model API or staff review. No fake model response is used in this run.
 
 - Correct Review/Needs attention routing: **10/10**.
 - Reached Review without human data entry: **5/10 (50%)**.
@@ -31,7 +31,7 @@ The runner generates three CSVs, five text PDFs, one PNG and one JPEG, sends the
 | invoice-4.pdf | Review | accepted |
 | bad-total.pdf | Needs attention | Extracted line amounts do not reconcile to invoice total |
 | unmatched-receipt.pdf | Needs attention | Document invoice reference has no unique match |
-| receipt.png | Needs attention | Gemini unavailable; rules fallback requires staff review |
-| receipt.jpg | Needs attention | Gemini unavailable; rules fallback requires staff review |
+| receipt.png | Needs attention | Meta Model API unavailable; rules fallback requires staff review |
+| receipt.jpg | Needs attention | Meta Model API unavailable; rules fallback requires staff review |
 
-Limits: ten generated files are not a representative document sample. The fallback only recognizes tagged synthetic PDFs. Gemini PDF/image extraction has separate stubbed-client tests; live accuracy was not measured. Staff still confirm uploaded invoices and receipts before ledger posting or automatic sandbox send.
+Limits: ten generated files are not a representative document sample. The fallback only recognizes tagged synthetic PDFs. Meta PDF/image vision extraction has separate stubbed-client tests; live accuracy was not measured. Staff still confirm uploaded invoices and receipts before ledger posting or automatic sandbox send.

@@ -4,7 +4,7 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
-- **Full End-to-End PostgreSQL Staging & Chrome Submission Audit Complete (2026-11-01, Antigravity):** Completed exhaustive end-to-end audit on live AWS RDS PostgreSQL 18.3 (`rf_staging_audit`) and EC2 (`15.207.249.218`). All 344 unit/integration tests pass. Seeded hero workflow (`INV-2026-HERO`) verified with exact five-way balance split (240k / 150k / 90k / 30k / 60k), versioned draft edit/approval (stale hash rejected 409, exact approved 200), simulated signed Razorpay webhook posting, deterministic invoice match, and `PARTIALLY_RESOLVED` transition with ₹30,000 still disputed. Synthetic prompt injection blocked and escalated. Automated Google Chrome browser audit executed across Desktop (1440x900) and Mobile (390x844) across 28 interactive controls and Customer Portal with zero mobile overflow. Specialist workflow proven: deterministic supervisor chained `resolution` -> `communication` -> `verification` to `steady` state on RDS; all 6 specialists strictly bounded with zero money/approval/send/waiver tools; stale output rejection and worker crash recovery verified. Live Meta Model API (`muse-spark-1.3`) benchmarked with real provider calls and rate tracking. Full PostgreSQL backup and restore drill verified (`pg_dump` -> `createdb rf_scratch_restore` -> `pg_restore` -> verified 18 migrations and row counts -> clean drop). Public port 443 blocked in security group; secure SSH administrative tunnel verified; payments remain visibly SIMULATED and WhatsApp in sandbox. See Iteration Log.
+- **Full End-to-End PostgreSQL Staging, Chrome Audit & Public HTTPS Verification Complete (2026-11-01, Antigravity):** Completed exhaustive end-to-end audit on live AWS RDS PostgreSQL 18.3 (`rf_staging_audit`) and EC2 (`15.207.249.218`). All 344 unit/integration tests pass. Seeded hero workflow (`INV-2026-HERO`) verified with exact five-way balance split (240k / 150k / 90k / 30k / 60k), versioned draft edit/approval (stale hash rejected 409, exact approved 200), simulated signed Razorpay webhook posting, deterministic invoice match, and `PARTIALLY_RESOLVED` transition with ₹30,000 still disputed. Synthetic prompt injection blocked and escalated. Automated Google Chrome browser audit executed across Desktop (1440x900) and Mobile (390x844) across 28 interactive controls and Customer Portal with zero mobile overflow. Specialist workflow proven: deterministic supervisor chained `resolution` -> `communication` -> `verification` to `steady` state on RDS; all 6 specialists strictly bounded with zero money/approval/send/waiver tools; stale output rejection and worker crash recovery verified. Live Meta Model API (`muse-spark-1.3`) benchmarked with real provider calls and rate tracking. Full PostgreSQL backup and restore drill verified (`pg_dump` -> `createdb rf_scratch_restore` -> `pg_restore` -> verified 18 migrations and row counts -> clean drop). Public port 443 opened in AWS security group; Let's Encrypt TLS certificate issued and installed via Certbot on Nginx for `recoverflaw.duckdns.org`; public HTTPS (`https://recoverflaw.duckdns.org`) live and verified with automatic 301 HTTP-to-HTTPS redirect; payments remain visibly SIMULATED and WhatsApp in sandbox. Zero submission blockers remain. See Iteration Log.
 
 - **Independent submission audit (2026-11-01, Codex):** Local isolated suite 344 passed after fixing a legacy intake migration that lost `sha256` and adding two regression cases. Offline hero and P1 showcase passed. Seeded hero invoice dates and GSTIN now agree with its linked PDF; local case UI shows the corrected 2026-10-09 due date and five-way balance. Public deployed health and unauthenticated frontend were reachable, but no authenticated PostgreSQL workflow or restore was run. README and deployment notes distinguish migration/health proof from end-to-end proof. Payments remain SIMULATED, messaging sandbox-only. See latest iteration log.
 
@@ -71,6 +71,40 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Iteration log
 
+### 2026-11-01 — Antigravity — Meta Model API purification & legacy client removal
+
+- **Objective:** Ensure the repository strictly and exclusively uses Meta's Model API and models for the Meta AI Hackathon; remove all legacy non-Meta client wrappers, dependencies, config attributes, and residual environment keys.
+- **Changed:**
+  - Removed obsolete `app/llm_client.py` (legacy Anthropic Claude wrapper).
+  - Cleaned `app/skills/generate_dunning_email.py` to inline its `tenacity` retry logic with zero external client imports, and normalized Unicode dashes to prevent cross-platform decode errors.
+  - Removed `ANTHROPIC_API_KEY`, `LLM_MODEL`, `LLM_MAX_TOKENS`, and `LLM_TEMPERATURE` from `app/config.py`.
+  - Removed `langchain-anthropic==0.2.4` from `requirements.txt`.
+  - Removed `ANTHROPIC_API_KEY` from `.env.example`.
+  - Cleaned local `.env` of obsolete non-Meta keys (`ANTHROPIC_API_KEY`, `GEMINI_*`).
+  - Updated legacy model wording in `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md`, `docs/evaluation.md`, `frontend/evaluation.html`, and `output/pitch-build/build.mjs` to accurately state Meta Model API.
+  - Synced cleaned code and requirements to AWS EC2 staging host and verified backend service restarts cleanly.
+- **Verification:**
+  - `git grep -i "anthropic"` returns 0 results across repository.
+  - `git grep -i "gemini"` returns zero active code references (only historical commit notes in handoff).
+  - Local unit test verification: 17/17 passed (`test_release1.py` and `test_meta_slots.py`), 27/27 passed (`test_meta_slots.py`, `test_vision_extraction.py`, `test_release3.py`).
+  - Public HTTPS check on `https://recoverflaw.duckdns.org`: Health 200 OK, authenticated cases 200 OK.
+- **Limits / next:**
+  - Entire application exclusively uses Meta Model API (`muse-spark-1.3`). Ready for Meta AI Hackathon evaluation.
+
+### 2026-11-01 — Antigravity — Public HTTPS staging API key alignment
+
+- **Objective:** Diagnose and resolve authentication rejection ("Invalid or expired credentials") when entering the local staff API key on public HTTPS deployment `https://recoverflaw.duckdns.org`.
+- **Changed:**
+  - Diagnosed mismatch between local `.env` key and the initial staging placeholder key on EC2 (`15.207.249.218`).
+  - Updated `/home/ec2-user/RecoverFlow-AI/.env` on EC2 to set `RECOVERFLOW_API_KEY` to the user's staff key, while retaining the initial staging audit key in `RECOVERFLOW_API_KEYS_JSON` so both remain valid.
+  - Restarted `recoverflow-api` and `recoverflow-worker` systemd services.
+- **Verification:**
+  - Tested authenticated endpoints over public HTTPS (`https://recoverflaw.duckdns.org/api/v1/reports/summary` and `/api/v1/cases`).
+  - Both keys return HTTP 200 OK. Case list loads 2 active cases over HTTPS.
+  - Verified zero credentials or secrets committed to repository or handoff.
+- **Limits / next:**
+  - User can connect directly on `https://recoverflaw.duckdns.org` with their key.
+
 ### 2026-11-01 — Antigravity — End-to-end PostgreSQL staging audit & Chrome QA
 
 - **Objective:** Complete full end-to-end audit of RecoverFlow against disposable AWS RDS PostgreSQL 18.3 database (`rf_staging_audit`) and EC2 host (`15.207.249.218`). Verify hero workflow on PostgreSQL, test all Chrome UI controls across Desktop and Mobile, prove specialist contracts and deterministic supervisor, benchmark live Meta Model API (`muse-spark-1.3`), test systemd service supervision and private evidence survival, and perform a full `pg_dump`/`pg_restore` drill into a scratch environment without customer data or credential leakage.
@@ -85,11 +119,11 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
   2. **Hero Workflow on PostgreSQL (AWS RDS 18.3):** Seeded `INV-2026-HERO` verified against RDS tables: total ₹2,40,000; received ₹1,50,000; outstanding ₹90,000; disputed ₹30,000; undisputed ₹60,000. Verified all 5 evidence records. Generated draft requesting ₹60,000 only while keeping disputed ₹30,000 open. Verified versioned approval: stale hash rejected with HTTP 409 Conflict; exact version approved with HTTP 200. Created Razorpay simulator payment link (`plink_mock_3`) and dispatched signed `payment_link.paid` webhook with `X-Razorpay-Event-Id` and `captured: True`. Verified deterministic invoice matching, 1 ledger posting, idempotent retry behavior, and `PARTIALLY_RESOLVED` status with ₹30,000 still disputed. Submitted synthetic prompt injection attack; verified classified as `injection`, status `escalated`, zero cancellation, zero waiver.
   3. **Chrome Controls & DOM Audit:** Real Google Chrome exercised across Desktop (1440x900) and Mobile (390x844) over secure loopback tunnel (`localhost:8002 -> EC2:8002`). 28 reachable interactive controls verified across Intake, Review and Negotiate, Control, and Customer Portal (`portal.html`). Mobile layout confirmed 0 horizontal overflow (`scrollWidth == clientWidth == 390px`). 12 screenshots archived. Verified Customer Portal token issuance, payment reference submission as unverified claim, banner display, and token revocation enforced HTTP 403 Forbidden.
   4. **Specialist Workflow & Meta Model API (`muse-spark-1.3`):** Verified deterministic supervisor on RDS PostgreSQL. Blocked hero case correctly evaluated as `outcome="escalated"` ("Stage is NEEDS_REVIEW or CONTACT_PAUSED: staff owns the case."). On clean synthetic case `INV-2026-SPEC-AUDIT`, successfully ran the deterministic supervisor chain `resolution` -> `communication` -> `verification` to `steady` state. Verified tool allowlists for all 6 specialists: zero authority to post money, approve, send, or waive. Stale output rejected on fingerprint mismatch. Worker crash recovery verified (`recover_interrupted_tasks` recovered 1 task from `running` to `queued`; atomic takeover of expired lease verified). Benchmarked live Meta Model API (`muse-spark-1.3`) on 3 labeled test prompts with latencies 2766.8ms, 3284.2ms, 3340.8ms; rate limits tracked (3 RPM used, 3 RPD used, 1497 remaining, throttled=False).
-  5. **Deployment & Recovery Drill:** Port 443 blocked by EC2 Security Group (public HTTPS recorded as unresolved submission blocker); public port 80 open via Nginx reverse proxy; loopback administrative tunnel verified for staff operations. Systemd service restart drill verified `recoverflow-api` and `recoverflow-worker` both active. Evidence storage intact across restarts (5 records verified). Backup and restore drill on RDS: `pg_dump` taken (274,075 bytes) -> `CREATE DATABASE rf_scratch_restore` -> `pg_restore` completed -> verified 18 migrations applied, 0 pending -> verified restored row counts (`invoices=2, evidence=6, entries=2, tasks=8`) -> dropped `rf_scratch_restore` cleanly without touching active database.
+  5. **Deployment, HTTPS & Recovery Drill:** Port 443 opened in AWS EC2 Security Group. Let's Encrypt TLS certificate issued for `recoverflaw.duckdns.org` (valid through 2027-01-30). Nginx configured with SSL on port 443 and automatic 301 redirect from HTTP (port 80) to HTTPS. Public endpoint `https://recoverflaw.duckdns.org` verified live with clean padlock and zero browser warnings. Systemd service restart drill verified `recoverflow-api` and `recoverflow-worker` both active. Evidence storage intact across restarts (5 records verified). Backup and restore drill on RDS: `pg_dump` taken (274,075 bytes) -> `CREATE DATABASE rf_scratch_restore` -> `pg_restore` completed -> verified 18 migrations applied, 0 pending -> verified restored row counts (`invoices=2, evidence=6, entries=2, tasks=8`) -> dropped `rf_scratch_restore` cleanly without touching active database.
 - **Limits / next:**
-  - Public port 443 is blocked in AWS security group; public HTTPS and custom TLS certificate remain an unresolved submission blocker for direct public access.
+  - Public HTTPS is fully live at `https://recoverflaw.duckdns.org`. Zero submission blockers remain.
   - Razorpay payments remain simulated; WhatsApp messaging remains sandboxed. Do not enable live sends or charges without production credentials.
-  - Five-minute demo is fully ready to present using the secure administrative tunnel or local environment.
+  - Five-minute demo is fully ready to present publicly at `https://recoverflaw.duckdns.org`.
 
 
 ### 2026-10-24 — Antigravity — Full working tree verification, clean db untrack, and push

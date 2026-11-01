@@ -4,8 +4,15 @@ RecoverFlow - Receivables and Collections
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 from langchain_core.prompts import ChatPromptTemplate
-from app.llm_client import retry_llm_call
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import logging
+
+retry_llm_call = retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    retry=retry_if_exception_type(Exception),
+    before_sleep=lambda retry_state: logging.warning(f"Retrying LLM call... Attempt {retry_state.attempt_number}")
+)
 
 class DunningEmailOutput(BaseModel):
     subject: str = Field(description="The subject line of the email")
@@ -16,12 +23,12 @@ DUNNING_STAGES = {
     1: {
         "trigger_days": 7,     # Days after the due date
         "tone": "friendly",
-        "offline_template": "Subject: Friendly Reminder — Invoice {invoice_number}\n\nHi {client_name},\n\nJust a quick note that Invoice {invoice_number} for {currency} {amount:.2f} was due on {due_date}.\nIf you've already sent payment, please disregard this message.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\n{company_name}"
+        "offline_template": "Subject: Friendly Reminder  -  Invoice {invoice_number}\n\nHi {client_name},\n\nJust a quick note that Invoice {invoice_number} for {currency} {amount:.2f} was due on {due_date}.\nIf you've already sent payment, please disregard this message.\n\nIf you have any questions, please don't hesitate to reach out.\n\nBest regards,\n{company_name}"
     },
     2: {
         "trigger_days": 15,
         "tone": "formal",
-        "offline_template": "Subject: Second Notice — Invoice {invoice_number} Past Due\n\nDear {client_name},\n\nThis is a reminder that Invoice {invoice_number} for {currency} {amount:.2f}, originally due {due_date}, remains outstanding.\nIf you have already paid or have questions about the balance, please reply.\n\nSincerely,\n{company_name}"
+        "offline_template": "Subject: Second Notice  -  Invoice {invoice_number} Past Due\n\nDear {client_name},\n\nThis is a reminder that Invoice {invoice_number} for {currency} {amount:.2f}, originally due {due_date}, remains outstanding.\nIf you have already paid or have questions about the balance, please reply.\n\nSincerely,\n{company_name}"
     },
     3: {
         "trigger_days": 30,

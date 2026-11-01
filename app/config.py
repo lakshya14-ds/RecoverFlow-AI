@@ -27,10 +27,6 @@ class Settings(BaseSettings):
     AUTH_TOKEN_EXPIRE_HOURS: int = 24
 
     # LLM
-    ANTHROPIC_API_KEY: str = ""
-    LLM_MODEL: str = "claude-3-5-sonnet-20241022"
-    LLM_MAX_TOKENS: int = 2048
-    LLM_TEMPERATURE: float = 0.3            # controlled variation for collection drafts
     META_MODEL_API_KEY: str = ""
     META_API_KEY_1: str = ""
     META_API_KEY_2: str = ""

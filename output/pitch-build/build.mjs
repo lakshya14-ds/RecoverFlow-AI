@@ -129,7 +129,7 @@ async function coverPic(slide) {
   box(s,'Reusable core',64,170,530,57,31,C.ink,true);
   box(s,'A source-linked case model, deterministic balance engine, versioned approval and audit trail can serve new industries and channels.',65,239,513,190,24,C.muted);
   box(s,'Replaceable edges',660,170,530,57,31,C.ink,true);
-  box(s,'CSV/PDF/image intake, read-only Shopify, Gemini wording, sandbox messaging and SIMULATED Razorpay sit behind separate services.',661,239,525,195,24,C.muted);
+  box(s,'CSV/PDF/image intake, read-only Shopify, Meta Muse wording, sandbox messaging and SIMULATED Razorpay sit behind separate services.',661,239,525,195,24,C.muted);
   box(s,'Pilot setup: SQLite and local identity. Production requires managed tenancy, migrations, backups and provider tests.',65,546,1130,83,22,C.amber);
   notes(s,'Sources: README.md; docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md; app/services/; app/api/. Production roadmap is documented, not implemented.');
 }
