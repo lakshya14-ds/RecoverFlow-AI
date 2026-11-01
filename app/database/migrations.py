@@ -9,7 +9,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.schema import CreateColumn
 from app.database.money import Money
 
-REVISION = "20261113_privacy_v18"
+REVISION = "20261115_voice_transcriptions_v20"
 REVISIONS = ["20261027_foundations_v1", "20261028_trust_states_v2",
              "20261029_supervisor_v3", "20261030_investigation_v4",
              "20261031_allocation_v5", "20261101_tenancy_v6",
@@ -18,7 +18,7 @@ REVISIONS = ["20261027_foundations_v1", "20261028_trust_states_v2",
              "20261106_installments_v11", "20261107_portal_v12",
              "20261108_docstore_v13", "20261109_import_runs_v14",
              "20261110_payments_v15", "20261111_comms_v16",
-             "20261112_workers_v17", REVISION]
+             "20261112_workers_v17", "20261113_privacy_v18", "20261114_sam_segments_v19", REVISION]
 ADDITIONS = {
     "invoices": {"investigation_hold": "BOOLEAN NOT NULL DEFAULT false", "investigation_reason": "TEXT", "investigation_decision_hash": "VARCHAR(64)", "counterparty_id": "INTEGER REFERENCES counterparties(id)",
         "cgst_cents": "INTEGER DEFAULT 0", "sgst_cents": "INTEGER DEFAULT 0", "igst_cents": "INTEGER DEFAULT 0",
@@ -156,7 +156,7 @@ def migrate(engine, metadata):
                       "document_access_log", "import_runs",
                       "import_conflicts", "payment_discrepancies",
                       "settlement_lines", "message_templates",
-                      "comms_preferences", "privacy_requests"):
+                      "comms_preferences", "privacy_requests", "evidence_segments", "voice_transcriptions"):
             if table in metadata.tables:
                 metadata.tables[table].create(bind=conn, checkfirst=True)
         for table, additions in ADDITIONS.items():

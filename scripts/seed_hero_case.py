@@ -75,8 +75,12 @@ def seed_hero_case() -> models.Invoice:
             db.query(models.StaffTask).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.StaffNote).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.CaseEscalation).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
-            db.query(models.PortalToken).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            tokens = db.query(models.PortalToken).filter_by(tenant_id=tenant_id, invoice_id=inv_id).all()
+            token_ids = [t.id for t in tokens]
+            if token_ids:
+                db.query(models.PortalAttempt).filter(models.PortalAttempt.token_id.in_(token_ids)).delete(synchronize_session=False)
             db.query(models.StoredDocument).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.PortalToken).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.PaymentDiscrepancy).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.CommsPreference).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.InvoiceLineItem).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
@@ -93,6 +97,10 @@ def seed_hero_case() -> models.Invoice:
             db.query(models.ClarificationTask).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.PromiseToPay).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.AllocationLeg).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            ev_ids = [e.id for e in db.query(models.CaseEvidence).filter_by(tenant_id=tenant_id, invoice_id=inv_id).all()]
+            if ev_ids:
+                db.query(models.EvidenceSegment).filter(models.EvidenceSegment.evidence_id.in_(ev_ids)).delete(synchronize_session=False)
+            db.query(models.VoiceTranscription).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.CaseEvidence).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.CustomerMessage).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             db.query(models.ReceivableEntry).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
@@ -112,9 +120,10 @@ def seed_hero_case() -> models.Invoice:
             for _session in db.query(models.NegotiationSession).filter_by(
                     tenant_id=tenant_id, invoice_id=inv_id).all():
                 db.query(models.NegotiationTurn).filter_by(session_id=_session.id).delete()
-                db.delete(_session)
+            db.query(models.NegotiationSession).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.ImportConflict).filter_by(tenant_id=tenant_id, existing_invoice_id=inv_id).delete()
             db.query(models.DunningCampaign).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
-            db.delete(existing)
+            db.query(models.Invoice).filter_by(tenant_id=tenant_id, id=inv_id).delete()
             db.commit()
 
         # 1. Create Counterparty
@@ -255,6 +264,30 @@ def seed_hero_case() -> models.Invoice:
                 amount_cents=6000000,
                 verified=True,
             ),
+            models.CaseEvidence(
+                tenant_id=tenant_id,
+                invoice_id=hero_id,
+                claim_type="dispute_item",
+                title="Delivery Challan & POD (POD-2026-HERO)",
+                description="Physical delivery challan with receiver stamp, gate receiving remarks, and condition signoff.",
+                source_type="delivery_challan",
+                source_reference="docs/challan/CHALLAN-2026-HERO.png",
+                source_snippet="LR-MUM-88421: 80 units dispatched; 70 units accepted, 10 units shortage noted at bay 4. Dispute: INR 30,000.",
+                amount_cents=3000000,
+                verified=True,
+            ),
+            models.CaseEvidence(
+                tenant_id=tenant_id,
+                invoice_id=hero_id,
+                claim_type="dispute_item",
+                title="WhatsApp Voice Note (Customer Statement)",
+                description="Audio note from Apex Enterprises procurement incharge: 10 units shortage at Bay 4, remitting INR 60,000 on Tuesday.",
+                source_type="whatsapp_voice_note",
+                source_reference="docs/audio/VOICENOTE-2026-HERO.wav",
+                source_snippet="Transcribed via Meta Muse Voice Transcribe: 'Jo 80 precision valve sets bheje the, usme se 10 piece ka carton bay 4 pe damaged aur missing nikla... remaining INR 60,000 hum Tuesday ko UTR se transfer kar denge.'",
+                amount_cents=3000000,
+                verified=True,
+            ),
         ]
         for item in evidence_items:
             item.trust_state = "verified"
@@ -274,6 +307,47 @@ def seed_hero_case() -> models.Invoice:
         ))
 
         db.commit()
+        # Automatically run Meta SAM 3.1 perception segmentation on the POD challan
+        challan_ev = db.query(models.CaseEvidence).filter_by(
+            tenant_id=tenant_id, invoice_id=hero_id, source_reference="docs/challan/CHALLAN-2026-HERO.png"
+        ).first()
+        if challan_ev:
+            from app.services import sam_agent
+            sam_agent.segment_evidence(db, challan_ev)
+
+        # Automatically run Meta Muse Voice Transcribe on WhatsApp voice note
+        voice_ev = db.query(models.CaseEvidence).filter_by(
+            tenant_id=tenant_id, invoice_id=hero_id, source_reference="docs/audio/VOICENOTE-2026-HERO.wav"
+        ).first()
+        if voice_ev:
+            from app.services.voice_transcribe_agent import voice_agent
+            audio_f = Path(voice_ev.source_reference)
+            if audio_f.is_file():
+                v_res = voice_agent.transcribe_and_store(
+                    audio_f,
+                    filename=audio_f.name,
+                    tenant_id=tenant_id,
+                    invoice_id=hero_id
+                )
+                vt_row = models.VoiceTranscription(
+                    tenant_id=tenant_id,
+                    invoice_id=hero_id,
+                    evidence_id=voice_ev.id,
+                    audio_path=v_res["audio_path"],
+                    original_filename=v_res["original_filename"],
+                    duration_seconds=v_res["duration_seconds"],
+                    language=v_res["language"],
+                    transcript_text=v_res["transcript_text"],
+                    diarization_json=v_res["diarization_json"],
+                    extracted_dispute_amount_cents=v_res["extracted_dispute_amount_cents"],
+                    extracted_dispute_reason=v_res["extracted_dispute_reason"],
+                    extracted_promise_date=v_res["extracted_promise_date"],
+                    extracted_promise_amount_cents=v_res["extracted_promise_amount_cents"],
+                    confidence=v_res["confidence"],
+                    model_name=v_res["model_name"]
+                )
+                db.add(vt_row)
+                db.commit()
         db.refresh(hero_invoice)
 
         split = split_balance(db, hero_invoice)

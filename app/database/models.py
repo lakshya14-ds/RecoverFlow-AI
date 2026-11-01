@@ -695,6 +695,45 @@ class CaseEvidence(Base):
     decision_reason = Column(Text)
     currency = Column(String)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    segments = relationship("EvidenceSegment", backref="evidence", cascade="all, delete-orphan")
+    voice_transcriptions = relationship("VoiceTranscription", backref="evidence", cascade="all, delete-orphan")
+
+
+class EvidenceSegment(Base):
+    """Visual document segments produced by Meta SAM 3.1 perception model."""
+    __tablename__ = "evidence_segments"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, default="local", index=True)
+    evidence_id = Column(Integer, ForeignKey("case_evidence.id"), nullable=False, index=True)
+    concept = Column(String, nullable=False)  # stamp_signature, receiving_notes, damaged_goods
+    label = Column(String, nullable=False)    # Human-readable label
+    confidence = Column(Float, nullable=False, default=0.95)
+    bbox_json = Column(Text, nullable=False)  # JSON {"ymin": float, "xmin": float, "ymax": float, "xmax": float}
+    crop_path = Column(String, nullable=False) # Relative disk path to cropped image
+    notes = Column(Text)                       # Remarks or extracted observation
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class VoiceTranscription(Base):
+    """Audio transcriptions and dispute extractions produced by Meta Muse Voice Transcribe."""
+    __tablename__ = "voice_transcriptions"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, nullable=False, default="local", index=True)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    evidence_id = Column(Integer, ForeignKey("case_evidence.id"), nullable=True, index=True)
+    audio_path = Column(String, nullable=False)
+    original_filename = Column(String, nullable=False)
+    duration_seconds = Column(Float, nullable=False, default=0.0)
+    language = Column(String, nullable=False, default="hinglish")
+    transcript_text = Column(Text, nullable=False)
+    diarization_json = Column(Text)
+    extracted_dispute_amount_cents = Column(Integer, default=0)
+    extracted_dispute_reason = Column(Text)
+    extracted_promise_date = Column(String)
+    extracted_promise_amount_cents = Column(Integer, default=0)
+    confidence = Column(Float, nullable=False, default=0.95)
+    model_name = Column(String, nullable=False, default="muse-voice-transcribe")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class ProposalDraftVersion(Base):

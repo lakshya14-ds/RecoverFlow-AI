@@ -122,6 +122,84 @@ def _process_csv(db, job):
         _audit(db, job, "Ready for review", "All CSV rows were already imported")
 
 
+def _process_audio(db, job):
+    """Transcribe audio upload via Meta Muse Voice and link dispute evidence."""
+    from app.services.voice_transcribe_agent import voice_agent
+    audio_path = Path(job.storage_path)
+    if not audio_path.is_file():
+        raise ValueError("Audio file missing from storage")
+
+    _audit(db, job, "Transcribing", "Running Meta Muse Voice Transcribe")
+    contents = audio_path.read_bytes()
+
+    # Find candidate invoice: check if invoice number is in transcript or default to open AR invoice
+    invoice = None
+    open_invoices = db.query(models.Invoice).filter_by(
+        tenant_id=job.tenant_id, invoice_type="AR").all()
+    for inv in open_invoices:
+        if inv.invoice_number in job.filename or inv.invoice_number.replace("INV-", "") in job.filename:
+            invoice = inv
+            break
+    if not invoice and open_invoices:
+        invoice = open_invoices[0]
+
+    invoice_id = invoice.id if invoice else None
+    result = voice_agent.transcribe_and_store(
+        contents,
+        filename=job.filename,
+        tenant_id=job.tenant_id,
+        invoice_id=invoice_id
+    )
+
+    ev_id = None
+    if invoice:
+        ev = models.CaseEvidence(
+            tenant_id=job.tenant_id,
+            invoice_id=invoice.id,
+            claim_type="dispute_item",
+            title="WhatsApp Voice Note (Customer Audio)",
+            description=f"Transcribed via Meta Muse Voice Transcribe ({result['language']}): {result['extracted_dispute_reason']}",
+            source_type="whatsapp_voice_note",
+            source_reference=f"docs/audio/{result['stored_filename']}",
+            source_snippet=result["transcript_text"][:240],
+            amount_cents=result["extracted_dispute_amount_cents"],
+            verified=True,
+            trust_state="verified",
+            decided_by="voice_agent",
+            currency=invoice.currency or "INR"
+        )
+        db.add(ev)
+        db.flush()
+        ev_id = ev.id
+
+    vt = models.VoiceTranscription(
+        tenant_id=job.tenant_id,
+        invoice_id=invoice_id or 0,
+        evidence_id=ev_id,
+        audio_path=result["audio_path"],
+        original_filename=result["original_filename"],
+        duration_seconds=result["duration_seconds"],
+        language=result["language"],
+        transcript_text=result["transcript_text"],
+        diarization_json=result["diarization_json"],
+        extracted_dispute_amount_cents=result["extracted_dispute_amount_cents"],
+        extracted_dispute_reason=result["extracted_dispute_reason"],
+        extracted_promise_date=result["extracted_promise_date"],
+        extracted_promise_amount_cents=result["extracted_promise_amount_cents"],
+        confidence=result["confidence"],
+        model_name=result["model_name"]
+    )
+    db.add(vt)
+    db.flush()
+
+    job.status = "completed"
+    job.stage = "Completed"
+    job.matched_invoice_id = invoice_id
+    stages = ["Uploaded", "Transcribed", "Evidence Linked"]
+    job.stages_json = json.dumps(stages)
+    _audit(db, job, "Completed", f"Transcribed {result['duration_seconds']}s audio; confidence={result['confidence']}")
+
+
 def _process_vision(db, job):
     from app.services import documents as document_records
     validated = vision_extraction.extract(Path(job.source_path).read_bytes(), job.mime_type)
@@ -184,7 +262,7 @@ def _process_vision(db, job):
                  "credit_note": "credit_note", "debit_note": "debit_note",
                  "delivery_challan": "delivery_challan", "freight_bill": "freight_bill",
                  "scheme_letter": "discount_agreement"}[document.document_type]
-        db.add(models.CaseEvidence(tenant_id=job.tenant_id, invoice_id=invoice.id,
+        ev_item = models.CaseEvidence(tenant_id=job.tenant_id, invoice_id=invoice.id,
             claim_type=claim, title="Uploaded " + document.document_type,
             description="Machine extracted document; staff confirmation pending",
             source_type="uploaded_" + document.document_type,
@@ -192,7 +270,15 @@ def _process_vision(db, job):
             source_snippet=document.text[:250],
             amount_cents=cents(validated["total"]) if validated["total"] else None,
             verified=False, trust_state="extracted",
-            currency=document.currency or invoice.currency or "INR"))
+            currency=document.currency or invoice.currency or "INR")
+        db.add(ev_item)
+        db.flush()
+        if document.document_type in ("delivery_challan", "delivery_note", "receipt") or (job.mime_type or "").startswith("image/"):
+            try:
+                from app.services import sam_agent
+                sam_agent.segment_evidence(db, ev_item)
+            except Exception as _e:
+                logger.info(f"Automatic SAM 3.1 perception skipped: {_e}")
         if document.document_type in ("credit_note", "debit_note"):
             document_records.create_note(
                 db, invoice, document.document_type.replace("_note", ""),
@@ -229,6 +315,8 @@ def process_job(db, job, worker=None) -> None:
     try:
         if job.mime_type in ("text/csv", "application/csv", "application/vnd.ms-excel"):
             _process_csv(db, job)
+        elif job.mime_type in ("audio/wav", "audio/x-wav", "audio/mpeg", "audio/mp3", "audio/ogg", "audio/mp4", "audio/x-m4a"):
+            _process_audio(db, job)
         else:
             worker_lease.heartbeat(db, "intake", job.id, worker)
             _process_vision(db, job)

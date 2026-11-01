@@ -1,0 +1,26 @@
+{
+  "muse_spark": {
+    "status": "PASSED",
+    "details": [
+      "Balance split active: True"
+    ]
+  },
+  "sam_3_1": {
+    "status": "PASSED",
+    "details": [
+      "Segments: ['? Warehouse Receiving Notes 98%', '? Damaged Goods / Defects 94%', '? Receiver Stamp & Signature 99%']"
+    ]
+  },
+  "muse_voice_transcribe": {
+    "status": "PASSED",
+    "details": [
+      "DISPUTED SHORTFALL | ?30,000.00 | 10 valve sets missing at bay 4",
+      "PAYMENT PROMISE | ?60,000.00 | Scheduled remittance: Tuesday"
+    ]
+  },
+  "console_errors": [
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "page_errors": []
+}

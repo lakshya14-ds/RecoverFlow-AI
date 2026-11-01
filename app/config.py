@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     INTAKE_STORAGE_PATH: str = "data/intake"         # durable intake evidence
     INCOMING_STORAGE_PATH: str = "data/incoming"     # temporary invoice upload staging
     DOCUMENT_STORAGE_PATH: str = "data/documents"    # private evidence store (never web-served)
+    SEGMENT_STORAGE_PATH: str = "data/documents/segments" # SAM 3.1 visual perception crops
+    VOICE_STORAGE_PATH: str = "data/documents/audio" # Meta Muse Voice audio recordings
     DOC_RETENTION_DAYS: int = 2920                   # 8-year default retention for evidence
     PORTAL_TOKEN_EXPIRE_HOURS: int = 72              # short-lived customer access
     PORTAL_TOKEN_LIMIT: int = 60                   # requests per token per window
@@ -37,6 +39,10 @@ class Settings(BaseSettings):
     META_KEY_3_RESERVE_RPM: int = 5
     META_KEY_3_RESERVE_RPD: int = 300
     AGENT_MODEL: str = "muse-spark-1.3"
+    SAM_MODEL: str = "sam-3.1"
+    SAM_ENABLED: bool = True
+    VOICE_MODEL: str = "muse-voice-transcribe"
+    VOICE_ENABLED: bool = True
     META_RPM_LIMIT: int = 15                # Requested per-slot client cap
     META_RPD_LIMIT: int = 1500              # Requested per-slot client cap
 

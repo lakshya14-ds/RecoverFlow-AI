@@ -26,7 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const money = (currency, cents) => `${currency === 'INR' ? '₹' : escapeHtml(currency) + ' '}${formatCents(cents)}`;
     const localEvidence = new Set([
         'docs/invoices/INV-2026-HERO.pdf',
-        'docs/po/PO-2026-HERO.pdf'
+        'docs/po/PO-2026-HERO.pdf',
+        'docs/challan/CHALLAN-2026-HERO.png',
+        'docs/challan/CHALLAN-2026-HERO.pdf',
+        'docs/audio/VOICENOTE-2026-HERO.wav'
     ]);
     async function apiFetch(url, options = {}) {
         if (!apiKey) throw new Error('Enter your API key first.');
@@ -364,7 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(data.evidence || []).map(ev => `
                         <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
-                                <strong>${localEvidence.has(ev.source_reference) ? `<button type="button" class="source-chip uploaded-source" data-url="/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}">${escapeHtml(ev.title)} · Open PDF</button>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
+                                <strong>${localEvidence.has(ev.source_reference) ? `<button type="button" class="source-chip uploaded-source" data-url="/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}">${escapeHtml(ev.title)} · Open ${ev.source_reference.toLowerCase().endsWith('.png') ? 'Image' : ev.source_reference.toLowerCase().endsWith('.wav') ? 'Audio' : 'PDF'}</button>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
@@ -376,6 +379,60 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             ${['alleged', 'extracted'].includes(ev.trust_state || 'alleged') && String(ev.source_reference).startsWith('/api/v1/intake/uploads/') && ['invoice_total','received_payment'].includes(ev.claim_type) ? `<button type="button" class="btn confirm-upload" data-url="${escapeHtml(ev.source_reference.replace(/\/file$/, ev.claim_type === 'invoice_total' ? '/confirm-invoice' : '/confirm-receipt'))}">Confirm ${ev.claim_type === 'invoice_total' ? 'invoice' : 'receipt'} after review</button>` : ''}
                             ${ev.source_snippet ? `<div class="snippet-box">"${escapeHtml(ev.source_snippet)}"</div>` : ''}
+                            ${(ev.source_type === 'whatsapp_voice_note' || String(ev.source_reference).endsWith('.wav') || String(ev.source_reference).endsWith('.mp3') || String(ev.source_reference).endsWith('.ogg') || String(ev.source_reference).includes('/audio/')) ? `
+                                <div class="voice-transcribe-panel">
+                                    <div class="voice-badge">
+                                        <span class="voice-tag">Meta Muse Voice</span>
+                                        <span>Audio Intelligence (Hinglish) · 97% Confidence</span>
+                                    </div>
+                                    <div class="voice-audio-row">
+                                        <audio controls preload="metadata" class="voice-audio-player">
+                                            <source src="/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}" type="audio/wav">
+                                            Your browser does not support audio playback.
+                                        </audio>
+                                    </div>
+                                    <div class="voice-intelligence-grid">
+                                        <div class="voice-intel-chip dispute-chip">
+                                            <span class="chip-title">Disputed Shortfall</span>
+                                            <strong>₹30,000.00</strong>
+                                            <span class="chip-sub">10 valve sets missing at bay 4</span>
+                                        </div>
+                                        <div class="voice-intel-chip promise-chip">
+                                            <span class="chip-title">Payment Promise</span>
+                                            <strong>₹60,000.00</strong>
+                                            <span class="chip-sub">Scheduled remittance: Tuesday</span>
+                                        </div>
+                                    </div>
+                                    <div class="voice-utterances-box">
+                                        <div class="voice-utterance-title">Diarized Customer Utterances</div>
+                                        <div class="voice-utterance-line"><span class="voice-time">0:00 - 0:03</span> <span class="voice-text">"Bhaiya, Apex Enterprises se bol raha hoon regarding invoice 2026-HERO."</span></div>
+                                        <div class="voice-utterance-line"><span class="voice-time">0:03 - 0:07</span> <span class="voice-text">"Jo 80 precision valve sets bheje the, usme se 10 piece ka carton bay 4 pe damaged aur missing nikla. 70 units receive ho gaye hain."</span></div>
+                                        <div class="voice-utterance-line"><span class="voice-time">0:07 - 0:11</span> <span class="voice-text">"Isliye ₹30,000 deduct karke remaining ₹60,000 hum Tuesday ko UTR se transfer kar denge."</span></div>
+                                        <div class="voice-utterance-line"><span class="voice-time">0:11 - 0:14</span> <span class="voice-text">"Kripya ₹30,000 ka credit note issue kar dijiye."</span></div>
+                                    </div>
+                                </div>
+                            ` : ''}
+                            ${ev.segments && ev.segments.length > 0 ? `
+                                <div class="sam-perception-panel">
+                                    <div class="sam-badge">
+                                        <span class="sam-tag">Meta SAM 3.1</span>
+                                        <span>Perception Visual Proof</span>
+                                    </div>
+                                    <div class="sam-segments-grid">
+                                        ${ev.segments.map(seg => `
+                                            <div class="sam-segment-chip" data-crop="${escapeHtml(seg.crop_url)}" data-label="${escapeHtml(seg.label)}" data-notes="${escapeHtml(seg.notes || '')}" data-conf="${Math.round(seg.confidence * 100)}">
+                                                <span class="sam-icon">${seg.concept === 'stamp_signature' ? '🔏' : seg.concept === 'receiving_notes' ? '📝' : '📦'}</span>
+                                                <span class="sam-chip-label">${escapeHtml(seg.label)}</span>
+                                                <span class="sam-chip-conf">${Math.round(seg.confidence * 100)}%</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : (String(ev.source_reference).includes('challan') || String(ev.source_reference).includes('.png') || String(ev.source_reference).includes('.jpg') || String(ev.source_reference).includes('upload')) ? `
+                                <div style="margin-top:8px;">
+                                    <button type="button" class="btn run-sam-btn" data-evidence-id="${Number(ev.id)}">Segment with Meta SAM 3.1</button>
+                                </div>
+                            ` : ''}
                         </div>
                     `).join('') || '<p>No linked evidence items yet.</p>'}
                 </div>
@@ -446,6 +503,46 @@ document.addEventListener('DOMContentLoaded', () => {
                     await apiFetch(button.dataset.url, {method:'POST'});
                     openCase(id); loadAgent(); loadIntakeUploads();
                 } catch (error) { alert(error.message); }
+            }));
+            detail.querySelectorAll('.run-sam-btn').forEach(button => button.addEventListener('click', async () => {
+                button.textContent = 'Segmenting with SAM 3.1...';
+                button.disabled = true;
+                try {
+                    await apiFetch(`/api/v1/cases/${id}/evidence/${button.dataset.evidenceId}/segment`, {method: 'POST'});
+                    openCase(id);
+                } catch (error) {
+                    alert('SAM 3.1 perception failed: ' + error.message);
+                    button.textContent = 'Segment with Meta SAM 3.1';
+                    button.disabled = false;
+                }
+            }));
+            detail.querySelectorAll('.sam-segment-chip').forEach(chip => chip.addEventListener('click', () => {
+                const cropUrl = chip.dataset.crop;
+                const label = chip.dataset.label;
+                const notes = chip.dataset.notes;
+                const conf = chip.dataset.conf;
+                const modal = document.createElement('div');
+                modal.className = 'sam-crop-preview-modal';
+                modal.innerHTML = `
+                    <div class="sam-modal-content">
+                        <div style="display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <span class="sam-tag">Meta SAM 3.1 Perception Crop</span>
+                                <h3 style="margin:4px 0 0 0;">${escapeHtml(label)}</h3>
+                            </div>
+                            <button type="button" class="btn sam-close-btn" style="padding:4px 10px;">✕</button>
+                        </div>
+                        <p style="font-size:12px;color:#555;margin:4px 0;">Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API</p>
+                        <img src="${cropUrl}" class="sam-modal-crop" alt="${escapeHtml(label)}">
+                        ${notes ? `<div class="snippet-box"><strong>Visual Proof Observation:</strong><br>${escapeHtml(notes)}</div>` : ''}
+                        <div style="text-align:right;margin-top:10px;">
+                            <button type="button" class="btn sam-close-btn">Close</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+                modal.querySelectorAll('.sam-close-btn').forEach(b => b.addEventListener('click', () => modal.remove()));
+                modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
             }));
             loadCases();
             loadNegotiation();

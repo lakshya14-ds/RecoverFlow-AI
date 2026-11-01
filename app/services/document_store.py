@@ -15,7 +15,8 @@ from pathlib import Path
 from app.config import settings
 from app.database import models
 
-PORTAL_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png"}
+PORTAL_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png", ".wav", ".mp3", ".ogg", ".m4a"}
+AUDIO_SUFFIXES = {".wav", ".mp3", ".ogg", ".m4a"}
 STAFF_SUFFIXES = PORTAL_SUFFIXES | {".csv"}
 
 DANGEROUS_SUFFIXES = {".exe", ".bat", ".cmd", ".com", ".msi", ".js", ".vbs",
@@ -29,6 +30,10 @@ SUFFIX_MIMES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",
+    ".wav": "audio/wav",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".m4a": "audio/mp4",
 }
 
 
@@ -52,6 +57,10 @@ def validate_content(data: bytes, suffix: str, filename: str, *, portal: bool) -
         raise DocumentRejected("Invalid JPEG signature")
     if suffix == ".png" and not data.startswith(b"\x89PNG\r\n\x1a\n"):
         raise DocumentRejected("Invalid PNG signature")
+    if suffix == ".wav" and not (data.startswith(b"RIFF") and len(data) >= 12 and data[8:12] == b"WAVE"):
+        raise DocumentRejected("Invalid WAV signature")
+    if suffix == ".ogg" and not data.startswith(b"OggS"):
+        raise DocumentRejected("Invalid OGG signature")
     if suffix == ".csv":
         try:
             decoded = data.decode("utf-8-sig")

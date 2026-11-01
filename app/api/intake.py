@@ -25,6 +25,10 @@ MIMES = {
     ".jpg": {"image/jpeg"},
     ".jpeg": {"image/jpeg"},
     ".png": {"image/png"},
+    ".wav": {"audio/wav", "audio/x-wav"},
+    ".mp3": {"audio/mpeg", "audio/mp3"},
+    ".ogg": {"audio/ogg", "application/ogg"},
+    ".m4a": {"audio/mp4", "audio/x-m4a"},
 }
 
 

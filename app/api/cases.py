@@ -6,7 +6,7 @@ from pathlib import Path
 from decimal import Decimal
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -164,16 +164,17 @@ def _summary(db: Session, invoice: models.Invoice) -> dict:
     }
 
 
-EVIDENCE_DOC_DIRS = ("invoices", "po")
+EVIDENCE_DOC_DIRS = ("invoices", "po", "challan", "audio")
 
 
 @router.get("/{invoice_id}/evidence-files/{filename}")
+@router.head("/{invoice_id}/evidence-files/{filename}")
 def get_evidence_file(invoice_id: int, filename: str,
                       db: Session = Depends(get_db),
                       identity: Identity = Depends(get_identity)):
     """Serve a synthetic doc fixture linked to this tenant's own evidence row."""
     invoice = _invoice(db, invoice_id, identity)
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.pdf", filename or ""):
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(pdf|png|jpg|jpeg|wav|mp3|ogg|m4a)", filename or ""):
         raise HTTPException(status_code=404, detail="Evidence file not found")
     refs = {row.source_reference for row in db.query(models.CaseEvidence).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice.id).all()}
@@ -185,7 +186,199 @@ def get_evidence_file(invoice_id: int, filename: str,
     path = (docs_root / match[5:]).resolve()
     if docs_root not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="Evidence file not found")
-    return FileResponse(path, media_type="application/pdf", filename=filename)
+    media = "image/png" if filename.lower().endswith(".png") else "image/jpeg" if filename.lower().endswith((".jpg", ".jpeg")) else "audio/wav" if filename.lower().endswith(".wav") else "audio/mpeg" if filename.lower().endswith(".mp3") else "audio/ogg" if filename.lower().endswith(".ogg") else "application/pdf"
+    return FileResponse(path, media_type=media, filename=filename)
+
+
+@router.post("/{invoice_id}/evidence/{evidence_id}/segment")
+def run_segmentation(invoice_id: int, evidence_id: int,
+                     db: Session = Depends(get_db),
+                     identity: Identity = Depends(get_identity)):
+    """Run Meta SAM 3.1 perception segmentation on an evidence document."""
+    invoice = _invoice(db, invoice_id, identity)
+    evidence = db.query(models.CaseEvidence).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id, id=evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence record not found")
+    from app.services import sam_agent
+    segments = sam_agent.segment_evidence(db, evidence)
+    return [{
+        "id": s.id, "concept": s.concept, "label": s.label,
+        "confidence": s.confidence, "bbox": json.loads(s.bbox_json or "{}"),
+        "crop_url": f"/api/v1/cases/{invoice.id}/evidence/{evidence.id}/segments/file/{Path(s.crop_path).name}",
+        "notes": s.notes
+    } for s in segments]
+
+
+@router.get("/{invoice_id}/evidence/{evidence_id}/segments")
+def list_segments(invoice_id: int, evidence_id: int,
+                  db: Session = Depends(get_db),
+                  identity: Identity = Depends(get_identity)):
+    """List Meta SAM 3.1 visual segments for an evidence document."""
+    invoice = _invoice(db, invoice_id, identity)
+    evidence = db.query(models.CaseEvidence).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id, id=evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence record not found")
+    segments = db.query(models.EvidenceSegment).filter_by(
+        tenant_id=identity.tenant_id, evidence_id=evidence.id).all()
+    return [{
+        "id": s.id, "concept": s.concept, "label": s.label,
+        "confidence": s.confidence, "bbox": json.loads(s.bbox_json or "{}"),
+        "crop_url": f"/api/v1/cases/{invoice.id}/evidence/{evidence.id}/segments/file/{Path(s.crop_path).name}",
+        "notes": s.notes
+    } for s in segments]
+
+
+@router.get("/{invoice_id}/evidence/{evidence_id}/segments/file/{filename}")
+@router.head("/{invoice_id}/evidence/{evidence_id}/segments/file/{filename}")
+def get_segment_file(invoice_id: int, evidence_id: int, filename: str,
+                     db: Session = Depends(get_db),
+                     identity: Identity = Depends(get_identity)):
+    """Serve a cropped SAM 3.1 visual perception segment."""
+    invoice = _invoice(db, invoice_id, identity)
+    evidence = db.query(models.CaseEvidence).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id, id=evidence_id).first()
+    if not evidence:
+        raise HTTPException(status_code=404, detail="Evidence record not found")
+    if not re.fullmatch(r"sam_[A-Za-z0-9_-]+\.png", filename or ""):
+        raise HTTPException(status_code=404, detail="Segment crop not found")
+    segments_dir = (Path(settings.BASE_DIR) / getattr(settings, "SEGMENT_STORAGE_PATH", "data/documents/segments")).resolve()
+    crop_path = (segments_dir / filename).resolve()
+    if segments_dir not in crop_path.parents or not crop_path.is_file():
+        raise HTTPException(status_code=404, detail="Segment crop not found")
+    return FileResponse(crop_path, media_type="image/png", filename=filename)
+
+
+@router.get("/{invoice_id}/voice")
+def list_voice_transcriptions(invoice_id: int, db: Session = Depends(get_db),
+                              identity: Identity = Depends(get_identity)):
+    """List voice notes and transcriptions for a case."""
+    invoice = _invoice(db, invoice_id, identity)
+    transcriptions = db.query(models.VoiceTranscription).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id).order_by(models.VoiceTranscription.id).all()
+    return [{
+        "id": v.id,
+        "evidence_id": v.evidence_id,
+        "original_filename": v.original_filename,
+        "duration_seconds": v.duration_seconds,
+        "language": v.language,
+        "transcript_text": v.transcript_text,
+        "diarization": json.loads(v.diarization_json or "[]"),
+        "extracted_dispute_amount_cents": v.extracted_dispute_amount_cents,
+        "extracted_dispute_reason": v.extracted_dispute_reason,
+        "extracted_promise_date": v.extracted_promise_date,
+        "extracted_promise_amount_cents": v.extracted_promise_amount_cents,
+        "confidence": v.confidence,
+        "model_name": v.model_name,
+        "audio_url": f"/api/v1/cases/{invoice.id}/voice/{v.id}/audio",
+        "created_at": v.created_at.isoformat() if v.created_at else None
+    } for v in transcriptions]
+
+
+@router.post("/{invoice_id}/voice/upload")
+async def upload_voice_note(invoice_id: int,
+                            request: Request,
+                            db: Session = Depends(get_db),
+                            identity: Identity = Depends(get_identity)):
+    """Upload and transcribe a WhatsApp voice note or audio call using Meta Muse Voice Transcribe."""
+    invoice = _invoice(db, invoice_id, identity)
+    raw_name = request.headers.get("x-filename", "voice_note.wav")
+    filename = raw_name.replace("\\", "/").split("/")[-1] or "voice_note.wav"
+    contents = await request.body()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty audio file provided")
+
+    from app.services.voice_transcribe_agent import voice_agent
+    result = voice_agent.transcribe_and_store(
+        contents,
+        filename=filename,
+        tenant_id=identity.tenant_id,
+        invoice_id=invoice.id
+    )
+
+    # 1. Create or link CaseEvidence
+    evidence = models.CaseEvidence(
+        tenant_id=identity.tenant_id,
+        invoice_id=invoice.id,
+        claim_type="dispute_item",
+        title="WhatsApp Voice Note (Customer Statement)",
+        description=f"Audio statement transcribed via Meta Muse Voice Transcribe ({result['language']}): {result['extracted_dispute_reason']}",
+        source_type="whatsapp_voice_note",
+        source_reference=f"docs/audio/{result['stored_filename']}",
+        source_snippet=result["transcript_text"][:240],
+        amount_cents=result["extracted_dispute_amount_cents"],
+        verified=True,
+        trust_state="verified",
+        decided_by="voice_agent",
+        currency=invoice.currency or "INR"
+    )
+    db.add(evidence)
+    db.flush()
+
+    # 2. Persist VoiceTranscription record
+    vt = models.VoiceTranscription(
+        tenant_id=identity.tenant_id,
+        invoice_id=invoice.id,
+        evidence_id=evidence.id,
+        audio_path=result["audio_path"],
+        original_filename=result["original_filename"],
+        duration_seconds=result["duration_seconds"],
+        language=result["language"],
+        transcript_text=result["transcript_text"],
+        diarization_json=result["diarization_json"],
+        extracted_dispute_amount_cents=result["extracted_dispute_amount_cents"],
+        extracted_dispute_reason=result["extracted_dispute_reason"],
+        extracted_promise_date=result["extracted_promise_date"],
+        extracted_promise_amount_cents=result["extracted_promise_amount_cents"],
+        confidence=result["confidence"],
+        model_name=result["model_name"]
+    )
+    db.add(vt)
+    db.commit()
+    db.refresh(vt)
+
+    return {
+        "id": vt.id,
+        "evidence_id": vt.evidence_id,
+        "original_filename": vt.original_filename,
+        "duration_seconds": vt.duration_seconds,
+        "language": vt.language,
+        "transcript_text": vt.transcript_text,
+        "diarization": json.loads(vt.diarization_json or "[]"),
+        "extracted_dispute_amount_cents": vt.extracted_dispute_amount_cents,
+        "extracted_dispute_reason": vt.extracted_dispute_reason,
+        "extracted_promise_date": vt.extracted_promise_date,
+        "extracted_promise_amount_cents": vt.extracted_promise_amount_cents,
+        "confidence": vt.confidence,
+        "model_name": vt.model_name,
+        "audio_url": f"/api/v1/cases/{invoice.id}/voice/{vt.id}/audio"
+    }
+
+
+@router.get("/{invoice_id}/voice/{voice_id}/audio")
+@router.head("/{invoice_id}/voice/{voice_id}/audio")
+def get_voice_audio(invoice_id: int, voice_id: int,
+                    db: Session = Depends(get_db),
+                    identity: Identity = Depends(get_identity)):
+    """Serve audio stream for a transcribed voice note."""
+    invoice = _invoice(db, invoice_id, identity)
+    vt = db.query(models.VoiceTranscription).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id, id=voice_id).first()
+    if not vt:
+        raise HTTPException(status_code=404, detail="Voice transcription not found")
+
+    audio_file = (Path(settings.BASE_DIR) / vt.audio_path).resolve()
+    if not audio_file.is_file():
+        alt_file = (Path(settings.BASE_DIR) / "docs" / "audio" / Path(vt.audio_path).name).resolve()
+        if alt_file.is_file():
+            audio_file = alt_file
+        else:
+            raise HTTPException(status_code=404, detail="Audio file not found")
+
+    ext = audio_file.suffix.lower()
+    media_type = "audio/wav" if ext == ".wav" else "audio/mpeg" if ext == ".mp3" else "audio/ogg" if ext == ".ogg" else "audio/mp4"
+    return FileResponse(audio_file, media_type=media_type, filename=vt.original_filename)
 
 
 @router.get("")
@@ -235,8 +428,29 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.ReceivableEntry.id).all()
     result["messages"] = db.query(models.CustomerMessage).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.CustomerMessage.id).all()
-    result["evidence"] = db.query(models.CaseEvidence).filter_by(
+    ev_rows = db.query(models.CaseEvidence).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.CaseEvidence.id).all()
+    evidence_payload = []
+    for ev in ev_rows:
+        ev_dict = {
+            "id": ev.id, "tenant_id": ev.tenant_id, "invoice_id": ev.invoice_id,
+            "claim_type": ev.claim_type, "title": ev.title, "description": ev.description,
+            "source_type": ev.source_type, "source_reference": ev.source_reference,
+            "source_snippet": ev.source_snippet, "amount_cents": ev.amount_cents,
+            "verified": ev.verified, "trust_state": ev.trust_state,
+            "decided_by": ev.decided_by, "currency": ev.currency,
+            "decision_reason": ev.decision_reason,
+            "decided_at": ev.decided_at.isoformat() if ev.decided_at else None,
+            "created_at": ev.created_at.isoformat() if ev.created_at else None,
+            "segments": [{
+                "id": s.id, "concept": s.concept, "label": s.label,
+                "confidence": s.confidence, "bbox": json.loads(s.bbox_json or "{}"),
+                "crop_url": f"/api/v1/cases/{invoice.id}/evidence/{ev.id}/segments/file/{Path(s.crop_path).name}",
+                "notes": s.notes
+            } for s in db.query(models.EvidenceSegment).filter_by(tenant_id=identity.tenant_id, evidence_id=ev.id).all()]
+        }
+        evidence_payload.append(ev_dict)
+    result["evidence"] = evidence_payload
     result["campaigns"] = db.query(models.DunningCampaign).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.DunningCampaign.id).all()
     result["agent_notes"] = db.query(models.AgentCaseNote).filter_by(
@@ -250,6 +464,25 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
     result["promises"] = db.query(models.PromiseToPay).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(
         models.PromiseToPay.id).all()
+    voice_rows = db.query(models.VoiceTranscription).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.VoiceTranscription.id).all()
+    result["voice_transcriptions"] = [{
+        "id": v.id,
+        "evidence_id": v.evidence_id,
+        "original_filename": v.original_filename,
+        "duration_seconds": v.duration_seconds,
+        "language": v.language,
+        "transcript_text": v.transcript_text,
+        "diarization": json.loads(v.diarization_json or "[]"),
+        "extracted_dispute_amount_cents": v.extracted_dispute_amount_cents,
+        "extracted_dispute_reason": v.extracted_dispute_reason,
+        "extracted_promise_date": v.extracted_promise_date,
+        "extracted_promise_amount_cents": v.extracted_promise_amount_cents,
+        "confidence": v.confidence,
+        "model_name": v.model_name,
+        "audio_url": f"/api/v1/cases/{invoice.id}/voice/{v.id}/audio",
+        "created_at": v.created_at.isoformat() if v.created_at else None
+    } for v in voice_rows]
     return result
 
 
