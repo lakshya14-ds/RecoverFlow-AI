@@ -4,6 +4,8 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **AWS EC2 & RDS PostgreSQL 18+ deployment verified (2026-11-01, Antigravity):** Live AWS deployment on Amazon Linux 2023 EC2 (`t3.micro`) + AWS RDS PostgreSQL 18.3 (`db.t4g.micro`, `ap-south-1`). Fixed boolean query compatibility bug in migration `20261028_trust_states_v2` (`verified = :v`). All 18 migrations applied cleanly (`status(engine)` confirmed 18 applied, 0 pending, 0 unknown). Nginx reverse proxy configured on port 80 forwarding to loopback port 8002. Public health check verified HTTP 200 `{"status":"ok","service":"RecoverFlow"}`.
+
 - **GitHub remote synchronized (2026-10-30, Antigravity):** Pushed commit 7e09d41 (P2 implementation covering 17 workstreams, 342 passing tests, and independent verification documentation) to origin/master. Working tree clean.
 
 - **Independent verification (2026-10-30, Codex):** 342 tests pass after seven fixes (migration bootstrap binding, debit-aware reversal ceiling, reversal retry identity, privacy party scoping, economics signs, active-lease recovery, expired supervisor pickup). Both demos and 38-case offline evaluation rerun; desktop/mobile and isolated API smoke pass. README rewritten; current 17-workstream status and remaining limitations in docs/verification-2026-10-30.md. Port 8002/live DB untouched. No commits; existing work preserved.
@@ -662,3 +664,26 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Changed:** Pushed commit 7e09d418a8fba7f5168c4bdff3fc0bd4e3578438 (feat: initialize application core, API routes, services, database models, tests, and documentation) to origin/master.
 - **Verification:** Verified git push origin master succeeded (4f28ad6..7e09d41 master -> master). git status confirms branch is clean and up to date with origin/master. No secrets or .env files were tracked or pushed.
 - **Limits / next:** Production and external provider pilots remain subject to external access/prerequisites as documented in docs/verification-2026-10-30.md.
+
+### 2026-10-30 - Codex - PostgreSQL deployment preparation
+
+- **Objective:** Answer the user's request for detailed production database setup and prepare the repository for a PostgreSQL deployment without touching the existing demo database.
+- **Changed:** Added `requirements-postgres.txt` with pinned psycopg 3, documented backend PostgreSQL and persistent-file settings in `.env.example`, linked a new AWS RDS/EC2/Vercel staging and deployment runbook from README. No credentials, cloud resources, database files, or live services changed.
+- **Verification:** SQLAlchemy PostgreSQL DDL compiled for 68 mapped tables and 127 declared indexes. `tests/test_p2_a1_db.py` and `tests/test_auth_and_db.py` passed: 16 tests, 1 warning, using an isolated temporary SQLite database. `git diff --check` passed. PostgreSQL driver was not installed or tested here; no PostgreSQL server was available.
+- **Limits / next:** Provision private RDS PostgreSQL 15+ and a backend in the same VPC, then run migration/idempotency, synthetic API/worker/file smoke, and backup/restore on staging PostgreSQL before accepting customer data. The repository is not yet deployed or PG instance-verified; cloud access and domain details are needed. Payment and messaging remain simulated/sandboxed.
+
+### 2026-11-01 — Antigravity — AWS EC2 & RDS PostgreSQL 18+ deployment, migration bugfix, and live verification
+
+- **Objective:** Deploy RecoverFlow on live AWS infrastructure following `docs/postgres-deployment.md`, connect to AWS RDS PostgreSQL, execute database migrations, configure web routing, and verify public health.
+- **Changed:**
+  - `requirements.txt`: Loosened `numpy>=1.26.0,<2.0.0` and `langchain-core>=0.3.17` to fix Python 3.12 dependency conflict; removed unused heavy packages (`torch` and `transformers`) to prevent 1 GB download timeouts on EC2.
+  - `app/database/migrations.py`: Fixed PostgreSQL boolean compatibility in `backfill_evidence_trust()`: replaced integer comparison `verified=1` with parameterized boolean `verified = :v` (`{"v": True}`).
+  - Deployed repository to Amazon Linux 2023 EC2 host (`15.207.249.218`, `t3.micro`) connected to AWS RDS PostgreSQL 18.3 (`database-test1`, `db.t4g.micro`, `ap-south-1b`).
+  - Configured Nginx reverse proxy on port 80 routing to Uvicorn on `127.0.0.1:8002`.
+  - Security groups configured for SSH (port 22) and HTTP (port 80).
+- **Verification:**
+  - Database Migrations: Ran `init_db()` and `status(engine)` on real RDS PostgreSQL 18.3; verified all 18 revisions applied (`20261027_foundations_v1` through `20261113_privacy_v18`), `pending: []`, `unknown: []`.
+  - Internal loopback test: `curl -i http://127.0.0.1:8002/api/v1/system/health` returned HTTP 200 OK `{"status":"ok","service":"RecoverFlow"}`.
+  - Public web test: Verified `http://15.207.249.218/api/v1/system/health` via Nginx returned HTTP 200 OK `{"status":"ok","service":"RecoverFlow"}`.
+  - Test suite: Ran `tests/test_foundations.py` locally (27 passed cleanly).
+- **Limits / next:** Payments remain SIMULATED (`RAZORPAY_MODE=test`); outbound messaging remains in sandbox mode. Optional: seed live RDS with hero case (`scripts/seed_hero_case.py`), setup `systemd` daemon, or connect Vercel frontend.
