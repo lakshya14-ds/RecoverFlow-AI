@@ -8,6 +8,10 @@ RecoverFlow helps Indian distributors and wholesalers manage credit sales when c
 
 Payments in the demo are **SIMULATED**. Messages go to sandbox outboxes. Shopify access is read-only. This is a tested local application, not a validated production deployment or a proven recovery business.
 
+For hosting, use the [PostgreSQL deployment guide](docs/postgres-deployment.md).
+The [Vercel guide](docs/vercel-deployment.md) covers the static frontend and a
+single-host SQLite demo. PostgreSQL still needs a real-server staging test.
+
 ## A concrete example
 
 An invoice totals INR 2,40,000. The customer has paid INR 1,50,000 and disputes INR 30,000. RecoverFlow shows INR 90,000 outstanding and prepares a request for **only INR 60,000**.
