@@ -6,6 +6,10 @@
 > “Existing”, “Missing” and “Test plan” bullets below preserve the original
 > planning baseline; each Status describes subsequent implementation. Local
 > implementation is not a production-completion claim.
+>
+> **Deployment update, 2026-11-01:** the handoff records 18 migrations applied
+> on AWS RDS PostgreSQL 18.3 and HTTP 200 public health. The older A1 status
+> below is historical; end-to-end PostgreSQL workflows and restore remain open.
 
 Baseline verified this session: `py -3.12 -m pytest -q --disable-warnings` → **158 passed**
 (57.9s); `scripts/demo_p1_showcase.py` → all beats pass in-tree (writes nothing);

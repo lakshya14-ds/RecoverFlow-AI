@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -89,6 +89,29 @@ def test_migrate_is_idempotent(migrated_db):
     assert report["applied"] == REVISIONS
     assert report["pending"] == []
     assert report["unknown"] == []
+
+
+@pytest.mark.parametrize("revision_applied", [False, True])
+def test_existing_intake_upload_table_gains_integrity_hash(tmp_path, revision_applied):
+    """A pre-hash upload table must remain usable after migration."""
+    engine = _engine_for(tmp_path / "legacy-intake.db")
+    try:
+        db_manager.Base.metadata.create_all(engine)
+        if revision_applied:
+            migrate(engine, db_manager.Base.metadata)
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE intake_uploads DROP COLUMN sha256"))
+        migrate(engine, db_manager.Base.metadata)
+        columns = {column["name"] for column in inspect(engine).get_columns("intake_uploads")}
+        assert "sha256" in columns
+        with sessionmaker(bind=engine)() as db:
+            db.add(models.IntakeUpload(id="legacy-1", tenant_id="local", actor="test",
+                filename="invoice.csv", mime_type="text/csv", source_path="test.csv",
+                size_bytes=1, sha256="testhash"))
+            db.commit()
+            assert db.get(models.IntakeUpload, "legacy-1").sha256 == "testhash"
+    finally:
+        engine.dispose()
 
 
 def test_status_on_fresh_file(tmp_path):

@@ -34,7 +34,6 @@ ADDITIONS = {
         "decided_by": "VARCHAR", "decided_at": "TIMESTAMP", "decision_reason": "TEXT",
         "currency": "VARCHAR"},
     "customer_messages": {"source": "VARCHAR NOT NULL DEFAULT 'staff'"},
-    "intake_uploads": {"sha256": "VARCHAR(64)"},
     "provider_events": {"mode": "VARCHAR NOT NULL DEFAULT 'test'"},
     "payment_links": {"mode": "VARCHAR NOT NULL DEFAULT 'test'",
                       "last_error": "TEXT"},
@@ -42,7 +41,8 @@ ADDITIONS = {
                           "template_id": "INTEGER REFERENCES message_templates(id)",
                           "delivered_at": "TIMESTAMP", "failure_reason": "TEXT",
                           "held_until": "TIMESTAMP"},
-    "intake_uploads": {"claimed_by": "VARCHAR", "claimed_at": "TIMESTAMP",
+    "intake_uploads": {"sha256": "VARCHAR(64)",
+                       "claimed_by": "VARCHAR", "claimed_at": "TIMESTAMP",
                        "heartbeat_at": "TIMESTAMP",
                        "lease_expires_at": "TIMESTAMP",
                        "not_before": "TIMESTAMP"},
@@ -132,6 +132,13 @@ def migrate(engine, metadata):
         if dialect == "postgresql":
             conn.execute(text("SELECT pg_advisory_xact_lock(72635027)"))
         conn.execute(text("CREATE TABLE IF NOT EXISTS schema_revisions (revision VARCHAR(80) PRIMARY KEY)"))
+        # Earlier v18 code accidentally overwrote the intake_uploads sha256
+        # addition in a duplicate dictionary entry. Repair databases that
+        # already recorded v18 as well as those still being upgraded.
+        if inspect(conn).has_table("intake_uploads"):
+            intake_columns = {c["name"] for c in inspect(conn).get_columns("intake_uploads")}
+            if "sha256" not in intake_columns:
+                conn.execute(text('ALTER TABLE "intake_uploads" ADD COLUMN "sha256" VARCHAR(64)'))
         if _applied(conn, REVISION):
             return
         for table in ("supervisor_tasks", "competing_explanations",

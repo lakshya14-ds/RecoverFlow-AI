@@ -1,8 +1,11 @@
 # Deploy RecoverFlow with PostgreSQL (AWS example)
 
-This is the route for a hosted pilot, not a completed production certification. The
-application's PostgreSQL migrations have **not yet been run against a real server**.
-Complete the staging gate below before putting customer data in this environment.
+This is the route for a hosted pilot, not a completed production certification.
+The 2026-11-01 handoff records all 18 migrations applied on AWS RDS PostgreSQL
+18.3, with zero pending or unknown revisions, and an HTTP 200 public health
+response through Nginx. That is a migration and availability check, not the
+full staging gate below. Complete that gate before putting customer data in
+this environment.
 Keep payments SIMULATED and outbound messaging in sandbox mode until those separate
 integrations have been validated and explicitly enabled.
 
@@ -125,7 +128,8 @@ key, and verify that cases and documents load. Follow the existing
 
 ## Launch gate
 
-PostgreSQL integration, restore, files, and worker checks above must pass on a real
-staging server. The repository's previous 342-test pass used SQLite only. Real
+PostgreSQL end-to-end integration, restore, files, and worker checks above must pass
+on a disposable staging database. The 2026-11-01 deployment checked migrations
+and health only; the repository's 342-test baseline used SQLite. Real
 payments, customer messaging, field accuracy, and legal requirements are separate
 gates; a successful database deployment does not validate them.

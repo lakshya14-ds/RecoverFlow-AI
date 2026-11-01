@@ -8,7 +8,7 @@ Case Profile:
 - Undisputed:    INR 60,000 (6,000,000 cents) owed and actionable
 """
 import sys
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
@@ -70,6 +70,20 @@ def seed_hero_case() -> models.Invoice:
         existing = db.query(models.Invoice).filter_by(tenant_id=tenant_id, invoice_number=inv_num).first()
         if existing:
             inv_id = existing.id
+            db.query(models.SupervisorTask).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.CaseAssignment).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.StaffTask).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.StaffNote).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.CaseEscalation).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.PortalToken).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.StoredDocument).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.PaymentDiscrepancy).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.CommsPreference).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.InvoiceLineItem).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.CreditDebitNote).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.SupportingDocument).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.InstallmentSchedule).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
+            db.query(models.ProcessingJob).filter_by(tenant_id=tenant_id, invoice_id=inv_id).delete()
             proposals = db.query(models.AgentProposal).filter_by(tenant_id=tenant_id, invoice_id=inv_id).all()
             for p in proposals:
                 db.query(models.ProposalDraftVersion).filter_by(tenant_id=tenant_id, proposal_id=p.id).delete()
@@ -104,7 +118,7 @@ def seed_hero_case() -> models.Invoice:
             db.commit()
 
         # 1. Create Counterparty
-        counterparty = db.query(models.Counterparty).filter_by(tenant_id=tenant_id, tax_id="27AABCA1234F1Z5").first()
+        counterparty = db.query(models.Counterparty).filter_by(tenant_id=tenant_id, tax_id="27AABCA1234D1Z8").first()
         if not counterparty:
             counterparty = models.Counterparty(
                 tenant_id=tenant_id,
@@ -112,7 +126,7 @@ def seed_hero_case() -> models.Invoice:
                 type="customer",
                 email="procurement@apexenterprises.in",
                 phone="+91 98200 12345",
-                tax_id="27AABCA1234F1Z5",
+                tax_id="27AABCA1234D1Z8",
                 payment_terms=30,
                 credit_limit=Decimal("500000.00"),
             )
@@ -127,9 +141,9 @@ def seed_hero_case() -> models.Invoice:
             counterparty_name="Apex Enterprises Pvt Ltd",
             counterparty_email="procurement@apexenterprises.in",
             counterparty_phone="+91 98200 12345",
-            counterparty_tax_id="27AABCA1234F1Z5",
-            issue_date=date.today() - timedelta(days=45),
-            due_date=date.today() - timedelta(days=15),
+            counterparty_tax_id="27AABCA1234D1Z8",
+            issue_date=date(2026, 9, 9),
+            due_date=date(2026, 10, 9),
             amount=Decimal("240000.00"),
             total_amount=Decimal("240000.00"),
             face_amount_cents=24000000,

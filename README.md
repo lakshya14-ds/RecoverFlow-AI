@@ -10,7 +10,9 @@ Payments in the demo are **SIMULATED**. Messages go to sandbox outboxes. Shopify
 
 For hosting, use the [PostgreSQL deployment guide](docs/postgres-deployment.md).
 The [Vercel guide](docs/vercel-deployment.md) covers the static frontend and a
-single-host SQLite demo. PostgreSQL still needs a real-server staging test.
+single-host SQLite demo. The 2026-11-01 handoff records all 18 migrations and
+public health passing on AWS RDS PostgreSQL 18.3; case, worker, evidence,
+backup/restore, and browser flows still need a disposable PostgreSQL staging run.
 
 ## A concrete example
 
@@ -70,7 +72,7 @@ Use the activated Python environment above. Neither demo needs an API key or int
 ```mermaid
 flowchart LR
     UI[Staff UI and scoped customer portal] --> API[FastAPI and identity gates]
-    API --> DB[(SQLite cases, evidence and jobs)]
+    API --> DB[(SQLite or PostgreSQL cases, evidence and jobs)]
     DB --> Supervisor[Deterministic supervisor]
     Supervisor --> Specialists[Six bounded specialists]
     Meta[Meta Muse Spark] -. classification and wording .-> Specialists
@@ -96,7 +98,7 @@ The six specialists cover **intake, investigation, reconciliation, resolution, c
 
 ## Verification and roadmap
 
-On 2026-10-30, the isolated Python 3.12 suite passed **342 tests** after seven defects were fixed. Both demos passed. The hero run measured **30/30** balance splits, **10/10** file-routing checks and **5/10** files reaching review without data entry. These are synthetic checks, not recovery or real-document accuracy claims.
+On 2026-11-01, the isolated Python 3.12 suite passed **344 tests**, including two new legacy migration regressions. Both offline demos passed. The hero run measured **30/30** balance splits, **10/10** file-routing checks and **5/10** files reaching review without data entry. These are synthetic checks, not recovery or real-document accuracy claims.
 
 The 38-case P1 comparison evaluates rules, one service pass, and the specialist workflow with model access forced off. It includes failures and does not establish a live-model or multi-agent advantage. See the [evaluation method](docs/p1-evaluation.md) and [verification report](docs/verification-2026-10-30.md), including exact commands, fixes, blockers and the **17-workstream status table**.
 
@@ -110,7 +112,7 @@ node --check frontend/config.js
 git diff --check
 ```
 
-P0 and P1 core workflows are implemented and regression-tested. P2 local capabilities are implemented with explicit limits. PostgreSQL, accounting-vendor formats, provider-account tests, legal/accountant review, real-business pilots and willingness-to-pay research remain unverified or blocked. P2 is not universally production-complete.
+P0 and P1 core workflows are implemented and regression-tested. P2 local capabilities are implemented with explicit limits. PostgreSQL migrations and public health passed on AWS RDS PostgreSQL 18.3 per the 2026-11-01 handoff; the full workflow, backup/restore, and worker checks have not been verified there. Accounting-vendor formats, provider-account tests, legal/accountant review, real-business pilots and willingness-to-pay research remain unverified or blocked. P2 is not universally production-complete.
 
 ## API and project structure
 
@@ -129,7 +131,7 @@ Interactive API documentation is at `/docs`; routes start with `/api/v1`. Staff 
 ## Explicit limits
 
 - The ledger is an adjustment log, not double-entry accounting. AXIS reads a local tax database; it is not an Axis Bank connection.
-- SQLite is verified. PostgreSQL has an implementation path but no instance-backed validation in this run.
+- SQLite is regression-tested. PostgreSQL 18.3 migrations and public health were checked on the deployed instance; no full PostgreSQL workflow or restore claim has been made.
 - Payments remain SIMULATED and messaging sandbox-only. No Tally, BUSY or Zoho format support is claimed from a product name.
 - Policy checks reduce injection risk without proving immunity. Multilingual and real-document reliability need field measurement.
 - Document type/hash checks are not antivirus scans. An AV engine is not connected.
