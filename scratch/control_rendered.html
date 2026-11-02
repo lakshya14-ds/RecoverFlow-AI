@@ -1,0 +1,92 @@
+
+                <div class="paper-panel"><h3>Control</h3><p>Ledger, SIMULATED payments, audit, policy, and provider settings.</p>
+                    <label>Autonomy mode <select id="autonomy-mode"><option value="review_all">Review all</option><option value="auto_prepare">Auto-prepare</option><option value="auto_send_sandbox">Auto-send to sandbox</option></select></label>
+                    <button type="button" class="btn" id="autonomy-save">Save autonomy mode</button><p id="autonomy-result"></p>
+                </div>
+                <div class="paper-panel"><h3>Meta key assignment</h3><div id="key-assignment">
+                <div class="intake-row"><div><strong>Key 1</strong><small>intake</small></div>
+                <div><span>Not configured</span><small>0/15 RPM · 0/1500 RPD · 0s cooldown · 0 fallbacks</small></div></div>
+                <div class="intake-row"><div><strong>Key 2</strong><small>investigator, drafter, copilot, controlled_agent</small></div>
+                <div><span>Not configured</span><small>0/15 RPM · 0/1500 RPD · 0s cooldown · 0 fallbacks</small></div></div>
+                <div class="intake-row"><div><strong>Key 3</strong><small>negotiator, intent, injection</small></div>
+                <div><span>Not configured</span><small>0/15 RPM · 0/1500 RPD · 0s cooldown · 0 fallbacks</small></div></div></div></div>
+                <div class="paper-panel"><h3>Owner action queue</h3><p>Next action per case, derived from case state.</p><div class="stack" id="owner-queue">
+                <div class="queue-row"><div><strong class="mono">INV-2026-HERO</strong>
+                <small>Apex Enterprises Pvt Ltd</small><p>Approve the exact draft — Proposal 19 awaits exact-version approval</p>
+                <small>Owner: staff · Due: 2026-11-03 · Affects: 90,000.00 · Approval required</small>
+                <small>Uncertain: draft goes stale if the case changes</small></div>
+                <div><button type="button" class="btn queue-open" data-id="31">Open case</button></div></div>
+                <div class="queue-row"><div><strong class="mono">RF-SAMPLE-2026-001</strong>
+                <small>Synthetic Test Retailer</small><p>Complete staff review — Case math or evidence needs review</p>
+                <small>Owner: staff · Due: 2026-11-04 · Affects: 23,600.00</small>
+                <small>Uncertain: amounts frozen until review</small></div>
+                <div><button type="button" class="btn queue-open" data-id="19">Open case</button></div></div>
+                <div class="queue-row"><div><strong class="mono">INV-AUDIT-CSV-1</strong>
+                <small>Audit Customer</small><p>Complete staff review — Case math or evidence needs review</p>
+                <small>Owner: staff · Due: 2026-11-04 · Affects: 15,000.00</small>
+                <small>Uncertain: amounts frozen until review</small></div>
+                <div><button type="button" class="btn queue-open" data-id="10">Open case</button></div></div></div></div>
+                <div class="paper-panel"><h3>Agent activity</h3><p>Specialist tasks with retries, pauses, and outcomes.</p><div class="stack" id="agent-activity">
+                <div class="activity-row"><span><strong>intake</strong>
+                <small>case — · done · attempts 1/3 · model calls 0</small>
+                </span></div>
+                <div class="activity-row"><span><strong>intake</strong>
+                <small>case — · done · attempts 1/3 · model calls 0</small>
+                </span></div>
+                <div class="activity-row"><span><strong>intake</strong>
+                <small>case — · done · attempts 1/3 · model calls 0</small>
+                </span></div>
+                <div class="activity-row"><span><strong>intake</strong>
+                <small>case — · done · attempts 1/3 · model calls 0</small>
+                </span></div></div></div>
+                <div class="paper-panel"><h3>Sandbox outbox</h3><div id="sandbox-outbox"><p>No sandbox messages queued.</p></div></div>
+                <div class="paper-panel"><h3>Mini evaluation</h3><p id="evaluation-summary">Synthetic run 2026-10-27: 30/30 correct balance splits; 10/10 files routed correctly; 5/10 reached Review without data entry. Synthetic cases and offline generated files; not real recovery or field accuracy</p><p><a href="/evaluation.html" target="_blank" rel="noopener">Open methods and file-level results</a></p></div>
+                <div class="paper-panel"><h3>Advanced existing controls</h3><div id="legacy-tools"><div class="card">
+                    <h3>Import Retail Receivables</h3>
+                    <p>Upload a UTF-8 CSV with external_id, invoice_number, customer_name, issue_date, due_date, amount, and currency. Use INR for the India pilot.</p>
+                    <form id="import-form">
+                        <input type="file" id="import-file" accept=".csv,text/csv" required="" style="">
+                        <button type="submit" class="btn btn-primary">Import CSV</button>
+                    </form>
+                    <p id="import-result"></p>
+                </div><div class="card">
+                    <h3>Upload an Invoice PDF</h3>
+                    <form id="upload-form">
+                        <input type="file" id="invoice-file" accept="application/pdf" required="" style="">
+                        <select id="invoice-type" aria-label="Invoice type"><option value="AR">Receivable (AR)</option><option value="AP">Payable (AP)</option></select>
+                        <button type="submit" class="btn btn-primary">Process Invoice</button>
+                    </form>
+                    <div id="upload-result"></div>
+                </div><div class="card">
+                    <h3>Add receivable manually</h3>
+                    <form id="manual-invoice-form" class="data-form">
+                        <input name="invoice_number" placeholder="Invoice number" required="" style="">
+                        <input name="counterparty_name" placeholder="Customer name" required="" style="">
+                        <input name="counterparty_email" type="email" placeholder="Customer email" style="">
+                        <label>Issue date <input name="issue_date" type="date" required="" style=""></label>
+                        <label>Due date <input name="due_date" type="date" required="" style=""></label>
+                        <input name="total_amount" type="number" min="0.01" step="0.01" placeholder="Amount" required="" style="">
+                        <input name="currency" value="INR" maxlength="3" aria-label="Currency code" required="" style="">
+                        <button type="submit" class="btn btn-primary">Save receivable</button>
+                    </form>
+                    <p id="manual-invoice-result"></p>
+                </div></div></div>
+            <div class="card">
+                    <h3>Agent status and limits</h3>
+                    <p id="agent-status">
+                <strong>Active Model:</strong> <code>rules_only</code> • 
+                <strong>Configured:</strong> <span style="color:var(--color-text-muted);">Rules Fallback</span> • 
+                <strong>Rate Limits:</strong> RPM: 15/15 remaining | RPD: 1500/1500 remaining
+            </p>
+                    <p>Only internal case notes and collection drafts can run automatically. All customer replies require staff review and an explicit send.</p>
+                    <form id="agent-policy-form" class="data-form">
+                        <label class="agent-toggle"><input name="enabled" type="checkbox" style=""><span>Enable controlled agent</span></label>
+                        <label class="agent-toggle"><input name="auto_assess" type="checkbox" style=""><span>Assess cases hourly</span></label>
+                        <label class="agent-toggle"><input name="auto_execute_internal" type="checkbox" style=""><span>Allow internal notes and drafts automatically</span></label>
+                        <label>Assessments per day <input name="max_assessments_per_day" type="number" min="1" max="100" required="" style=""></label>
+                        <label>Internal actions per day <input name="max_internal_actions_per_day" type="number" min="1" max="100" required="" style=""></label>
+                        <label>Maximum balance for automatic collection drafts (INR) <input name="max_balance_cents" type="number" min="1" step="0.01" required="" style=""></label>
+                        <button type="submit" class="btn btn-primary">Save agent limits (admin)</button>
+                    </form>
+                    <p id="agent-policy-result"></p>
+                </div>

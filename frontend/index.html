@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RecoverFlow | Receivables and Collections</title>
     <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=20261102d">
 </head>
 <body>
     <div class="app-container">
@@ -18,7 +18,7 @@
             </nav>
             <p class="sidebar-note">Human-supervised recovery<br>Local pilot · India</p>
         </aside>
-        
+
         <main class="content">
             <header class="page-header">
                 <div><p class="eyebrow">RecoverFlow / Workbench</p><h2>Intake</h2><p id="view-description" class="page-description">Upload evidence and watch each file advance.</p></div>
@@ -33,13 +33,13 @@
                 <button type="submit" class="btn btn-primary">Connect</button>
                 <button type="button" id="forget-key" class="btn">Forget key</button>
             </form>
-            
+
             <div id="view-dashboard" class="view hidden">
                 <div class="overview-intro"><div><h3>Make the next decision clear.</h3><p>Review evidence, approve the exact message, and keep disputed balances on hold.</p></div><button type="button" class="btn btn-primary" id="overview-open-cases">Open cases</button></div>
                 <div class="metric-strip">
-                    <div><span>Current DSO</span><strong id="dso-value">—</strong></div>
-                    <div><span>Pending reconciliations</span><strong id="pending-value">—</strong></div>
-                    <div><span>Open review alerts</span><strong id="fraud-value">—</strong></div>
+                    <div><span>Current DSO</span><strong id="legacy-dso-value">—</strong></div>
+                    <div><span>Pending reconciliations</span><strong id="legacy-pending-value">—</strong></div>
+                    <div><span>Open review alerts</span><strong id="legacy-fraud-value">—</strong></div>
                 </div>
                 <div class="overview-columns"><section class="paper-panel"><div class="section-heading"><h3>Actionable cases</h3><span>Open a file to inspect its sources</span></div><div id="overview-queue" aria-live="polite">Connect to load the queue.</div></section><section class="paper-panel"><div class="section-heading"><h3>Recent case activity</h3><span>From the receivables ledger</span></div><div id="overview-activity" aria-live="polite">Connect to load activity.</div></section></div>
             </div>
@@ -84,88 +84,202 @@
                     </form>
                     <p id="manual-invoice-result"></p>
                 </div>
-                <div class="card">
-                    <h3>Invoices Awaiting Review</h3>
-                    <div id="review-list">Open this tab to load invoices.</div>
-                </div>
+
             </div>
 
             <div id="view-cases" class="view hidden">
-                <div class="paper-panel">
-                    <div class="section-heading"><div><h3>Receivable cases</h3><p>Search by invoice or customer. Open a file for the balance and evidence.</p></div><label class="search-field">Search cases<input id="case-search" type="search" placeholder="Invoice or customer" autocomplete="off"></label></div>
-                    <div id="case-list">Open this tab to load cases.</div>
+                <!-- Review & Negotiate Executive Sub-Navigation -->
+                <div class="review-subnav-bar">
+                    <button type="button" class="subnav-tab-btn active" data-subview="cases">
+                        <span class="tab-icon">📋</span> Active Bills &amp; Receivables
+                    </button>
+                    <button type="button" class="subnav-tab-btn" data-subview="invoices">
+                        <span class="tab-icon">📥</span> Invoices Awaiting Review
+                    </button>
+                    <button type="button" class="subnav-tab-btn" data-subview="reconciliation">
+                        <span class="tab-icon">🔄</span> Reconciliations
+                    </button>
+                    <button type="button" class="subnav-tab-btn" data-subview="campaigns">
+                        <span class="tab-icon">📢</span> Collection Campaigns
+                    </button>
+                    <button type="button" class="subnav-tab-btn" data-subview="alerts">
+                        <span class="tab-icon">🛡️</span> Security &amp; Risk Alerts
+                    </button>
                 </div>
-                <div id="case-detail" class="case-workspace hidden">
-                    <div class="section-heading"><div><p class="eyebrow">Case file</p><h3>Balance &amp; evidence</h3></div><button type="button" id="case-close" class="btn">Close file</button></div>
-                    <div id="case-summary"></div>
-                    <div class="case-columns"><section class="case-evidence"><div id="case-history"></div></section><section class="case-actions"><h4>Staff actions</h4><p class="muted">Record only verified ledger activity. Customer-facing messages require staff approval.</p>
-                    <h4>Record a payment or credit</h4>
-                    <form id="entry-form" class="data-form">
-                        <select name="kind"><option value="payment">Payment</option><option value="credit">Credit</option></select>
-                        <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount" required>
-                        <input name="reference" placeholder="Unique receipt or reference" required>
-                        <label>Apply to balance<select name="allocation"><option value="undisputed_first">Undisputed first</option><option value="disputed_first">Disputed first</option><option value="undisputed">Undisputed only</option><option value="disputed">Disputed only</option></select></label>
-                        <button type="submit" class="btn btn-primary">Record entry</button>
-                    </form>
-                    <p id="entry-result"></p>
-                    <h4>Investigate discrepancy</h4>
-                    <p>Compare linked invoice, order, delivery, return, and scheme records. Conflicts pause contact for staff review.</p>
-                    <button type="button" id="case-investigate" class="btn">Run investigation</button>
-                    <p id="investigation-result"></p>
-                    <form id="case-evidence-form" class="data-form">
-                        <label>Source record or upload reference<input name="source_reference" required placeholder="Document or uploaded source reference"></label>
-                        <label>Evidence title<input name="title" required></label>
-                        <label>What the source shows<input name="description" required></label>
-                        <button type="submit" class="btn">Attach source</button>
-                    </form>
-                    <p id="case-evidence-result"></p>
-                    <form id="dispute-review-form" class="data-form hidden">
-                        <label>Reviewed disputed amount<input name="disputed_amount" type="number" min="0" step="0.01" required></label>
-                        <label>Evidence reviewed<select name="evidence_id" required></select></label>
-                        <label>Reason for decision<input name="reason" minlength="5" required></label>
-                        <button type="submit" class="btn">Save staff dispute decision</button>
-                    </form>
-                    <p id="dispute-review-result"></p>
-                    <h4>Record a customer reply</h4>
-                    <form id="reply-form" class="data-form">
-                        <select name="category"><option value="question">Question</option><option value="needs_time">Needs time</option><option value="paid_claim">Already paid</option><option value="dispute">Dispute</option><option value="opt_out">Opt out</option><option value="other">Other</option></select>
-                        <input name="body" placeholder="Customer's message" required>
-                        <button type="submit" class="btn btn-primary">Record reply</button>
-                    </form>
-                    <p id="reply-result"></p>
-                    <form id="resume-form" class="data-form hidden">
-                        <input name="reason" placeholder="Reason contact may resume" required minlength="3">
-                        <label><input name="consent_restored" type="checkbox"> Contact permission restored if the customer opted out</label>
-                        <button type="submit" class="btn">Resume contact (admin)</button>
-                    </form>
-                    <p id="resume-result"></p>
-                    <form id="shopify-confirm-form" class="data-form hidden">
-                        <input name="reason" placeholder="Why the Shopify balance is confirmed" required minlength="3">
-                        <label><input name="accept_due_date_change" type="checkbox"> Accept a changed due date</label>
-                        <button type="submit" class="btn">Confirm Shopify case (admin)</button>
-                    </form>
-                    <p id="shopify-confirm-result"></p>
-                    <h4>Razorpay SIMULATED payment link</h4>
-                    <p>Creates a simulated payment link for the eligible INR balance. Staff decide whether to share it.</p>
-                    <button type="button" id="create-payment-link" class="btn">Create payment link</button>
-                    <p id="payment-link-result"></p>
-                    </section></div>
-                </div>
-                <div id="negotiation-panel" class="paper-panel hidden">
-                    <div class="section-heading"><div><h3>Negotiation</h3><p>SIMULATED customer and sandbox outbox only.</p></div></div>
-                    <div id="negotiation-status"></div>
-                    <div class="negotiation-controls">
-                        <button type="button" class="btn" id="negotiation-manual">Manual with co-pilot</button>
-                        <button type="button" class="btn" id="negotiation-delegate">Delegate to AI</button>
-                        <button type="button" class="btn" id="negotiation-pause">Pause AI</button>
-                        <button type="button" class="btn" id="negotiation-take-over">Take over</button>
-                        <button type="button" class="btn" id="negotiation-stop">Stop</button>
+
+                <!-- Sub-view 1: Primary Receivables Bills Workspace -->
+                <div id="subview-cases" class="review-subview-panel">
+                    <div class="paper-panel" id="case-list-panel">
+                        <div class="section-heading">
+                            <div>
+                                <h3>Receivable cases</h3>
+                                <p>Search by invoice or customer. Open a file for the balance and evidence.</p>
+                            </div>
+                            <label class="search-field">Search cases<input id="case-search" type="search" placeholder="Invoice or customer" autocomplete="off"></label>
+                        </div>
+                        <div id="case-list">Open this tab to load cases.</div>
                     </div>
-                    <div id="negotiation-suggestions"></div>
-                    <form id="negotiation-send-form" class="data-form"><label>Staff message<textarea name="body" required></textarea></label><button type="submit" class="btn btn-primary">Send to sandbox</button></form>
-                    <button type="button" class="btn btn-primary" id="negotiation-next-offer">Prepare AI offer</button>
-                    <form id="negotiation-customer-form" class="data-form"><label>SIMULATED customer reply<input name="body" required></label><button type="submit" class="btn">Add simulated reply</button></form>
-                    <div id="negotiation-transcript"></div>
+
+                    <!-- Focused Case Workspace -->
+                    <div id="case-detail" class="case-workspace hidden">
+                        <div class="section-heading case-top-bar">
+                            <div class="case-top-meta">
+                                <button type="button" id="case-back-btn" class="btn btn-secondary">← Back to bill list</button>
+                                <p class="eyebrow">Case File Workspace</p>
+                                <h3>Balance &amp; Evidence</h3>
+                            </div>
+                            <button type="button" id="case-close" class="btn">Close file</button>
+                        </div>
+                        <div id="case-summary"></div>
+
+                        <!-- Case Workspace Navigation Tabs -->
+                        <div class="case-tabs-bar">
+                            <button type="button" class="case-tab-pill active" id="tab-btn-evidence" data-case-tab="tab-evidence">
+                                📂 Verified Evidence &amp; AI Proof (7)
+                            </button>
+                            <button type="button" class="case-tab-pill" id="tab-btn-negotiation" data-case-tab="tab-negotiation">
+                                💬 Negotiation &amp; AI Co-pilot
+                            </button>
+                            <button type="button" class="case-tab-pill" id="tab-btn-actions" data-case-tab="tab-actions">
+                                ⚡ Ledger Actions &amp; Audit Trail
+                            </button>
+                        </div>
+
+                        <div class="case-columns">
+                            <!-- Case Tab 1: Evidence & AI Proof -->
+                            <section class="case-evidence case-tab-pane active" id="tab-evidence">
+                                <div id="case-history"></div>
+                            </section>
+
+                            <!-- Case Tab 2: Negotiation Panel -->
+                            <section class="case-tab-pane" id="tab-negotiation">
+                                <div id="negotiation-panel" class="paper-panel">
+                                    <div class="section-heading">
+                                        <div>
+                                            <h3>AI Co-Pilot &amp; Customer Negotiation</h3>
+                                            <p>Supervise autonomous Meta AI drafts or take over directly. SIMULATED customer and sandbox outbox only.</p>
+                                        </div>
+                                    </div>
+                                    <div id="negotiation-status"></div>
+                                    <div class="negotiation-controls">
+                                        <button type="button" class="btn" id="negotiation-manual">Manual with co-pilot</button>
+                                        <button type="button" class="btn" id="negotiation-delegate">Delegate to AI</button>
+                                        <button type="button" class="btn" id="negotiation-pause">Pause AI</button>
+                                        <button type="button" class="btn" id="negotiation-take-over">Take over</button>
+                                        <button type="button" class="btn" id="negotiation-stop">Stop</button>
+                                    </div>
+                                    <div id="negotiation-suggestions"></div>
+                                    <form id="negotiation-send-form" class="data-form">
+                                        <label>Staff message<textarea name="body" required placeholder="Edit split-balance draft or type custom message..."></textarea></label>
+                                        <button type="submit" class="btn btn-primary">Send to sandbox</button>
+                                    </form>
+                                    <button type="button" class="btn btn-primary" id="negotiation-next-offer">Prepare AI offer</button>
+                                    <form id="negotiation-customer-form" class="data-form">
+                                        <label>SIMULATED customer reply<input name="body" required placeholder="Type simulated customer response..."></label>
+                                        <button type="submit" class="btn">Add simulated reply</button>
+                                    </form>
+                                    <div id="negotiation-transcript"></div>
+                                </div>
+                            </section>
+
+                            <!-- Case Tab 3: Staff Actions & Ledger Entries -->
+                            <section class="case-actions case-tab-pane" id="tab-actions">
+                                <h4>Business Actions &amp; Controls</h4>
+                                <p class="muted">Record only verified ledger activity. Customer-facing messages require staff approval.</p>
+
+                                <div class="action-card-grid">
+                                    <div class="action-subcard primary-action-card">
+                                        <h4>Razorpay SIMULATED payment link</h4>
+                                        <p>Creates a simulated payment link for the eligible INR balance. Staff decide whether to share it.</p>
+                                        <button type="button" id="create-payment-link" class="btn btn-primary">Create payment link</button>
+                                        <p id="payment-link-result"></p>
+                                    </div>
+
+                                    <div class="action-subcard">
+                                        <h4>Record a payment or credit</h4>
+                                        <form id="entry-form" class="data-form">
+                                            <select name="kind"><option value="payment">Payment</option><option value="credit">Credit</option></select>
+                                            <input name="amount" type="number" min="0.01" step="0.01" placeholder="Amount (e.g. 60000.00)" required>
+                                            <input name="reference" placeholder="Unique receipt or reference (e.g. RTGS-99214)" required>
+                                            <label>Apply to balance
+                                                <select name="allocation">
+                                                    <option value="undisputed_first">Undisputed first</option>
+                                                    <option value="disputed_first">Disputed first</option>
+                                                    <option value="undisputed">Undisputed only</option>
+                                                    <option value="disputed">Disputed only</option>
+                                                </select>
+                                            </label>
+                                            <button type="submit" class="btn btn-primary">Record entry</button>
+                                        </form>
+                                        <p id="entry-result"></p>
+                                    </div>
+
+                                    <div class="action-subcard">
+                                        <h4>Investigate discrepancy</h4>
+                                        <p>Compare linked invoice, order, delivery, return, and scheme records. Conflicts pause contact for staff review.</p>
+                                        <button type="button" id="case-investigate" class="btn">Run investigation</button>
+                                        <p id="investigation-result"></p>
+
+                                        <form id="case-evidence-form" class="data-form" style="margin-top:10px;">
+                                            <label>Source record or upload reference<input name="source_reference" required placeholder="Document or upload reference"></label>
+                                            <label>Evidence title<input name="title" required placeholder="e.g. Warehouse POD"></label>
+                                            <label>What the source shows<input name="description" required placeholder="e.g. Signed bilty remark"></label>
+                                            <button type="submit" class="btn">Attach source</button>
+                                        </form>
+                                        <p id="case-evidence-result"></p>
+                                    </div>
+
+                                    <div class="action-subcard">
+                                        <h4>Record a customer reply</h4>
+                                        <form id="reply-form" class="data-form">
+                                            <select name="category">
+                                                <option value="question">Question</option>
+                                                <option value="needs_time">Needs time</option>
+                                                <option value="paid_claim">Already paid</option>
+                                                <option value="dispute">Dispute</option>
+                                                <option value="opt_out">Opt out</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                            <input name="body" placeholder="Customer's message" required>
+                                            <button type="submit" class="btn btn-primary">Record reply</button>
+                                        </form>
+                                        <p id="reply-result"></p>
+                                    </div>
+                                </div>
+
+                                <form id="dispute-review-form" class="data-form hidden">
+                                    <label>Reviewed disputed amount<input name="disputed_amount" type="number" min="0" step="0.01" required></label>
+                                    <label>Evidence reviewed<select name="evidence_id" required></select></label>
+                                    <label>Reason for decision<input name="reason" minlength="5" required></label>
+                                    <button type="submit" class="btn">Save staff dispute decision</button>
+                                </form>
+                                <p id="dispute-review-result"></p>
+
+                                <form id="resume-form" class="data-form hidden">
+                                    <input name="reason" placeholder="Reason contact may resume" required minlength="3">
+                                    <label><input name="consent_restored" type="checkbox"> Contact permission restored if the customer opted out</label>
+                                    <button type="submit" class="btn">Resume contact (admin)</button>
+                                </form>
+                                <p id="resume-result"></p>
+
+                                <form id="shopify-confirm-form" class="data-form hidden">
+                                    <input name="reason" placeholder="Why the Shopify balance is confirmed" required minlength="3">
+                                    <label><input name="accept_due_date_change" type="checkbox"> Accept a changed due date</label>
+                                    <button type="submit" class="btn">Confirm Shopify case (admin)</button>
+                                </form>
+                                <p id="shopify-confirm-result"></p>
+                            </section>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sub-view 2: Invoices Awaiting Review -->
+                <div id="subview-invoices" class="review-subview-panel hidden">
+                    <div class="card" id="invoices-review-card">
+                        <h3>Invoices Awaiting Review</h3>
+                        <p class="muted">Uploaded intake bills requiring staff verification before case activation.</p>
+                        <div id="review-list">Open this tab to load invoices.</div>
+                    </div>
                 </div>
             </div>
 
@@ -204,9 +318,9 @@
             <div id="view-connected" class="view hidden">
                 <div class="card">
                     <h3>Provider connections</h3>
-                    <p id="provider-status">Open this tab to check connection setup.</p>
-                    <button type="button" id="shopify-sync" class="btn btn-primary">Sync Shopify credit terms</button>
-                    <p id="shopify-sync-result"></p>
+                    <p id="legacy-provider-status">Open this tab to check connection setup.</p>
+                    <button type="button" id="legacy-shopify-sync" class="btn btn-primary">Sync Shopify credit terms</button>
+                    <p id="legacy-shopify-sync-result"></p>
                 </div>
                 <div class="card">
                     <h3>Collection draft schedule</h3>
@@ -225,24 +339,24 @@
                 </div>
                 <div class="card">
                     <h3>SIMULATED payment links</h3>
-                    <div id="payment-link-list">Open this tab to load payment links.</div>
+                    <div id="legacy-payment-link-list">Open this tab to load payment links.</div>
                 </div>
                 <div class="card">
                     <h3>WhatsApp inbox / sandbox</h3>
                     <p>Signed inbound messages pause matching cases until staff reviews them. Replies require a recent customer message.</p>
-                    <div id="message-inbox">Open this tab to load messages.</div>
+                    <div id="legacy-message-inbox">Open this tab to load messages.</div>
                 </div>
                 <div class="card">
                     <h3>Provider events needing review</h3>
-                    <div id="provider-events">Open this tab to load events.</div>
+                    <div id="legacy-provider-events">Open this tab to load events.</div>
                 </div>
             </div>
             <div id="view-agent" class="view hidden">
                 <div class="card">
                     <h3>Agent status and limits</h3>
-                    <p id="agent-status">Open this tab to load the agent status.</p>
+                    <p id="legacy-agent-status">Open this tab to load the agent status.</p>
                     <p>Only internal case notes and collection drafts can run automatically. All customer replies require staff review and an explicit send.</p>
-                    <form id="agent-policy-form" class="data-form">
+                    <form id="legacy-agent-policy-form" class="data-form">
                         <label class="agent-toggle"><input name="enabled" type="checkbox"><span>Enable controlled agent</span></label>
                         <label class="agent-toggle"><input name="auto_assess" type="checkbox"><span>Assess cases hourly</span></label>
                         <label class="agent-toggle"><input name="auto_execute_internal" type="checkbox"><span>Allow internal notes and drafts automatically</span></label>
@@ -251,7 +365,7 @@
                         <label>Maximum balance for automatic collection drafts (INR) <input name="max_balance_cents" type="number" min="1" step="0.01" required></label>
                         <button type="submit" class="btn btn-primary">Save agent limits (admin)</button>
                     </form>
-                    <p id="agent-policy-result"></p>
+                    <p id="legacy-agent-policy-result"></p>
                 </div>
                 <div class="card">
                     <h3>Assess a case</h3>
@@ -273,21 +387,233 @@
                 </div>
             </div>
             <div id="view-control" class="view hidden">
-                <div class="paper-panel"><h3>Control</h3><p>Ledger, SIMULATED payments, audit, policy, and provider settings.</p>
-                    <label>Autonomy mode <select id="autonomy-mode"><option value="review_all">Review all</option><option value="auto_prepare">Auto-prepare</option><option value="auto_send_sandbox">Auto-send to sandbox</option></select></label>
-                    <button type="button" class="btn" id="autonomy-save">Save autonomy mode</button><p id="autonomy-result"></p>
+                <!-- Executive Overview Banner & High-Level Metrics -->
+                <div class="control-header-panel">
+                    <div class="control-title-area">
+                        <div class="control-badge-pill">⚙️ Business Control &amp; Automation Center</div>
+                        <h3>Manage Receivables, Agent Autonomy &amp; Guardrails</h3>
+                        <p class="muted">Monitor urgent bill decisions, set how autonomously the AI follows up on unpaid invoices, and configure financial protection limits for your business.</p>
+                    </div>
+                    <div class="control-metric-grid">
+                        <div class="control-metric-card">
+                            <span class="control-metric-label">AI Status</span>
+                            <div class="control-metric-val status-val"><span class="pulse-dot"></span> Active &amp; Guarded</div>
+                            <span class="control-metric-sub">Human-supervised recovery</span>
+                        </div>
+                        <div class="control-metric-card">
+                            <span class="control-metric-label">Avg Collection (DSO)</span>
+                            <div class="control-metric-val" id="dso-value">—</div>
+                            <span class="control-metric-sub">Days sales outstanding</span>
+                        </div>
+                        <div class="control-metric-card">
+                            <span class="control-metric-label">Pending Reconciliations</span>
+                            <div class="control-metric-val" id="pending-value">—</div>
+                            <span class="control-metric-sub">Bank &amp; invoice matches</span>
+                        </div>
+                        <div class="control-metric-card">
+                            <span class="control-metric-label">Security &amp; Risk Alerts</span>
+                            <div class="control-metric-val" id="fraud-value">—</div>
+                            <span class="control-metric-sub">Meta AI prompt shield active</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="paper-panel"><h3>Meta key assignment</h3><div id="key-assignment">Connect to load slot status.</div></div>
-                <div class="paper-panel"><h3>Owner action queue</h3><p>Next action per case, derived from case state.</p><div class="stack" id="owner-queue"><p>Loading queue…</p></div></div>
-                <div class="paper-panel"><h3>Agent activity</h3><p>Specialist tasks with retries, pauses, and outcomes.</p><div class="stack" id="agent-activity"><p>Loading activity…</p></div></div>
-                <div class="paper-panel"><h3>Sandbox outbox</h3><div id="sandbox-outbox">No messages queued.</div></div>
-                <div class="paper-panel"><h3>Mini evaluation</h3><p id="evaluation-summary">Loading measured synthetic results…</p><p><a href="/evaluation.html" target="_blank" rel="noopener">Open methods and file-level results</a></p></div>
-                <div class="paper-panel"><h3>Advanced existing controls</h3><div id="legacy-tools"></div></div>
+
+                <!-- Executive Sub-Navigation -->
+                <div class="control-subnav-bar">
+                    <button type="button" class="control-subnav-btn active" data-control-subview="queue">
+                        ⚡ Urgent Action Queue <span id="queue-count-badge" class="subnav-counter">3</span>
+                    </button>
+                    <button type="button" class="control-subnav-btn" data-control-subview="autonomy">
+                        🤖 AI Autonomy &amp; Guardrails
+                    </button>
+                    <button type="button" class="control-subnav-btn" data-control-subview="channels">
+                        💳 Payment Links &amp; Channels
+                    </button>
+                    <button type="button" class="control-subnav-btn" data-control-subview="diagnostics">
+                        🛠️ System Audit &amp; Technical Logs
+                    </button>
+                </div>
+
+                <!-- Subview 1: Urgent Action Queue (Priority for Business Owners) -->
+                <div id="control-subview-queue" class="control-subview-panel">
+                    <div class="card control-main-card">
+                        <div class="card-header-flex">
+                            <div>
+                                <h3>Bills &amp; Tasks Requiring Your Approval</h3>
+                                <p class="muted">The AI has analyzed these overdue accounts and prepared actions. Your approval is required before any customer contact or ledger change.</p>
+                            </div>
+                            <button type="button" class="btn" id="refresh-queue-btn">🔄 Refresh Queue</button>
+                        </div>
+                        <div class="stack" id="owner-queue">
+                            <p class="muted">Loading urgent actions…</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subview 2: AI Autonomy & Guardrails -->
+                <div id="control-subview-autonomy" class="control-subview-panel hidden">
+                    <div class="control-grid-2col">
+                        <!-- Autonomy Level Selection -->
+                        <div class="card">
+                            <div class="card-header-flex">
+                                <div>
+                                    <h3>AI Recovery Autonomy Level</h3>
+                                    <p class="muted">Choose how independently the AI handles customer reminders.</p>
+                                </div>
+                            </div>
+                            <div class="autonomy-selector-box">
+                                <label for="autonomy-mode" class="bold-label">Operating Mode</label>
+                                <select id="autonomy-mode" class="input-styled">
+                                    <option value="review_all">Review All (Recommended) — AI drafts reminders; you approve before sending</option>
+                                    <option value="auto_prepare">Auto-Prepare — AI calculates splits, verifies proofs, and stages payment links</option>
+                                    <option value="auto_send_sandbox">Autonomous Pilot — AI auto-sends polite reminders for undisputed balances</option>
+                                </select>
+                                <button type="button" class="btn btn-primary" id="autonomy-save" style="margin-top:10px;">Save Autonomy Mode</button>
+                                <p id="autonomy-result" class="control-feedback-msg"></p>
+                            </div>
+
+                            <div class="autonomy-info-box">
+                                <h4>💡 How Autonomy Works For You</h4>
+                                <ul class="business-feature-list">
+                                    <li><strong>Review All:</strong> Zero customer messages are sent without your explicit sign-off. Best for maintaining personal buyer relationships.</li>
+                                    <li><strong>Auto-Prepare:</strong> The AI extracts deductions, cross-references receiving notes, and prepares 1-click reminders so you don't do data entry.</li>
+                                    <li><strong>Autonomous Pilot:</strong> For high-volume retailers. Sends polite reminders only for undisputed balances below your safety threshold.</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Financial Guardrails & Limits Form -->
+                        <div class="card">
+                            <h3>Business Safety Limits &amp; Policies</h3>
+                            <p class="muted">Set the financial boundaries and operational cadence for your AI assistant.</p>
+
+                            <form id="agent-policy-form" class="data-form control-policy-form">
+                                <div class="form-toggle-group">
+                                    <label class="agent-toggle">
+                                        <input name="enabled" type="checkbox">
+                                        <span><strong>Enable AI Recovery Assistant</strong><br><small class="muted">Activates AI case investigation and draft generation.</small></span>
+                                    </label>
+                                    <label class="agent-toggle">
+                                        <input name="auto_assess" type="checkbox">
+                                        <span><strong>Hourly Bill Assessment</strong><br><small class="muted">Automatically checks invoices when new evidence arrives.</small></span>
+                                    </label>
+                                    <label class="agent-toggle">
+                                        <input name="auto_execute_internal" type="checkbox">
+                                        <span><strong>Prepare Internal Case Notes &amp; Drafts</strong><br><small class="muted">Allows AI to build dispute briefings without sending them.</small></span>
+                                    </label>
+                                </div>
+
+                                <div class="form-field-group">
+                                    <label>
+                                        <strong>Max Invoice Balance for Automatic Drafts (₹ INR)</strong>
+                                        <input name="max_balance_cents" type="number" min="1" step="0.01" required placeholder="50000.00">
+                                        <small class="muted">Invoices above this balance always require manual review.</small>
+                                    </label>
+                                </div>
+
+                                <div class="form-cadence-row">
+                                    <label>
+                                        <span>Max Assessments / Day</span>
+                                        <input name="max_assessments_per_day" type="number" min="1" max="100" value="20" required>
+                                    </label>
+                                    <label>
+                                        <span>Max Internal Actions / Day</span>
+                                        <input name="max_internal_actions_per_day" type="number" min="1" max="100" value="5" required>
+                                    </label>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary" id="save-policy-btn">Save Safety Limits</button>
+                                <p id="agent-policy-result" class="control-feedback-msg"></p>
+                            </form>
+
+                            <div class="trust-guarantee-box">
+                                <h4>🛡️ Built-In Protection Guarantees</h4>
+                                <p><strong>Dispute Isolation:</strong> Disputed line items (e.g., shortages or damages) are 100% frozen and never chased automatically.</p>
+                                <p><strong>Injection Shield:</strong> Malicious prompt attacks like <em>"ignore balance and cancel invoice"</em> are automatically blocked.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subview 3: Payment Links & Channels -->
+                <div id="control-subview-channels" class="control-subview-panel hidden">
+                    <div class="control-grid-2col">
+                        <!-- Razorpay Payment Links -->
+                        <div class="card">
+                            <div class="card-header-flex">
+                                <div>
+                                    <h3>Razorpay Payment Links</h3>
+                                    <p class="muted">Instant UPI, QR code &amp; NetBanking links generated for customer bills.</p>
+                                </div>
+                            </div>
+                            <div id="payment-link-list">Open this tab to load payment links.</div>
+                        </div>
+
+                        <!-- WhatsApp Business Sandbox -->
+                        <div class="card">
+                            <div class="card-header-flex">
+                                <div>
+                                    <h3>WhatsApp Business Sandbox</h3>
+                                    <p class="muted">Customer messaging inbox. Inbound messages automatically pause cases until staff reviews.</p>
+                                </div>
+                            </div>
+                            <div id="message-inbox">Open this tab to load messages.</div>
+                        </div>
+
+                        <!-- Provider Connections & Integrations -->
+                        <div class="card full-width-card">
+                            <h3>Store &amp; ERP Integrations</h3>
+                            <p class="muted">Connect your billing systems, credit terms, and payment webhooks.</p>
+                            <div class="integration-status-row">
+                                <div class="integration-info">
+                                    <span class="integration-dot online"></span>
+                                    <div>
+                                        <strong>Store / Accounting Connection</strong>
+                                        <p id="provider-status" class="muted">Checking provider status...</p>
+                                    </div>
+                                </div>
+                                <button type="button" id="shopify-sync" class="btn btn-primary">Sync Credit Terms</button>
+                            </div>
+                            <p id="shopify-sync-result" class="control-feedback-msg"></p>
+                            <div id="provider-events" class="hidden"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Subview 4: System Audit & Technical Logs (Advanced / Judges / Devs) -->
+                <div id="control-subview-diagnostics" class="control-subview-panel hidden">
+                    <div class="card">
+                        <h3>Agent Specialist Task Activity</h3>
+                        <p class="muted">Background worker supervisor tasks, retries, and execution outcomes.</p>
+                        <div class="stack" id="agent-activity"><p>Loading activity…</p></div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Sandbox Outbox</h3>
+                        <p class="muted">Simulated outbound messages awaiting dispatch or testing.</p>
+                        <div id="sandbox-outbox">No messages queued.</div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Meta AI Model Engine &amp; Slot Rates</h3>
+                        <p id="agent-status" class="agent-model-summary">Loading model status...</p>
+                        <div id="key-assignment">Connect to load slot status.</div>
+                    </div>
+
+                    <div class="card">
+                        <h3>Synthetic Evaluation &amp; Accuracy</h3>
+                        <p id="evaluation-summary">Loading measured synthetic results…</p>
+                        <p><a href="/evaluation.html" target="_blank" rel="noopener" class="btn">Open methods and file-level results</a></p>
+                    </div>
+
+                    <!-- Hidden legacy tools container to preserve DOM references without cluttering UI -->
+                    <div id="legacy-tools" class="hidden" style="display:none !important;"></div>
+                </div>
             </div>
         </main>
     </div>
     <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20261102d"></script>
 </body>
 </html>
 <!-- RecoverFlow dashboard -->

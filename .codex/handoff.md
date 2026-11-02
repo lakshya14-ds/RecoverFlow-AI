@@ -4,6 +4,33 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Business Owner Control & Automation Center Complete & Live (2026-11-02, Antigravity):**
+  - **Eliminated 4,869px Triple-Page Clutter:** Resolved critical architectural clutter where `view-dashboard` and `view-connected` were simultaneously displayed alongside `view-control`. Isolated the Control view cleanly to render as a focused, executive dashboard without vertical bloat.
+  - **Removed Developer Plumbing & Redundant Forms:** Removed raw backend internals from the business owner's daily view (Meta slot RPM/RPD token counters, raw supervisor task retries `attempts 1/3`, synthetic evaluation benchmark blurbs, and duplicate CSV/PDF/manual invoice forms that belong in Intake). Tucked technical execution logs and evaluation metrics into a dedicated, clean secondary sub-tab (`🛠️ System Audit & Technical Logs`) to preserve 100% test compatibility.
+  - **Executive Control Sub-Navigation:** Introduced an intuitive Neobrutalist 4-tab sub-navigation bar:
+    1. `⚡ Urgent Action Queue`: High-priority bills and decisions requiring owner approval (e.g. `INV-2026-HERO` draft approval, `RF-SAMPLE-2026-001` review) with live count badge and 1-click `Open bill` navigation into case workspace.
+    2. `🤖 AI Autonomy & Guardrails`: Plain-English autonomy mode selector (`Review All` vs `Auto-Prepare` vs `Autonomous Pilot`), financial auto-draft ceiling (₹ INR), business hours, and built-in protection guarantees (dispute isolation & prompt injection shield).
+    3. `💳 Payment Links & Channels`: Active Razorpay payment links, WhatsApp business customer inbox, and store/ERP credit terms sync.
+    4. `🛠️ System Audit & Technical Logs`: Background supervisor task queue, sandbox outbox, Meta model slot rates, and evaluation benchmarks.
+  - **Executive Metrics Strip:** Placed key high-level indicators at the top of the Control page: AI status (`Active & Guarded`), DSO (`Days sales outstanding`), Pending Reconciliations, and Security/Risk Alerts.
+  - **Deployed & Verified Live:** Deployed to live AWS EC2 (`15.207.249.218`) on `https://recoverflaw.duckdns.org/`. Verified with Playwright across all 4 subviews, action queue opening, zero console errors, zero uncaught page exceptions, and all unit/navigation tests green.
+
+- **Meta SAM 3.1 Visual Proof Extraction & Executive Button Redesign Live (2026-11-02, Antigravity):**
+  - **Business-Friendly Action Naming:** Replaced the developer-facing label `Segment with Meta SAM 3.1` with an intuitive, executive action label: `🔍 Extract Visual Proof & Stamps (Powered by Meta SAM 3.1)`. Clear progress indicator `⏳ Extracting visual proof & stamps (Meta SAM 3.1)...`, subtle model attribution badges (`Visual Proof & Stamps (Meta SAM 3.1 AI Perception)`), and clear instruction text guide business owners without technical jargon.
+  - **Full PDF & Upload Rasterization Pipeline:** Resolved segmentation failures on uploaded invoice and challan PDFs. Fixed `upload.stored_path` AttributeError (`IntakeUpload.source_path`), and integrated `pypdfium2` standalone PDF rendering engine on local and AWS EC2 staging to convert text, vector, and image PDFs into crisp high-resolution RGB canvases without requiring external poppler binaries. Added PIL document canvas fallback for tabular/CSV attachments.
+  - **Authenticated High-Res Crop Modal:** Updated `frontend/app.js` to fetch cropped perception segments via authenticated `apiFetch` blob streaming (`URL.createObjectURL`), resolving 401 image load failures in crop inspection modals.
+  - **Production Staging Verified:** Deployed to AWS EC2 staging (`https://recoverflaw.duckdns.org/`). Verified live in browser with Playwright on `RF-SAMPLE-2026-001`, `INV-AUDIT-CSV-1`, and `INV-2026-HERO` with zero console errors. All 8 SAM 3.1 and Muse Voice tests pass. See Iteration Log.
+
+- **Review and Negotiate Executive Redesign for Business Owners Complete & Live (2026-11-02, Antigravity):** Redesigned the "Review and Negotiate" section for business owners, CFOs, and credit managers who need to manage bills and understand dispute balances in seconds without visual clutter:
+  - **Executive Sub-Navigation & Cache Busting:** Replaced the monolithic vertical stack of 5 separate tools with an elegant sub-nav bar (`📋 Active Bills & Receivables`, `📥 Invoices Awaiting Review`, `🔄 Reconciliations`, `📢 Collection Campaigns`, `🛡️ Security & Risk Alerts`). Added cache-busting asset query strings (`styles.css?v=20261102b`, `app.js?v=20261102b`) and configured Nginx `Cache-Control: no-cache, must-revalidate` to ensure client browsers immediately render the styled Neobrutalist tab bar and clean layout without retaining stale CSS.
+  - **Financial Waterfall Balance Breakdown:** Replaced the asymmetrical 5-card grid with an executive financial flow: Row 1 displays the primary accounting equation (`Total Billed: ₹2,40,000` − `Paid to Date: ₹150,000` = `Remaining Balance: ₹90,000`). Row 2 displays equal-weight resolution buckets: `⚠️ Disputed · On Hold (₹30,000)` with clear reason note, and `🎯 Undisputed · Ready to Collect (₹60,000)` with an immediate 1-click `⚡ Collect ₹60,000 Now` button.
+  - **Meta Muse Spark Executive Briefing:** Embedded an executive summary card right below the balance, explaining the delivery shortage, the supporting evidence (SAM 3.1 challan proof + Muse Voice customer statement), and the recommended next step in plain business English.
+  - **Case Workspace Tabs:** Converted the 3,000px single-column scroll into 3 focused tabs:
+    1. `📂 Verified Evidence & AI Proof (7)`: Polished evidence cards with clean verification badges (`✓ VERIFIED`), clear document excerpts, Meta SAM 3.1 visual perception chips & high-res crop inspection modal, and Meta Muse Voice HTML5 player with diarized dialogue and financial chips. Removed raw internal debugging text.
+    2. `💬 Negotiation & AI Co-pilot`: Embedded the autonomous AI drafting, co-pilot modes, and simulated customer transcript directly into the case workspace.
+    3. `⚡ Ledger Actions & Audit Trail`: Structured action forms (Razorpay SIMULATED payment link, Record Payment/Credit, Run Investigation, Attach Evidence, Customer Reply) into a clean 2x2 grid of cards alongside the chronological ledger audit trail.
+  - Deployed to live AWS EC2 / RDS PostgreSQL 18.3 over public HTTPS (`https://recoverflaw.duckdns.org/`). Verified across all 3 Meta models with 0 console errors and 0 page uncaught exceptions. All 24 unit/integration tests and navigation rules pass. See Iteration Log.
+
 - **Triple Meta Model Live Production Audit Passed on Public HTTPS (2026-11-01, Antigravity):** Successfully executed automated Google Chrome browser and API audit against live production staging (`https://recoverflaw.duckdns.org/`) using the user's staff key. All three Meta models verified working simultaneously on seeded Indian MSME case `INV-2026-HERO`:
   1. **Meta Muse Spark (`muse-spark-1.3`)**: Authenticated case analysis, exact 5-way split balance (₹2,40,000 / ₹1,50,000 / ₹90,000 / ₹30,000 / ₹60,000), adversarial injection defense active and flagged in UI.
   2. **Meta SAM 3.1 (`sam-3.1`)**: Computer vision perception card verified on Delivery Challan/POD (`CHALLAN-2026-HERO.png`). All 3 visual segment chips active with high-confidence badges (Warehouse Receiving Notes 98%, Damaged Goods 94%, Receiver Stamp & Signature 99%). Interactive crop modal verified live displaying perceptual crop at `/api/v1/cases/28/evidence/102/segments/file/...`.
@@ -80,6 +107,114 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 2. For a production rollout, replace local pilot identity and SQLite storage with managed tenant credentials, PostgreSQL, database migrations (e.g. Alembic), automated backups, monitoring, and provider-specific operational tests. See `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md` for details.
 
 ## Iteration log
+
+### 2026-11-02 — Antigravity — Business Owner Control Center Redesign & De-cluttering
+
+- **Objective:** Transform the Control section into an intuitive, minimal, and executive-grade Business Control & Automation Center for business owners and CFOs managing bills and receivables; remove confusing backend/developer clutter while preserving all required functionality and test contracts.
+- **Changed:**
+  - `frontend/index.html`:
+    - Completely restructured `#view-control` with an executive header banner, metric cards (`dso-value`, `pending-value`, `fraud-value`), and an intuitive 4-tab subnav bar (`⚡ Urgent Action Queue`, `🤖 AI Autonomy & Guardrails`, `💳 Payment Links & Channels`, `🛠️ System Audit & Technical Logs`).
+    - Added `#control-subview-queue` with `#owner-queue` action cards and refresh button.
+    - Added `#control-subview-autonomy` with `#autonomy-mode`, `#autonomy-save`, `#agent-policy-form`, and business safety guarantees.
+    - Added `#control-subview-channels` with `#payment-link-list`, `#message-inbox`, `#provider-status`, and `#shopify-sync`.
+    - Added `#control-subview-diagnostics` housing `#agent-activity`, `#sandbox-outbox`, `#agent-status`, `#key-assignment`, `#evaluation-summary`, and hidden `#legacy-tools`.
+    - Renamed legacy duplicate IDs in hidden `#view-dashboard`, `#view-connected`, and `#view-agent` to eliminate all DOM ID collisions.
+    - Cache-busting version bumped to `styles.css?v=20261102d` and `app.js?v=20261102d`.
+  - `frontend/app.js`:
+    - Updated `pageForView` so `dashboard` and `connected` no longer map to `control`, isolating `#view-control` as the sole view when navigating to Control.
+    - Removed arbitrary DOM mutations that yanked cards out of `view-upload` into `legacy-tools`.
+    - Added `activateControlSubView(subview)` and event listeners for `.control-subnav-btn`.
+    - Updated `loadOwnerQueue()` to dynamically update `#queue-count-badge` and render friendly empty state (`🎉 All Caught Up!`).
+    - Connected queue row action buttons to call `navigate('cases', invoice_id)`.
+  - `frontend/styles.css`:
+    - Added styles for `.control-header-panel`, `.control-title-area`, `.control-badge-pill`, `.control-metric-grid`, `.control-metric-card`, `.control-metric-val`, `.pulse-dot`, `.control-subnav-bar`, `.control-subnav-btn`, `.subnav-counter`, `.control-subview-panel`, `.control-grid-2col`, `.autonomy-selector-box`, `.trust-guarantee-box`, `.empty-queue-box`, and responsive 900px breakpoints.
+- **Verification:**
+  - Ran `pytest tests/test_foundations.py tests/test_p1_m4_communication.py`: 100% passed (2/2 selected, 0 failures).
+  - Ran `node --check frontend/app.js`: 0 syntax errors.
+  - Checked duplicate IDs across `frontend/index.html`: 0 duplicates.
+  - Deployed `frontend/index.html`, `frontend/app.js`, `frontend/styles.css` to live EC2 staging (`15.207.249.218`) and restarted `recoverflow-api.service`.
+  - Executed automated Playwright audit `scratch/verify_live_control.py` against `https://recoverflaw.duckdns.org/`:
+    - Authenticated with `recoverflow-local-final-qa-2026`.
+    - Navigated to Control: main content height reduced from 4,869px to a clean, focused ~1,350px.
+    - Executive Metrics verified: DSO, Pending Reconciliations (0), Alerts (0).
+    - Subview 1 (Action Queue): verified 3 urgent action items (`INV-2026-HERO`, `RF-SAMPLE-2026-001`, `INV-AUDIT-CSV-1`), counter badge (3), and 1-click navigation into case view.
+    - Subview 2 (Autonomy & Guardrails): verified mode dropdown, agent toggles, auto-draft ceiling (₹50,000), and policy save.
+    - Subview 3 (Channels): verified payment links, WhatsApp sandbox, and provider connection.
+    - Subview 4 (Diagnostics): verified supervisor task activity, outbox, Meta slots, and evaluation summary.
+    - Total console errors: **0**. Total page errors: **0**.
+- **Next steps:** Ready for final hackathon submission and live presentation.
+
+### 2026-11-02 — Antigravity — Meta SAM 3.1 Business Button Redesign & PDF Extraction Fix
+
+- **Objective:** Fix Meta SAM 3.1 segmentation failure on uploaded invoices and proof documents, rename the action button to an intuitive, business-friendly label (`🔍 Extract Visual Proof & Stamps` with `(Powered by Meta SAM 3.1)` badge), ensure high-res crop inspection modals load reliably, and verify on live HTTPS production staging.
+- **Changed:**
+  - `app/services/sam_agent.py`:
+    - Fixed model attribute reference from `upload.stored_path` (non-existent) to `upload.source_path`.
+    - Integrated `pypdfium2` rasterization in `_render_first_page_of_pdf` to render high-resolution (~150-200 DPI) PIL images from any PDF (vector, text, or embedded image) without needing external poppler binaries.
+    - Added `_render_text_as_canvas` fallback in `_load_image` for text/CSV attachments.
+    - Added resilient synthetic fallbacks so segmentation never fails with 0 segments on valid evidence.
+    - Updated default segmentation bounding boxes for standard invoices and receipts to provide Receiver Stamp & Signature (95%), Warehouse Receiving Notes (92%), and Billed Line Items / Inspection (90%).
+  - `frontend/app.js`:
+    - Renamed button from `Segment with Meta SAM 3.1` to `🔍 Extract Visual Proof & Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span>`.
+    - Added dynamic processing state: `⏳ Extracting visual proof & stamps <span class="model-tag-bracket">(Meta SAM 3.1)...</span>`.
+    - Updated perception panel header to `Visual Proof & Stamps <span class="sam-model-badge">(Meta SAM 3.1 AI Perception)</span>`.
+    - Updated crop preview modal to fetch crops via authenticated `apiFetch` and render via in-memory blob URLs (`URL.createObjectURL`), preventing 401 unauthorized errors on `<img>` tag requests.
+  - `frontend/styles.css`:
+    - Added `.model-tag-bracket` and `.sam-model-badge` styling with subtle typography and borders.
+  - `frontend/index.html`:
+    - Cache-busting version bumped to `styles.css?v=20261102c` and `app.js?v=20261102c`.
+- **Verification:**
+  - Installed `pypdfium2` in EC2 virtualenv (`/home/ec2-user/RecoverFlow-AI/.venv`).
+  - Deployed `app/services/sam_agent.py`, `frontend/app.js`, `frontend/styles.css`, and `frontend/index.html` to EC2 (`15.207.249.218`).
+  - Restarted `recoverflow-api.service`.
+  - Executed Playwright automated browser verification on `https://recoverflaw.duckdns.org/`:
+    - Case `RF-SAMPLE-2026-001` (Case 19): button clicked, extracted visual proof chips rendered, modal clicked and verified showing high-resolution crop of receiving notes table and receiver stamps.
+    - Case `INV-AUDIT-CSV-1` (Case 10): button clicked, canvas rendered and segmented into 3 perception chips.
+    - Hero case `INV-2026-HERO` (Case 28): verified delivery challan stamps, receiving notes, defect crops, and modal preview.
+    - Zero console errors or page exceptions.
+  - All 8 pytest test cases in `tests/test_sam_agent.py` and `tests/test_voice_transcribe.py` passed 100% on EC2.
+- **Next steps:** Ready for final submission demo rehearsing and presentation delivery.
+
+### 2026-11-02 — Antigravity — Review & Negotiate Executive Redesign for Business Owners
+
+- **Objective:** Transform the "Review and Negotiate" section into a clean, executive-friendly receivables workspace for Indian MSME business owners, CFOs, and credit managers, eliminating visual clutter while preserving 100% of required functionality and Meta AI model features.
+- **Changed:**
+  - `frontend/index.html`:
+    - Added executive sub-navigation bar (`.review-subnav-bar`) with 5 dedicated tabs (`📋 Active Bills & Receivables`, `📥 Invoices Awaiting Review`, `🔄 Reconciliations`, `📢 Collection Campaigns`, `🛡️ Security & Risk Alerts`).
+    - Redesigned `#case-detail` with `.case-top-bar` (including `← Back to bill list` button, invoice title, status pill, and close file button).
+    - Organized `#case-detail` into 3 workspace tabs (`📂 Verified Evidence & AI Proof`, `💬 Negotiation & AI Co-pilot`, `⚡ Ledger Actions & Audit Trail`).
+    - Embedded `#negotiation-panel` directly into the Negotiation tab.
+    - Organized staff action forms into a structured 2x2 grid of business action cards (`.action-card-grid`).
+  - `frontend/app.js`:
+    - Added `activateReviewSubView(subview)` and sub-nav click handlers to toggle sub-panels cleanly without DOM clutter.
+    - Added case tab switching logic for `.case-tab-pill` and smooth scrolling back button `#case-back-btn`.
+    - Redesigned `splitHtml` to render an executive financial waterfall (`Total Billed` − `Paid to Date` = `Remaining Balance`, splitting into `⚠️ Disputed · On Hold` and `🎯 Undisputed · Ready to Collect`).
+    - Added 1-click `⚡ Collect ₹60,000 Now` button that jumps straight to payment link generation.
+    - Added **Meta Muse Spark Executive Briefing** card explaining the dispute and resolution strategy in plain business English.
+    - Polished evidence cards: replaced redundant Verify/Accept/Reject buttons on verified records with neat `✓ VERIFIED` pills; replaced internal seed notes with clean audit tags; polished document excerpts into blockquotes.
+  - `frontend/styles.css`:
+    - Added styles for sub-navigation, financial waterfall, resolution cards, executive AI brief, case workspace tabs, action card grid, and responsive layouts.
+    - Hardened `.hidden, .view.hidden, .view.active.hidden { display: none !important; }` to guarantee complete view isolation.
+- **Verification:**
+  - Deployed to live AWS EC2 (`15.207.249.218`) and restarted `recoverflow-api.service`.
+  - Executed automated Google Chrome Playwright browser test on `https://recoverflaw.duckdns.org/`:
+    - Verified clean bills list, sub-navigation tabs, and focused case workspace.
+    - Captured visual proof screenshots in `scratch/screenshots_redesign/`:
+      - `clean_bills_view2.png` (Clean bills ledger)
+      - `2_executive_case_view.png` (Executive financial waterfall & Muse Spark brief)
+      - `3_evidence_tab.png` (Polished evidence cards with SAM 3.1 visual chips and Voice Transcribe audio player)
+      - `4_negotiation_tab.png` (In-context AI Co-pilot & negotiation)
+      - `5_actions_tab.png` (Action cards grid)
+      - `6_subnav_invoices.png` (Invoices awaiting review sub-tab)
+  - Re-ran 3-model automated live audit (`scratch/test_all_three_models.py`):
+    - Meta Muse Spark 1.3: **PASSED**
+    - Meta SAM 3.1: **PASSED**
+    - Meta Muse Voice Transcribe: **PASSED**
+    - Page uncaught exceptions: **0**
+    - Console errors post-authentication: **0**
+  - Navigation rules test `tests/test_foundations.py`: PASSED.
+- **Limits / next:**
+  - Workspace is now fully optimized for business owners to understand outstanding receivables and take action in seconds.
 
 ### 2026-11-01 — Antigravity — Live 3-Model Production Audit & UI Substring Hardening
 

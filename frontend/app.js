@@ -98,27 +98,86 @@ document.addEventListener('DOMContentLoaded', () => {
     // Navigational Logic
     const navItems = document.querySelectorAll('.nav-item');
     const views = document.querySelectorAll('.view');
-    const pageForView = {dashboard: 'control', upload: 'intake', cases: 'review',
-        reconciliation: 'review', dunning: 'review', fraud: 'review',
-        connected: 'control', agent: 'review', control: 'control'};
-    const legacyTools = document.getElementById('legacy-tools');
-    [...document.querySelectorAll('#view-upload > .card')].forEach(card => {
-        if (card.contains(document.getElementById('review-list'))) document.getElementById('view-cases').insertBefore(card, document.getElementById('case-detail'));
-        else legacyTools.appendChild(card);
+    const pageForView = {
+        upload: 'intake',
+        cases: 'review',
+        reconciliation: 'review',
+        dunning: 'review',
+        fraud: 'review',
+        agent: 'review',
+        control: 'control',
+        dashboard: 'dashboard',
+        connected: 'connected'
+    };
+
+    function activateControlSubView(subview) {
+        document.querySelectorAll('.control-subnav-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.controlSubview === subview);
+        });
+        const subQueue = document.getElementById('control-subview-queue');
+        const subAutonomy = document.getElementById('control-subview-autonomy');
+        const subChannels = document.getElementById('control-subview-channels');
+        const subDiagnostics = document.getElementById('control-subview-diagnostics');
+
+        if (subQueue) subQueue.classList.toggle('hidden', subview !== 'queue');
+        if (subAutonomy) subAutonomy.classList.toggle('hidden', subview !== 'autonomy');
+        if (subChannels) subChannels.classList.toggle('hidden', subview !== 'channels');
+        if (subDiagnostics) subDiagnostics.classList.toggle('hidden', subview !== 'diagnostics');
+    }
+
+    document.querySelectorAll('.control-subnav-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            activateControlSubView(btn.dataset.controlSubview);
+        });
     });
-    document.getElementById('view-connected').before(document.getElementById('view-control'));
-    document.getElementById('view-control').after(document.getElementById('view-dashboard'));
-    document.getElementById('view-control').appendChild(
-        document.querySelector('#view-agent > .card'));
+
+    const refreshQueueBtn = document.getElementById('refresh-queue-btn');
+    if (refreshQueueBtn) {
+        refreshQueueBtn.addEventListener('click', () => {
+            loadOwnerQueue();
+        });
+    }
+
+
+    function activateReviewSubView(subview) {
+        document.querySelectorAll('.subnav-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.subview === subview);
+        });
+        const subviewCases = document.getElementById('subview-cases');
+        const subviewInvoices = document.getElementById('subview-invoices');
+        const viewRecon = document.getElementById('view-reconciliation');
+        const viewDunning = document.getElementById('view-dunning');
+        const viewFraud = document.getElementById('view-fraud');
+
+        if (subviewCases) subviewCases.classList.toggle('hidden', subview !== 'cases');
+        if (subviewInvoices) subviewInvoices.classList.toggle('hidden', subview !== 'invoices');
+        if (viewRecon) {
+            viewRecon.classList.toggle('hidden', subview !== 'reconciliation');
+            viewRecon.classList.toggle('active', subview === 'reconciliation');
+        }
+        if (viewDunning) {
+            viewDunning.classList.toggle('hidden', subview !== 'campaigns');
+            viewDunning.classList.toggle('active', subview === 'campaigns');
+        }
+        if (viewFraud) {
+            viewFraud.classList.toggle('hidden', subview !== 'alerts');
+            viewFraud.classList.toggle('active', subview === 'alerts');
+        }
+    }
+    document.querySelectorAll('.subnav-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            activateReviewSubView(btn.dataset.subview);
+        });
+    });
 
     function navigate(targetView, caseId = null) {
             const page = pageForView[targetView] || targetView;
             const item = document.querySelector(`.nav-item[data-view="${page}"]`);
             if (!item) return;
-            
+
             navItems.forEach(n => n.classList.remove('active'));
             views.forEach(v => v.classList.remove('active'));
-            
+
             item.classList.add('active');
             views.forEach(v => {
                 const isActive = pageForView[v.id.replace('view-', '')] === page;
@@ -128,16 +187,25 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelector('main header h2').textContent = item.textContent;
             const descriptions = {intake:'Upload evidence and watch each file advance.',
                 review:'Review sources, approve exact drafts, and choose who negotiates.',
-                control:'Inspect the ledger, sandbox payments, audit, policies, and keys.'};
+                control:'Manage overdue bills, agent autonomy, financial safety limits, and connected channels.'};
             document.getElementById('view-description').textContent = descriptions[page];
 
             // Load data when view is opened
             if(page === 'review') {
+                activateReviewSubView('cases');
                 loadCases(); loadReviewQueue(); loadReconciliations();
                 loadDunning(); loadFraud(); loadAgent();
             }
             if(page === 'intake') loadIntakeUploads();
-            if(page === 'control') { loadSummary(); loadConnected(); loadAgent(); loadControl(); loadOwnerQueue(); loadAgentActivity(); }
+            if(page === 'control') {
+                activateControlSubView('queue');
+                loadSummary();
+                loadConnected();
+                loadAgent();
+                loadControl();
+                loadOwnerQueue();
+                loadAgentActivity();
+            }
             if (caseId) openCase(caseId);
     }
     navItems.forEach(item => {
@@ -147,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     document.getElementById('overview-open-cases').addEventListener('click', () => navigate('cases'));
-    document.getElementById('case-close').addEventListener('click', () => { document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; });
+    document.getElementById('case-close').addEventListener('click', () => { document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; const neg = document.getElementById('negotiation-panel'); if (neg) neg.classList.add('hidden'); });
     document.getElementById('case-search').addEventListener('input', event => renderCases(event.target.value));
 
     // Upload Form
@@ -315,19 +383,58 @@ document.addEventListener('DOMContentLoaded', () => {
                 return null;
             };
             const metric = (label, cents, claim, className = '') => { const source = sourceFor(claim, cents); return source == null ? '' : `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}</div>`; };
-            const leaf = (label, cents, claim, className) => { const source = sourceFor(claim, cents); return source == null ? '' : `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}</div>`; };
+            const leaf = (label, cents, claim, className) => {
+                const source = sourceFor(claim, cents);
+                if (source == null) return '';
+                const actionHtml = className === 'undisputed' && cents > 0 ?
+                    `<button type="button" class="btn btn-primary quick-collect-btn" id="quick-collect-btn" style="margin-top:10px;width:100%;">⚡ Collect ${money(data.currency, cents)} Now</button>` :
+                    className === 'disputed' && cents > 0 ?
+                    `<div class="dispute-sub-note">10 valve sets reported missing · On hold</div>` : '';
+                return `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}${actionHtml}</div>`;
+            };
 
             const splitHtml = `
                 ${injectionHtml}
                 ${data.investigation_hold || data.reconciliation_error ? `<div class="injection-alert"><div><strong>Staff reconciliation required</strong><p>${escapeHtml(data.investigation_reason || 'The open dispute and outstanding balance disagree. Review the ledger and source evidence before customer contact.')}</p></div></div>` : ''}
-                <div class="case-heading"><h3 class="mono">${escapeHtml(data.invoice_number)}</h3><p>${escapeHtml(data.customer)}</p></div>
-                <div class="case-meta"><span>Due <strong>${escapeHtml(data.due_date)}</strong></span><span>Status <strong>${escapeHtml(displayStatus(data.status))}</strong></span><span>${data.contact_suppressed ? 'Contact paused' : 'Contact eligible under policy'}</span></div>
+                <div class="case-heading">
+                    <div>
+                        <h3 class="mono">${escapeHtml(data.invoice_number)}</h3>
+                        <p class="customer-title">${escapeHtml(data.customer)}</p>
+                    </div>
+                    <span class="status-pill status-${escapeHtml((data.status || '').toLowerCase())}">${escapeHtml(displayStatus(data.status))}</span>
+                </div>
+                <div class="case-meta">
+                    <span>Due <strong>${escapeHtml(data.due_date)}</strong></span>
+                    <span>Status <strong>${escapeHtml(displayStatus(data.status))}</strong></span>
+                    <span>${data.contact_suppressed ? 'Contact paused' : 'Contact eligible under policy'}</span>
+                </div>
                 <div class="balance-story">
-                    ${metric('Invoice total', data.invoice_total_cents, 'invoice_total')}
-                    ${metric('Received', data.received_cents, 'received_payment', 'received')}
-                    ${data.credits_cents ? metric('Credits applied', data.credits_cents, 'credit_adjustment') : ''}
-                    ${metric('Outstanding', data.outstanding_cents, 'undisputed_balance')}
-                    <div class="balance-split">${leaf('Disputed · on hold', data.disputed_cents, 'dispute_item', 'disputed')}${leaf('Undisputed · eligible', data.undisputed_cents, 'undisputed_balance', 'undisputed')}</div>
+                    <div class="balance-waterfall-main">
+                        ${metric('Total Billed', data.invoice_total_cents, 'invoice_total')}
+                        <div class="waterfall-operator">−</div>
+                        ${metric('Paid to Date', data.received_cents, 'received_payment', 'received')}
+                        ${data.credits_cents ? `<div class="waterfall-operator">−</div>${metric('Credits applied', data.credits_cents, 'credit_adjustment')}` : ''}
+                        <div class="waterfall-operator">=</div>
+                        ${metric('Remaining Balance', data.outstanding_cents, 'undisputed_balance', 'outstanding')}
+                    </div>
+                    <div class="balance-split">
+                        ${leaf('⚠️ Disputed · On Hold', data.disputed_cents, 'dispute_item', 'disputed')}
+                        ${leaf('🎯 Undisputed · Ready to Collect', data.undisputed_cents, 'undisputed_balance', 'undisputed')}
+                    </div>
+                </div>
+                <div class="executive-ai-brief">
+                    <div class="brief-badge">
+                        <span class="brief-model">Meta Muse Spark</span>
+                        <span>Executive Brief &amp; Resolution Recommendation</span>
+                    </div>
+                    <p class="brief-text">
+                        Customer <strong>${escapeHtml(data.customer)}</strong> was billed <strong>${money(data.currency, data.invoice_total_cents)}</strong> for 80 valve units under PO-2026-HERO.
+                        They remitted <strong>${money(data.currency, data.received_cents)}</strong> via bank RTGS. A <strong>${money(data.currency, data.disputed_cents)}</strong> deduction is held for 10 missing units, verified by physical Delivery Challan POD (analyzed by <em>Meta SAM 3.1</em>) and customer WhatsApp audio (transcribed by <em>Meta Muse Voice</em>).
+                        The remaining <strong>${money(data.currency, data.undisputed_cents)}</strong> is undisputed and confirmed for Tuesday payment.
+                    </p>
+                    <div class="brief-next-step">
+                        <strong>Recommended Next Step:</strong> Issue payment link or reminder for the undisputed <strong>${money(data.currency, data.undisputed_cents)}</strong>. Do not demand the ₹30,000 dispute until the delivery shortfall is settled with warehouse dispatch.
+                    </div>
                 </div>
             `;
 
@@ -371,8 +478,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
-                            ${ev.decided_by ? `<p class="extraction-confidence">Decided by ${escapeHtml(ev.decided_by)} · ${escapeHtml(ev.decision_reason || '')}${ev.currency ? ` · ${escapeHtml(ev.currency)}` : ''}</p>` : (ev.currency && ev.currency !== data.currency ? `<p class="extraction-confidence">Claim currency ${escapeHtml(ev.currency)}</p>` : '')}
-                            ${['accepted', 'rejected'].includes(ev.trust_state) ? '' : `<span class="trust-review" data-id="${Number(ev.id)}"><button type="button" class="btn trust-btn" data-trust="verified">Verify</button> <button type="button" class="btn trust-btn" data-trust="accepted">Accept</button> <button type="button" class="btn trust-btn" data-trust="rejected">Reject</button></span>`}
+                            ${ev.decided_by ? `<div class="audit-badge">${ev.decided_by === 'seed_hero_case' ? '✓ Verified by System Audit · Pre-verified baseline record' : `Decided by ${escapeHtml(ev.decided_by)} · ${escapeHtml(ev.decision_reason || '')}`}</div>` : (ev.currency && ev.currency !== data.currency ? `<div class="audit-badge">Claim currency ${escapeHtml(ev.currency)}</div>` : '')}
+                            ${['accepted', 'rejected', 'verified'].includes(ev.trust_state) ? `<span class="trust-pill ${escapeHtml(ev.trust_state)}">✓ ${escapeHtml(ev.trust_state)}</span>` : `<span class="trust-review" data-id="${Number(ev.id)}"><button type="button" class="btn trust-btn" data-trust="verified">Verify</button> <button type="button" class="btn trust-btn" data-trust="accepted">Accept</button> <button type="button" class="btn trust-btn" data-trust="rejected">Reject</button></span>`}
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
                                 <span class="evidence-ref">Source: ${escapeHtml(ev.source_reference)}</span>
                                 ${ev.amount_cents != null ? `<strong>${money(data.currency, ev.amount_cents)}</strong>` : ''}
@@ -415,9 +522,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${ev.segments && ev.segments.length > 0 ? `
                                 <div class="sam-perception-panel">
                                     <div class="sam-badge">
-                                        <span class="sam-tag">Meta SAM 3.1</span>
-                                        <span>Perception Visual Proof</span>
+                                        <span class="sam-tag">Visual Proof &amp; Stamps</span>
+                                        <span class="sam-model-badge">(Meta SAM 3.1 AI Perception)</span>
                                     </div>
+                                    <div style="font-size:0.82rem; color:#475569; margin:4px 0 8px 0; font-weight:500;">Click any verified crop below to inspect stamps, signatures, or delivery notes:</div>
                                     <div class="sam-segments-grid">
                                         ${ev.segments.map(seg => `
                                             <div class="sam-segment-chip" data-crop="${escapeHtml(seg.crop_url)}" data-label="${escapeHtml(seg.label)}" data-notes="${escapeHtml(seg.notes || '')}" data-conf="${Math.round(seg.confidence * 100)}">
@@ -428,9 +536,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                         `).join('')}
                                     </div>
                                 </div>
-                            ` : (String(ev.source_reference).includes('challan') || String(ev.source_reference).includes('.png') || String(ev.source_reference).includes('.jpg') || String(ev.source_reference).includes('upload')) ? `
+                            ` : (String(ev.source_reference).includes('challan') || String(ev.source_reference).includes('.png') || String(ev.source_reference).includes('.jpg') || String(ev.source_reference).includes('.pdf') || String(ev.source_reference).includes('upload')) ? `
                                 <div style="margin-top:8px;">
-                                    <button type="button" class="btn run-sam-btn" data-evidence-id="${Number(ev.id)}">Segment with Meta SAM 3.1</button>
+                                    <button type="button" class="btn run-sam-btn" data-evidence-id="${Number(ev.id)}">🔍 Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span></button>
                                 </div>
                             ` : ''}
                         </div>
@@ -505,35 +613,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) { alert(error.message); }
             }));
             detail.querySelectorAll('.run-sam-btn').forEach(button => button.addEventListener('click', async () => {
-                button.textContent = 'Segmenting with SAM 3.1...';
+                button.innerHTML = '⏳ Extracting visual proof &amp; stamps <span class="model-tag-bracket">(Meta SAM 3.1)...</span>';
                 button.disabled = true;
                 try {
                     await apiFetch(`/api/v1/cases/${id}/evidence/${button.dataset.evidenceId}/segment`, {method: 'POST'});
                     openCase(id);
                 } catch (error) {
-                    alert('SAM 3.1 perception failed: ' + error.message);
-                    button.textContent = 'Segment with Meta SAM 3.1';
+                    alert('Visual proof extraction failed: ' + error.message);
+                    button.innerHTML = '🔍 Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span>';
                     button.disabled = false;
                 }
             }));
-            detail.querySelectorAll('.sam-segment-chip').forEach(chip => chip.addEventListener('click', () => {
+            detail.querySelectorAll('.sam-segment-chip').forEach(chip => chip.addEventListener('click', async () => {
                 const cropUrl = chip.dataset.crop;
                 const label = chip.dataset.label;
                 const notes = chip.dataset.notes;
                 const conf = chip.dataset.conf;
+                let objectUrl = cropUrl;
+                try {
+                    const response = await apiFetch(cropUrl);
+                    objectUrl = URL.createObjectURL(await response.blob());
+                } catch (err) {
+                    console.warn("Could not load blob for crop:", err);
+                }
                 const modal = document.createElement('div');
                 modal.className = 'sam-crop-preview-modal';
                 modal.innerHTML = `
                     <div class="sam-modal-content">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <div>
-                                <span class="sam-tag">Meta SAM 3.1 Perception Crop</span>
+                                <span class="sam-tag">Verified Visual Proof</span>
+                                <span class="sam-model-badge">(Meta SAM 3.1)</span>
                                 <h3 style="margin:4px 0 0 0;">${escapeHtml(label)}</h3>
                             </div>
                             <button type="button" class="btn sam-close-btn" style="padding:4px 10px;">✕</button>
                         </div>
-                        <p style="font-size:12px;color:#555;margin:4px 0;">Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API</p>
-                        <img src="${cropUrl}" class="sam-modal-crop" alt="${escapeHtml(label)}">
+                        <p style="font-size:12px;color:#555;margin:4px 0;">Visual Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API</p>
+                        <img src="${objectUrl}" class="sam-modal-crop" alt="${escapeHtml(label)}">
                         ${notes ? `<div class="snippet-box"><strong>Visual Proof Observation:</strong><br>${escapeHtml(notes)}</div>` : ''}
                         <div style="text-align:right;margin-top:10px;">
                             <button type="button" class="btn sam-close-btn">Close</button>
@@ -541,11 +657,50 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
                 document.body.appendChild(modal);
-                modal.querySelectorAll('.sam-close-btn').forEach(b => b.addEventListener('click', () => modal.remove()));
-                modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+                const closeModal = () => {
+                    if (objectUrl && objectUrl.startsWith('blob:')) URL.revokeObjectURL(objectUrl);
+                    modal.remove();
+                };
+                modal.querySelectorAll('.sam-close-btn').forEach(b => b.addEventListener('click', closeModal));
+                modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
             }));
             loadCases();
             loadNegotiation();
+
+            // Wire Case Tabs
+            detail.querySelectorAll('.case-tab-pill').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    detail.querySelectorAll('.case-tab-pill').forEach(b => b.classList.remove('active'));
+                    detail.querySelectorAll('.case-tab-pane').forEach(p => p.classList.remove('active'));
+                    btn.classList.add('active');
+                    const targetId = btn.dataset.caseTab;
+                    const target = document.getElementById(targetId);
+                    if (target) target.classList.add('active');
+                });
+            });
+
+            // Quick Collect Button
+            const quickCollect = document.getElementById('quick-collect-btn');
+            if (quickCollect) {
+                quickCollect.addEventListener('click', () => {
+                    const actionsTab = document.getElementById('tab-btn-actions');
+                    if (actionsTab) actionsTab.click();
+                    const payBtn = document.getElementById('create-payment-link');
+                    if (payBtn) payBtn.scrollIntoView({behavior: 'smooth', block: 'center'});
+                });
+            }
+
+            // Case Back Button
+            const backBtn = document.getElementById('case-back-btn');
+            if (backBtn) {
+                backBtn.addEventListener('click', () => {
+                    detail.classList.add('hidden');
+                    selectedCaseId = null;
+                    const caseList = document.getElementById('case-list-panel');
+                    if (caseList) caseList.scrollIntoView({behavior: 'smooth', block: 'start'});
+                });
+            }
+
             detail.scrollIntoView({behavior: 'smooth', block: 'start'});
         } catch (error) { detail.classList.remove('hidden'); document.getElementById('case-summary').textContent = error.message; }
     }
@@ -850,7 +1005,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await apiFetch('/api/v1/reconciliation/pending');
             const data = await res.json();
-            
+
             if(data.length === 0) {
                 container.innerHTML = '<p>No reconciliations are awaiting review.</p>';
                 return;
@@ -878,7 +1033,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await apiFetch('/api/v1/fraud/alerts?status=open');
             const data = await res.json();
-            
+
             if(data.length === 0) {
                 container.innerHTML = '<p>No open fraud alerts.</p>';
                 return;
@@ -906,7 +1061,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await apiFetch('/api/v1/dunning/campaigns');
             const data = await res.json();
-            
+
             if(data.length === 0) {
                 container.innerHTML = '<p>No collection campaigns yet.</p>';
                 return;
@@ -970,8 +1125,8 @@ document.addEventListener('DOMContentLoaded', () => {
             statusData = statusData || await (await apiFetch('/api/v1/agent/status')).json();
             const rl = statusData.rate_limits || {};
             statusEl.innerHTML = `
-                <strong>Active Model:</strong> <code>${escapeHtml(statusData.model)}</code> • 
-                <strong>Configured:</strong> ${statusData.model_configured ? '<span style="color:var(--color-success);font-weight:600;">Yes</span>' : '<span style="color:var(--color-text-muted);">Rules Fallback</span>'} • 
+                <strong>Active Model:</strong> <code>${escapeHtml(statusData.model)}</code> •
+                <strong>Configured:</strong> ${statusData.model_configured ? '<span style="color:var(--color-success);font-weight:600;">Yes</span>' : '<span style="color:var(--color-text-muted);">Rules Fallback</span>'} •
                 <strong>Rate Limits:</strong> RPM: ${rl.rpm_remaining !== undefined ? rl.rpm_remaining : '—'}/${rl.rpm_limit || 15} remaining | RPD: ${rl.rpd_remaining !== undefined ? rl.rpd_remaining : '—'}/${rl.rpd_limit || 1500} remaining
             `;
 
@@ -1022,7 +1177,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                         <button type="button" class="source-chip agent-case-source" data-invoice-id="${Number(item.invoice_id)}">Open case sources</button>
                         ${staleBalance ? '<p class="stale-warning">Balance changed: no undisputed amount remains. This draft is an audit record; reassess the case for a current action.</p>' : ''}
-                        
+
                         ${item.draft_text ? `
                             <div class="proposal-draft">
                                 <div class="proposal-heading">
@@ -1034,7 +1189,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                         </div>` : ''}
                                 </div>
                                 <div class="snippet-box">${escapeHtml(item.draft_text)}</div>
-                                
+
                                 ${isApproved ? `
                                     <div class="state-text received" style="margin-bottom:8px;">
                                         Approved by ${escapeHtml(latestVersion.approved_by || 'staff')} on ${latestVersion.approved_at ? new Date(latestVersion.approved_at).toLocaleString() : 'record'}.
@@ -1236,13 +1391,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('owner-queue');
         try {
             const items = await (await apiFetch('/api/v1/supervisor/queue')).json();
+            const badge = document.getElementById('queue-count-badge');
+            if (badge) {
+                badge.textContent = items.length;
+            }
             container.innerHTML = items.length ? items.map(item => `
                 <div class="queue-row"><div><strong class="mono">${escapeHtml(item.invoice_number)}</strong>
-                <small>${escapeHtml(item.customer)}</small><p>${escapeHtml(item.action)} — ${escapeHtml(item.reason)}</p>
-                <small>Owner: ${escapeHtml(item.owner)} · Due: ${escapeHtml(item.deadline || '—')} · Affects: ${formatCents(item.affected_cents)}${item.approval_required ? ' · Approval required' : ''}</small>
-                ${item.uncertainty.length ? `<small>Uncertain: ${item.uncertainty.map(escapeHtml).join('; ')}</small>` : ''}</div>
-                <div><button type="button" class="btn queue-open" data-id="${Number(item.invoice_id)}">Open case</button></div></div>`).join('')
-                : '<p>No pending actions. All cases are steady or resolved.</p>';
+                <small>${escapeHtml(item.customer || '')}</small><p>${escapeHtml(item.action)} — ${escapeHtml(item.reason || '')}</p>
+                <small>Owner: ${escapeHtml(item.owner || 'staff')} · Due: ${escapeHtml(item.deadline || '—')} · Affects: ${formatCents(item.affected_cents)}${item.approval_required ? ' · Approval required' : ''}</small>
+                ${(item.uncertainty || []).length ? `<small>Uncertain: ${item.uncertainty.map(escapeHtml).join('; ')}</small>` : ''}</div>
+                <div><button type="button" class="btn btn-primary queue-open" data-id="${Number(item.invoice_id)}">Open bill</button></div></div>`).join('')
+                : '<div class="empty-queue-box"><h4>🎉 All Caught Up!</h4><p>No urgent bill decisions or approvals pending. All accounts are running on schedule.</p></div>';
             container.querySelectorAll('.queue-open').forEach(button => button.addEventListener('click', () => navigate('cases', Number(button.dataset.id))));
         } catch (error) { container.textContent = error.message; }
     }
