@@ -4,6 +4,13 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **README.md Step 2, 3, and 4 Screenshots and Descriptions Aligned (2026-11-02, Codex):**
+  - Replaced duplicate case-table views in Steps 2, 3, and 4 with the exact user-provided workspace screenshots:
+    - Step 2 (`docs/images/02_financial_waterfall_and_briefing.png`): Opened case file workspace displaying the financial balance waterfall (Total Billed / Paid to Date / Remaining Balance / Disputed on Hold / Undisputed Ready to Collect) and the prompt-injection defense alert banner.
+    - Step 3 (`docs/images/03_multimodal_evidence_perception.png`): Verified Evidence tab displaying Meta SAM 3.1 computer-vision perceptual crops (receiver stamp 95%, warehouse shortage notes 92%, damaged goods 90%) and the Meta Muse Spark briefing.
+    - Step 4 (`docs/images/04_negotiation_copilot_and_approval.png`): Negotiation & AI Co-pilot tab showing autonomous Meta AI control modes (`Manual with co-pilot`, `Delegate to AI`), staff message editor, and simulated customer reply testing box.
+  - Synchronized updated images and `README.md` to AWS EC2 staging host.
+
 - **README.md Screenshots, Walkthrough, and Mermaid Fix Applied (2026-11-02, Codex):**
   - Removed the top logo image and changed judge-specific headings to an objective, user-facing "Walkthrough".
   - Fixed the GitHub Mermaid parse error in Section 5 (End-to-End Workflow) by replacing the sequence diagram with a clean, robust directed flowchart (`flowchart TD`).
@@ -1169,4 +1176,16 @@ ode --check).
   - `docs/images/`: Added `01_business_signin_modal.png`, `02_financial_waterfall_and_briefing.png`, `03_multimodal_evidence_perception.png`, `04_negotiation_copilot_and_approval.png`, and `05_business_owner_control_center.png` captured live from `https://recoverflaw.duckdns.org/`.
   - Synced `docs/images/` and `README.md` to AWS EC2 staging host.
 - **Verification:** Verified zero emojis in `README.md`, all 5 image links exist and load, `git diff --check README.md` passed cleanly, and live health endpoint confirmed HTTP 200.
+- **Limits / next:** Working tree clean.
+
+### 2026-11-02 — Codex — Updated Walkthrough Screenshots for Steps 2, 3, and 4
+
+- **Objective:** Replace identical bill-table screenshots in Steps 2, 3, and 4 with the specific case workspace views provided by the user.
+- **Changed:**
+  - `docs/images/02_financial_waterfall_and_briefing.png`: Replaced with user's screenshot showing the opened case workspace, financial waterfall balance cards, and blocked policy prompt-injection event.
+  - `docs/images/03_multimodal_evidence_perception.png`: Replaced with user's screenshot showing the Verified Evidence & AI Proof tab with Meta SAM 3.1 visual perception chips and Muse Spark executive brief.
+  - `docs/images/04_negotiation_copilot_and_approval.png`: Replaced with user's screenshot showing the Negotiation & AI Co-pilot tab with control modes, staff message editor, and simulated customer reply box.
+  - `README.md`: Updated accompanying walkthrough text for Steps 2, 3, and 4 to accurately explain the visual elements in each image. Cleaned trailing whitespace; confirmed zero emojis.
+  - Synced `docs/images/` and `README.md` to AWS EC2 staging host via SCP.
+- **Verification:** Verified `git diff --check README.md` passed cleanly; confirmed all image paths exist and load.
 - **Limits / next:** Working tree clean.

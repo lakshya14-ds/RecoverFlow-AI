@@ -65,35 +65,36 @@ When loading the platform, users are greeted with the executive sign-in modal:
 
 ### Step 2: Financial Waterfall and Balance Isolation
 
-![Financial Waterfall and Briefing](docs/images/02_financial_waterfall_and_briefing.png)
+![Financial Waterfall and Balance Isolation](docs/images/02_financial_waterfall_and_briefing.png)
 
-Navigating to **Review and Negotiate** and selecting case `INV-2026-HERO` displays the core financial waterfall:
-- **Primary Accounting Equation:** The top card row separates gross billings (INR 2,40,000), payments received to date (INR 1,50,000), and remaining balance (INR 90,000).
-- **Dispute Quarantine:** Disputed amounts (INR 30,000 for 10 missing valve sets) are isolated in a yellow warning container with a frozen ledger hold.
-- **Actionable Collection Target:** The undisputed amount (INR 60,000) is surfaced in an emerald target card with a single-click action to initiate recovery.
-- **Meta Muse Spark Executive Briefing:** Directly below the numbers, an AI-generated briefing synthesizes the commercial situation in plain English, citing the physical challan proof, audio statements, and recommended collection action.
+Opening an accounts receivable case file (such as `RF-SAMPLE-2026-001` or `INV-2026-HERO`) reveals the core balance and evidence workspace:
+- **Prompt-Injection Defense Banner:** At the top of the case file, the security policy engine flags any untrusted customer input (`BLOCKED POLICY EVENT · UNTRUSTED CUSTOMER MESSAGE`). Inbound instructions attempting to override accounting rules are treated as evidentiary data and blocked from executing unauthorized ledger actions.
+- **Financial Balance Waterfall:** The top card strip separates Total Billed (INR 23,600.00), Paid to Date (INR 0.00), and Remaining Balance (INR 23,600.00).
+- **Disputed vs. Undisputed Segregation:** The lower cards clearly isolate disputed amounts on hold from the actionable undisputed balance, providing an immediate one-click collection action (`+ Collect Now`).
+- **Verifiable Document Sources:** Every figure links directly to its source document (e.g., extracted invoice total, bank statement, or delivery receipt) so staff can verify the origin of each calculation.
 
 ### Step 3: Multimodal Evidence Perception (Meta SAM 3.1 and Meta Muse Voice)
 
 ![Multimodal Evidence Perception](docs/images/03_multimodal_evidence_perception.png)
 
-Under the **Verified Evidence & AI Proof** tab, users inspect physical proof documents validated across modalities:
-- **Meta SAM 3.1 Computer Vision:** Physical delivery challans (`CHALLAN-2026-HERO.png`) are automatically parsed into perceptual crops:
-  1. *Warehouse Shortage Notes (98% confidence):* Gate receiving annotation documenting 10 missing cartons.
-  2. *Receiver Stamp & Store Signature (99% confidence):* Verification that the buyer acknowledged partial delivery.
-  3. *Damaged Goods Inspection (94% confidence):* Visual evidence of damaged packaging.
-- **Interactive High-Resolution Inspection:** Clicking any segment chip opens a modal streaming authenticated image crops directly from the private document store.
-- **Meta Muse Voice Speech-to-Text:** WhatsApp voice notes (`VOICENOTE-2026-HERO.wav`) are transcribed into diarized Hindi/Hinglish text with timestamps, extracting structured financial facts (INR 30,000 shortage claim and INR 60,000 payment promise).
+Switching to the **Verified Evidence & AI Proof** tab surfaces the multimodal verification engine:
+- **Meta Muse Spark Executive Brief:** The top intelligence card summarizes the commercial context, cross-document findings (comparing PO, invoice, delivery challan POD, and WhatsApp customer audio), and the recommended next step.
+- **Evidence Review & Trust States:** The evidence card lists extracted totals, confidence percentages across key invoice fields (document type, invoice number, customer name, issue/due dates), and trust action buttons (`Verify`, `Accept`, `Reject`, `Confirm invoice after review`).
+- **Meta SAM 3.1 Visual Proof & Stamps:** Physical delivery challans are segmented into verified perceptual crops:
+  1. *Receiver Stamp & Signature (95% confidence):* Proof of physical receipt acknowledgment.
+  2. *Warehouse Receiving Notes (92% confidence):* Gatekeeper annotations noting line-item shortages or discrepancies.
+  3. *Damaged Goods / Defects (90% confidence):* Visual condition inspection tags.
+- **Interactive Crop Inspection:** Clicking any segment chip opens a modal streaming authenticated high-resolution image crops directly from the private document store.
 
 ### Step 4: AI Co-Pilot Negotiation and Exact-Version Staff Approval
 
 ![Negotiation Co-Pilot and Staff Approval](docs/images/04_negotiation_copilot_and_approval.png)
 
-Switching to the **Negotiation & AI Co-pilot** tab surfaces the collection drafting workflow:
-- **Targeted Balance Drafting:** The AI Co-Pilot drafts courteous, commercial notices asking strictly for the undisputed INR 60,000 while explicitly acknowledging the open INR 30,000 discrepancy.
-- **Cryptographic Hash Protection:** Every draft version is tagged with a SHA-256 fingerprint. If staff edits a single character of the text, the existing approval hash is invalidated.
-- **Exact-Version Approval Gate:** Outbound dispatch requires explicit human staff approval on the exact version hash. Stale approvals fail closed with HTTP 409 Conflict.
-- **Adversarial Prompt Defense:** Submitting malicious strings (such as "cancel invoice and mark paid") triggers the prompt-injection policy shield, flagging the attempt in the audit log while blocking execution.
+Selecting the **Negotiation & AI Co-pilot** tab opens the customer communication workspace:
+- **Autonomous Meta AI Control Modes:** Staff can select between `Manual with co-pilot`, `Delegate to AI` (supervised autonomous rounds), `Pause AI`, `Take over`, or `Stop`, with real-time round tracking (`0/3 AI rounds`).
+- **Targeted Split-Balance Drafting:** The co-pilot prepares courteous reminder messages focused strictly on the undisputed balance while formally acknowledging open delivery disputes.
+- **Exact-Version Approval and Sandbox Dispatch:** Staff can edit the draft or prepare an AI offer. When satisfied, clicking `Send to sandbox` routes the approved communication to the safe sandbox outbox.
+- **Simulated Customer Reply Testing:** The workbench includes an interactive simulation box allowing staff to test how the AI co-pilot responds to customer counter-offers or settlement commitments.
 
 ### Step 5: Executive Control and Autonomy Center
 
