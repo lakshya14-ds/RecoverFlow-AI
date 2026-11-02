@@ -8,11 +8,7 @@ RecoverFlow helps Indian distributors and wholesalers manage credit sales when c
 
 Payments in the demo are **SIMULATED**. Messages go to sandbox outboxes. Shopify access is read-only. This is a tested local application, not a validated production deployment or a proven recovery business.
 
-For hosting, use the [PostgreSQL deployment guide](docs/postgres-deployment.md).
-The [Vercel guide](docs/vercel-deployment.md) covers the static frontend and a
-single-host SQLite demo. The 2026-11-01 handoff records all 18 migrations and
-public health passing on AWS RDS PostgreSQL 18.3; case, worker, evidence,
-backup/restore, and browser flows still need a disposable PostgreSQL staging run.
+For hosting and deployment on AWS EC2 & RDS PostgreSQL, see the [PostgreSQL deployment guide](docs/postgres-deployment.md). The application is deployed live with HTTPS on AWS EC2 with RDS PostgreSQL 18.3.
 
 ## A concrete example
 

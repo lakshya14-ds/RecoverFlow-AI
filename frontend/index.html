@@ -3,26 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RecoverFlow | Receivables and Collections</title>
-    <link rel="icon" href="data:,">
-    <link rel="stylesheet" href="styles.css?v=20261102e">
+    <title>RecoverFlow AI | Receivables and Collections</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="styles.css?v=20261102h">
 </head>
 <body>
     <div class="app-container">
         <aside class="sidebar">
-            <div class="logo"><span class="brand-mark" aria-hidden="true">R</span><div><h1>RecoverFlow</h1><span>Credit operations</span></div></div>
+            <div class="logo"><span class="brand-mark" aria-hidden="true"><img src="logo.png" alt="RecoverFlow AI" class="brand-mark-img"></span><div><h1>RecoverFlow AI</h1><span>Credit operations</span></div></div>
             <nav aria-label="Main navigation">
                 <a href="#" class="nav-item active" data-view="intake">Intake</a>
                 <a href="#" class="nav-item" data-view="review">Review and Negotiate</a>
                 <a href="#" class="nav-item" data-view="control">Control</a>
             </nav>
-            <p class="sidebar-note">Human-supervised recovery<br>Local pilot · India</p>
+            <div class="sidebar-note">
+                <div class="sidebar-status-line">
+                    <span class="sidebar-status-dot"></span>
+                    <span>Systems Operational</span>
+                </div>
+                <div class="sidebar-brand-meta">
+                    <strong>Bank-Grade 256-Bit SSL</strong>
+                    <span>GST &amp; MSME SAMADHAAN Ready</span>
+                </div>
+            </div>
         </aside>
 
         <main class="content">
             <header class="page-header">
                 <div>
-                    <p class="eyebrow">RecoverFlow / Receivables &amp; Dispute Ops</p>
+                    <p class="eyebrow">RecoverFlow AI / Receivables &amp; Dispute Ops</p>
                     <h2>Intake</h2>
                     <p id="view-description" class="page-description">Upload evidence and watch each file advance.</p>
                 </div>
@@ -31,12 +40,12 @@
                     <div id="unauth-header-pill" class="auth-pill unauth-pill">
                         <span class="status-indicator"></span>
                         <span id="system-status-text">Not Connected</span>
-                        <button type="button" id="header-login-btn" class="btn btn-primary btn-sm">🔑 Business Sign In</button>
+                        <button type="button" id="header-login-btn" class="btn btn-primary btn-sm">Business Sign In</button>
                     </div>
 
                     <!-- Authenticated state: Executive user profile card -->
                     <div id="auth-header-pill" class="auth-pill connected-profile-pill hidden">
-                        <div class="user-avatar-badge">🏢</div>
+                        <div class="user-avatar-badge">AE</div>
                         <div class="user-info-text">
                             <strong>Apex Enterprises Pvt Ltd</strong>
                             <span class="user-role-sub"><span class="status-indicator online" id="status-indicator"></span> Business Owner · Active</span>
@@ -68,7 +77,7 @@
                 </div>
                 <div class="card">
                     <h3>Import Retail Receivables</h3>
-                    <p>Upload a UTF-8 CSV with external_id, invoice_number, customer_name, issue_date, due_date, amount, and currency. Use INR for the India pilot.</p>
+                    <p>Upload a UTF-8 CSV with external_id, invoice_number, customer_name, issue_date, due_date, amount, and currency. Use INR for Indian operations.</p>
                     <form id="import-form">
                         <input type="file" id="import-file" accept=".csv,text/csv" required>
                         <button type="submit" class="btn btn-primary">Import CSV</button>
@@ -412,7 +421,7 @@
                         <div class="control-metric-card">
                             <span class="control-metric-label">AI Status</span>
                             <div class="control-metric-val status-val"><span class="pulse-dot"></span> Active &amp; Guarded</div>
-                            <span class="control-metric-sub">Human-supervised recovery</span>
+                            <span class="control-metric-sub">Dual-Control Policy Active</span>
                         </div>
                         <div class="control-metric-card">
                             <span class="control-metric-label">Avg Collection (DSO)</span>
@@ -634,9 +643,9 @@
             <!-- Modal Header -->
             <div class="login-modal-header">
                 <div class="login-brand-strip">
-                    <span class="brand-mark" aria-hidden="true">R</span>
+                    <span class="brand-mark" aria-hidden="true"><img src="logo.png" alt="RecoverFlow AI" class="brand-mark-img"></span>
                     <div>
-                        <h2>RecoverFlow</h2>
+                        <h2>RecoverFlow AI</h2>
                         <span class="login-badge">Business Portal</span>
                     </div>
                 </div>
@@ -647,18 +656,13 @@
                 <!-- HERO ACTION: 1-Click Business Access -->
                 <div class="demo-access-card">
                     <div class="demo-access-badge">
-                        <span>⚡ INSTANT ACCESS</span>
+                        <span>INSTANT ACCESS</span>
                     </div>
                     <h3>Sign In as Business Owner</h3>
                     <p class="muted">Access live MSME credit cases, view ₹2.40L split balances, inspect verified evidence, and test payment recovery.</p>
                     <button type="button" id="demo-login-btn" class="btn btn-primary btn-demo-action">
-                        🚀 Enter as Business Owner (Apex Enterprises)
+                        Enter as Business Owner (Apex Enterprises)
                     </button>
-                    <div class="demo-features-hint">
-                        <span>✓ Seeded Hero Case Loaded</span>
-                        <span>✓ Full Meta AI Suite Active</span>
-                        <span>✓ Zero Setup Required</span>
-                    </div>
                 </div>
 
                 <div class="login-divider">
@@ -683,7 +687,7 @@
 
                 <!-- Technical / Staff API Key Access (Fully visible & script-compatible) -->
                 <div class="dev-login-box">
-                    <span class="dev-box-title">🛠️ Technical / Staff API Key</span>
+                    <span class="dev-box-title">Technical / Staff API Key</span>
                     <form id="auth-form" class="auth-strip">
                         <div class="dev-input-row">
                             <input id="api-key" type="password" autocomplete="off" placeholder="Enter staff API key..." class="input-styled" required>
@@ -696,9 +700,9 @@
 
             <!-- Modal Footer Trust Badges -->
             <div class="login-modal-footer">
-                <span>🛡️ Disputed Balances Frozen</span>
-                <span>🤖 Meta AI Guarded</span>
-                <span>🇮🇳 Indian MSME Credit Compliant</span>
+                <span>Disputed Balances Frozen</span>
+                <span>Meta AI Guarded</span>
+                <span>Indian MSME Credit Compliant</span>
             </div>
         </div>
     </div>

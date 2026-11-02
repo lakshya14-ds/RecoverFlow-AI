@@ -1,2 +1,2 @@
-// Local runs use the same origin. The Vercel build replaces this file in dist/.
+// Default backend origin (empty string uses current origin).
 window.RECOVERFLOW_BACKEND_ORIGIN = '';

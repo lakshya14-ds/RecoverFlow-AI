@@ -13,7 +13,7 @@ integrations have been validated and explicitly enabled.
 
 1. Review the checkout with `git status --short`. Commit and push only reviewed
    application and deployment files. Never commit `.env`, database files, uploads,
-   or secrets. Vercel and the server deploy the pushed commit.
+   or secrets. The server deploys the reviewed commit.
 2. Use Python 3.12. On the backend install `requirements-postgres.txt` rather than
    `requirements.txt`; it adds the pinned psycopg 3 driver. Keep one API process and
    one `app.worker` process initially. The API already runs intake and supervisor
@@ -51,13 +51,13 @@ python3.12 -m venv .venv
 
 Store settings in a private backend environment (for example a root-owned,
 mode-0600 systemd environment file). Never put database credentials in GitHub,
-Vercel's frontend settings, command-line arguments, or this document. Use the
+frontend environment files, command-line arguments, or this document. Use the
 private RDS endpoint and URL-encode reserved characters in the password:
 
 ```text
 DATABASE_URL=postgresql+psycopg://USER:PASSWORD@PRIVATE_RDS_HOST:5432/recoverflow?sslmode=verify-full&sslrootcert=/etc/ssl/certs/rds-ca.pem
 RECOVERFLOW_API_KEY=GENERATE_A_NEW_LONG_RANDOM_VALUE
-FRONTEND_ORIGINS=https://YOUR-PROJECT.vercel.app
+FRONTEND_ORIGINS=https://recoverflaw.duckdns.org
 DOCUMENT_STORAGE_PATH=/srv/recoverflow-data/documents
 INTAKE_STORAGE_PATH=/srv/recoverflow-data/intake
 INCOMING_STORAGE_PATH=/srv/recoverflow-data/incoming
@@ -119,12 +119,14 @@ volume, and rehearse restoring both together. See [database operations](ops-back
 
 ## 6. Publish the frontend
 
-Import the pushed GitHub repository into Vercel using its existing `vercel.json`.
-Set **only** `RECOVERFLOW_BACKEND_URL=https://api.example.com` in the Vercel build
-environment. After Vercel assigns the site URL, set that exact HTTPS origin in the
-backend's `FRONTEND_ORIGINS` and restart the API. Open the site, enter the staff
-key, and verify that cases and documents load. Follow the existing
-[Vercel instructions](vercel-deployment.md) for the import screen and smoke test.
+On the EC2 host, Nginx directly serves the static `frontend/` directory and reverse-proxies
+API requests (`/api/` and WebSocket endpoints) to the backend uvicorn service running on
+`127.0.0.1:8002`.
+In `frontend/config.js`, leave `RECOVERFLOW_BACKEND_URL` empty to automatically use the
+current domain (e.g., `https://recoverflaw.duckdns.org`). Ensure `FRONTEND_ORIGINS` in
+the backend environment matches the hosting origin. Open the site in the browser,
+verify the executive sign-in modal, enter credentials or use 1-click Demo Access, and
+confirm all dashboards and live feeds connect properly.
 
 ## Launch gate
 

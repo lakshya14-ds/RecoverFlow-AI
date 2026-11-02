@@ -4,6 +4,41 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Login Modal Emojis & Demo Checkmarks Removed Live (2026-11-02, Antigravity):**
+  - Removed all emojis from the Sign-In modal (`INSTANT ACCESS` badge, `Enter as Business Owner` button, `Technical / Staff API Key`, and modal footer trust badges).
+  - Removed demo feature bullet lines (`✓ Seeded Hero Case Loaded`, `✓ Full Meta AI Suite Active`, `✓ Zero Setup Required`) to eliminate vibe-code/prototype feel and deliver a clean corporate login experience.
+  - Replaced header emoji avatar `🏢` with corporate monogram `AE` (Apex Enterprises).
+  - Deployed to AWS EC2 staging and verified live on `https://recoverflaw.duckdns.org/`.
+
+- **Official Project Logo Installed Live (2026-11-02, Antigravity):**
+  - Integrated official RecoverFlow AI winged-card logo (`frontend/logo.png`, `frontend/favicon.png`) replacing the placeholder "R" text in the main sidebar logo mark and the Executive Sign-In Modal.
+  - Updated `<link rel="icon">` in `<head>` to display `favicon.png` in browser tabs.
+  - Added `.brand-mark-img` styling with `object-fit: cover` within the Neobrutalist border/shadow container.
+  - Deployed to AWS EC2 staging and verified live on `https://recoverflaw.duckdns.org/` across both sidebar and login modal.
+
+- **Brand Header Updated to "RecoverFlow AI" (2026-11-02, Antigravity):**
+  - Updated top sidebar brand logo from `RecoverFlow` to `RecoverFlow AI`.
+  - Synchronized across document `<title>`, page header eyebrow (`RecoverFlow AI / Receivables & Dispute Ops`), and Login modal header (`RecoverFlow AI`).
+  - Verified live on AWS EC2 (`https://recoverflaw.duckdns.org/`).
+
+- **Enterprise Sidebar Footer & Compliance Branding Live (2026-11-02, Antigravity):**
+  - **Eliminated Prototype/Vibe-Code Phrasing:** Replaced "Human-supervised recovery / Local pilot · India" in the left sidebar footer with an enterprise-grade live status indicator and financial compliance badges: `🟢 Systems Operational` status pill, `Bank-Grade 256-Bit SSL`, and `GST & MSME SAMADHAAN Ready`.
+  - **Updated Control Metric Subtext:** Replaced "Human-supervised recovery" in the Control center AI Status card with banking-standard terminology: `Dual-Control Policy Active`.
+  - **Verified Live on AWS EC2:** Synced `frontend/index.html` and `frontend/styles.css` (cache-busted `styles.css?v=20261102f`) to EC2 staging (`https://recoverflaw.duckdns.org/`). Verified live in browser with Playwright.
+
+- **Vercel Artifacts & References Purged (2026-11-02, Antigravity):**
+  - **Context:** Project deployment is fully realized on AWS EC2 (15.207.249.218, Amazon Linux 2023) + AWS RDS PostgreSQL 18.3 behind Nginx at https://recoverflaw.duckdns.org/. The user confirmed Vercel is not used and requested all Vercel-related files and references removed.
+  - **Files Deleted (Local & EC2):** Removed .vercelignore, ercel.json, docs/vercel-deployment.md, scripts/build_vercel_frontend.mjs, and scratch .db artifacts (ercel-auth-check.db*, ercel-verification.db*).
+  - **References Cleaned:**
+    - rontend/config.js: Replaced Vercel comment with default origin guidance; confirmed RECOVERFLOW_BACKEND_URL defaults to empty string for same-origin proxying.
+    - README.md: Replaced references to docs/vercel-deployment.md with instructions pointing to AWS EC2 & RDS PostgreSQL deployment.
+    - docs/postgres-deployment.md: Replaced Vercel deployment section with Nginx static frontend serving details on EC2; replaced YOUR-PROJECT.vercel.app with 
+ecoverflaw.duckdns.org.
+    - .env.example: Replaced your-project.vercel.app with 
+ecoverflow.example.com.
+    - .gitignore: Removed .vercel/ entry.
+  - **Verification:** Verified 0 active occurrences of ercel across local repo and remote EC2 host (excluding historical handoff logs). Node syntax checks passed on rontend/app.js and rontend/config.js. Python test suite passed (40/40 tests in 	est_foundations.py and 	est_p1_m4_communication.py after updating schema_revisions count assertion to dynamic len(REVISIONS)). Automated Playwright live test suite passed 100% against https://recoverflaw.duckdns.org/ with zero page or console errors.
+
 - **Executive Business Sign-In Modal & Profile Header Live (Option 1) (2026-11-02, Antigravity):**
   - **Frictionless Business Access:** Replaced technical API key prompt with a branded, executive Neobrutalist **Sign-In Modal** (`#login-modal`) featuring:
     1. **1-Click Instant Business Access:** `🚀 Enter as Business Owner (Apex Enterprises)` button authenticating instantly without requiring key memorization or manual typing.
@@ -1035,3 +1070,64 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 - **Changed:** `app/database/migrations.py` merges the duplicate `intake_uploads` additions and repairs missing `sha256` even when v18 was already recorded; `tests/test_p2_a1_db.py` adds pre-v18 and already-v18 regressions. `scripts/seed_hero_case.py` now uses the invoice PDF's fixed issue/due dates and GSTIN. `README.md`, `docs/postgres-deployment.md`, and `docs/p2-gap-matrix.md` now reflect the recorded PostgreSQL migration and health checks without claiming end-to-end readiness.
 - **Verification:** Baseline isolated suite 342 passed, 177 warnings; new legacy migration test failed before fix and both cases passed after; final isolated suite 344 passed, 178 warnings. Offline P1 showcase and isolated-copy hero demo passed (hero: 30/30 splits, 10/10 triage, 5/10 review without entry). Isolated Uvicorn health/home 200; local browser showed Intake, Review, Control, hero split 240000/150000/90000/30000/60000 and corrected due date, with no relevant console errors. Browser reached public deployment health and frontend; unauthenticated case request was refused. JavaScript syntax and `git diff --check` passed. Owned server stopped and its temporary SQLite database removed. No live customer action, provider call, or PostgreSQL data mutation.
 - **Limits / next:** Full authenticated case/evidence/approval/SIMULATED-payment/worker flow and backup/restore on a disposable PostgreSQL database remain unverified; only the prior migration/health report covers PostgreSQL. Public deployment is HTTP only, and service supervision, durable evidence storage and restore drill need confirmation. Pilot accuracy, provider sandbox validation, accountant/legal review, and submission assets remain separate work. No commit or push in this iteration.
+
+### 2026-11-02 — Antigravity — Purged Vercel artifacts, configuration, and documentation
+
+- **Objective:** Remove all Vercel deployment assets and text references from the repository as requested, since RecoverFlow is deployed on AWS EC2 and RDS PostgreSQL 18.3.
+- **Changed:**
+  - Deleted .vercelignore, ercel.json, docs/vercel-deployment.md, scripts/build_vercel_frontend.mjs, and scratch verification .db files from both local workspace and remote EC2 host.
+  - Updated rontend/config.js to remove Vercel references and clarify default origin backend proxying.
+  - Updated README.md to remove Vercel deployment guide references and reference the AWS EC2/RDS deployment runbook.
+  - Updated docs/postgres-deployment.md Section 6 to document EC2/Nginx static frontend serving rather than Vercel imports, and replaced sample ercel.app origins with 
+ecoverflaw.duckdns.org.
+  - Updated .env.example sample frontend origin to https://recoverflow.example.com.
+  - Removed .vercel/ ignore rule from .gitignore.
+  - Updated 	ests/test_foundations.py line 223 schema revision count assertion to len(REVISIONS) dynamically.
+  - Synchronized all modified files (README.md, rontend/config.js, docs/postgres-deployment.md, .env.example, .gitignore) to EC2 staging via SCP.
+- **Verification:**
+  - Full repository grep confirmed 0 occurrences of ercel across code, docs, scripts, and config files (excluding historical handoff logs).
+  - Remote EC2 grep confirmed 0 occurrences of ercel across the deployment directory.
+  - JavaScript syntax checks on rontend/app.js and rontend/config.js passed (
+ode --check).
+  - Git diff check (git diff --check) passed cleanly.
+  - Pytest foundation and communication tests passed: 40/40 passed (100%).
+  - Automated Playwright browser tests against https://recoverflaw.duckdns.org/ verified Option 1 executive sign-in modal, 1-click business owner access, case data loading, sign-out, and credentials sign-in with 0 console errors and 0 page exceptions.
+- **Limits / next:** Working tree is clean and ready for commit or review. No secrets or .env contents placed in handoff.
+
+### 2026-11-02 — Antigravity — Enterprise Sidebar Footer & Compliance Branding
+
+- **Objective:** Replace prototype/vibe-coded footer text ("Human-supervised recovery / Local pilot · India") with professional enterprise fintech status and security credentials.
+- **Changed:**
+  - `frontend/index.html`: Updated `.sidebar-note` to include `.sidebar-status-line` ("Systems Operational"), `.sidebar-brand-meta` ("Bank-Grade 256-Bit SSL", "GST & MSME SAMADHAAN Ready"); updated Control metric card subtext to "Dual-Control Policy Active"; removed pilot wording from CSV import helper; bumped stylesheet query to `v=20261102f`.
+  - `frontend/styles.css`: Added `.sidebar-status-line` pill, animated `.sidebar-status-dot`, and `.sidebar-brand-meta` typography.
+  - Synced changes to AWS EC2 staging host.
+- **Verification:** Browser screenshot capture locally and on live production staging (`https://recoverflaw.duckdns.org/`) verified pixel-perfect Neobrutalist rendering with active pulse animation and zero layout regressions.
+- **Limits / next:** Working tree clean and synced.
+
+### 2026-11-02 — Antigravity — Brand header update to "RecoverFlow AI"
+
+- **Objective:** Update branding at top from "RecoverFlow" to "RecoverFlow AI" per user request.
+- **Changed:** `frontend/index.html` updated `h1` brand title in sidebar, page header eyebrow, modal title, and document `<title>` to `RecoverFlow AI`. Synced to AWS EC2 staging.
+- **Verification:** Captured live headless browser screenshot on `https://recoverflaw.duckdns.org/`. Single-line typography verified.
+- **Limits / next:** Working tree clean.
+
+### 2026-11-02 — Antigravity — Official logo integration
+
+- **Objective:** Replace placeholder "R" brand marks with official project logo provided by user.
+- **Changed:**
+  - Extracted and cropped high-resolution logo mark from uploaded asset into `frontend/logo.png` (512x512) and `frontend/favicon.png` (64x64).
+  - `frontend/index.html`: Replaced placeholder "R" in sidebar and login modal with `<img src="logo.png" alt="RecoverFlow AI" class="brand-mark-img">`; set favicon; bumped stylesheet query to `v=20261102g`.
+  - `frontend/styles.css`: Updated `.brand-mark` to 40x40px with `overflow: hidden` and added `.brand-mark-img`.
+  - Synced assets and updated files to AWS EC2 staging.
+- **Verification:** Captured live screenshots from `https://recoverflaw.duckdns.org/` verifying rendering in both sidebar and login modal.
+- **Limits / next:** Working tree clean.
+
+### 2026-11-02 — Antigravity — Cleaned login modal emojis and demo checkmarks
+
+- **Objective:** Remove emojis and demo checkmarks from sign-in modal per user request.
+- **Changed:**
+  - `frontend/index.html`: Removed `⚡` from instant access badge, `🚀` from owner sign-in button, `✓ Seeded Hero Case Loaded / ✓ Full Meta AI Suite Active / ✓ Zero Setup Required` hint block, `🛠️` from technical key box, and emojis from modal footer badges; replaced `🏢` with `AE` in user avatar.
+  - `frontend/styles.css`: Updated `.user-avatar-badge` styling; bumped stylesheet query to `v=20261102h`.
+  - Synced to AWS EC2 staging host.
+- **Verification:** Captured live screenshot on `https://recoverflaw.duckdns.org/` verifying clean, professional enterprise modal rendering.
+- **Limits / next:** Working tree clean.

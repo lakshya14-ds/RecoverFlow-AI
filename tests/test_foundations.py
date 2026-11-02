@@ -220,7 +220,7 @@ def test_fresh_sqlite_startup_migrates_float_columns_and_is_repeatable(tmp_path)
         columns = dict((name, column_type) for _, name, column_type, *_ in connection.execute("PRAGMA table_info(invoices)"))
         assert "CHAR" in columns["amount"].upper()
         assert connection.execute("SELECT amount FROM invoices WHERE invoice_number='LEGACY-1'").fetchone()[0] == "100.10"
-        assert connection.execute("SELECT COUNT(*) FROM schema_revisions").fetchone()[0] == 18
+        assert connection.execute("SELECT COUNT(*) FROM schema_revisions").fetchone()[0] == len(__import__("app.database.migrations", fromlist=["REVISIONS"]).REVISIONS)
 
 
 def test_credit_without_cash_is_not_a_verified_payment(db):
