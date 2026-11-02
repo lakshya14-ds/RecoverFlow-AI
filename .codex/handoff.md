@@ -4,6 +4,12 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **README.md Screenshots, Walkthrough, and Mermaid Fix Applied (2026-11-02, Codex):**
+  - Removed the top logo image and changed judge-specific headings to an objective, user-facing "Walkthrough".
+  - Fixed the GitHub Mermaid parse error in Section 5 (End-to-End Workflow) by replacing the sequence diagram with a clean, robust directed flowchart (`flowchart TD`).
+  - Added 5 live desktop/modal screenshots into `docs/images/` (`01_business_signin_modal.png`, `02_financial_waterfall_and_briefing.png`, `03_multimodal_evidence_perception.png`, `04_negotiation_copilot_and_approval.png`, `05_business_owner_control_center.png`) and documented the technical and business workings alongside each image.
+  - Verified zero emojis, valid relative links, clean `git diff --check`, and synchronized all assets to the live AWS EC2 host.
+
 - **Comprehensive README.md Redesign Completed (2026-11-02, Codex):**
   - Redesigned `README.md` into an executive, judge-facing, deeply technical manual without emojis anywhere.
   - Documented value proposition ("Chase only the money that is actually owed"), synthetic hero case breakdown (INR 2,40,000 gross / INR 1,50,000 paid / INR 90,000 open / INR 30,000 disputed / INR 60,000 undisputed), 5-minute judge walkthrough, core capabilities, and bounded specialist design.
@@ -1154,3 +1160,13 @@ ode --check).
   - Smallest reliable test suite `tests/test_foundations.py` executed: 27/27 passed (100%).
   - `git diff --check README.md` passed with zero errors or warnings.
 - **Limits / next:** Working tree clean. Live payment remains simulated; messaging remains sandboxed.
+
+### 2026-11-02 — Codex — README Walkthrough, Screenshots Integration, and Mermaid Fix
+
+- **Objective:** Fix the GitHub Mermaid display error, remove the top logo image, replace judge-targeted phrasing with a clean "Walkthrough", and embed 5 recent live screenshots with technical explanations.
+- **Changed:**
+  - `README.md`: Removed top `![RecoverFlow AI Logo]`; renamed Section 2 to `Walkthrough`; eliminated judge-specific phrasing across the document; converted Section 5's sequence diagram to a robust `flowchart TD` resolving GitHub's parser syntax error; embedded 5 live screenshots from `docs/images/` with detailed explanations of business sign-in, balance waterfall, Meta SAM 3.1 & Muse Voice perception, negotiation co-pilot with exact-version approval, and the executive control center.
+  - `docs/images/`: Added `01_business_signin_modal.png`, `02_financial_waterfall_and_briefing.png`, `03_multimodal_evidence_perception.png`, `04_negotiation_copilot_and_approval.png`, and `05_business_owner_control_center.png` captured live from `https://recoverflaw.duckdns.org/`.
+  - Synced `docs/images/` and `README.md` to AWS EC2 staging host.
+- **Verification:** Verified zero emojis in `README.md`, all 5 image links exist and load, `git diff --check README.md` passed cleanly, and live health endpoint confirmed HTTP 200.
+- **Limits / next:** Working tree clean.
