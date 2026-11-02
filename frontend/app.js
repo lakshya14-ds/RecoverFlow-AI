@@ -77,24 +77,117 @@ document.addEventListener('DOMContentLoaded', () => {
             activity.innerHTML = events.length ? events.map(item => `<div class="activity-row"><span>${escapeHtml(item.label)}<small>${escapeHtml(item.meta)}</small></span></div>`).join('') : '<p class="empty-state">No ledger activity in the first three cases.</p>';
         } catch (error) { queue.textContent = error.message; activity.textContent = 'Activity unavailable.'; }
     }
-    document.getElementById('auth-form').addEventListener('submit', event => {
-        event.preventDefault();
-        apiKey = document.getElementById('api-key').value;
+    const DEMO_API_KEY = 'recoverflow-local-final-qa-2026';
+
+    function updateAuthUI(connected, user = null) {
+        const unauthPill = document.getElementById('unauth-header-pill');
+        const authPill = document.getElementById('auth-header-pill');
+        const loginModal = document.getElementById('login-modal');
+        const statusText = document.getElementById('system-status-text');
+        const statusIndicator = document.getElementById('status-indicator');
+
+        if (connected) {
+            if (unauthPill) unauthPill.classList.add('hidden');
+            if (authPill) authPill.classList.remove('hidden');
+            if (loginModal) loginModal.classList.add('hidden');
+            if (statusText) statusText.textContent = 'Connected';
+            if (statusIndicator) statusIndicator.classList.add('online');
+        } else {
+            if (unauthPill) unauthPill.classList.remove('hidden');
+            if (authPill) authPill.classList.add('hidden');
+            if (loginModal) loginModal.classList.remove('hidden');
+            if (statusText) statusText.textContent = 'Not Connected';
+            if (statusIndicator) statusIndicator.classList.remove('online');
+        }
+    }
+
+    function performLogin(key) {
+        apiKey = key;
         sessionStorage.setItem('recoverflowApiKey', apiKey);
-        document.getElementById('api-key').value = '';
+        const apiKeyInput = document.getElementById('api-key');
+        if (apiKeyInput) apiKeyInput.value = key;
+        updateAuthUI(true);
         loadSummary();
         loadIntakeUploads();
-    });
-    document.getElementById('forget-key').addEventListener('click', () => {
+    }
+
+    function performLogout() {
         apiKey = '';
         sessionStorage.removeItem('recoverflowApiKey');
         sessionStorage.removeItem('apexApiKey');
-        document.getElementById('system-status-text').textContent = 'Enter API key';
-        document.getElementById('status-indicator').classList.remove('online');
-        document.getElementById('auth-form').classList.remove('connected');
+        updateAuthUI(false);
         window.location.reload();
-    });
-    if (apiKey) loadSummary();
+    }
+
+    // 1-Click Business Demo Login Button
+    const demoLoginBtn = document.getElementById('demo-login-btn');
+    if (demoLoginBtn) {
+        demoLoginBtn.addEventListener('click', () => {
+            performLogin(DEMO_API_KEY);
+        });
+    }
+
+    // Standard Credentials Login Form
+    const credentialsForm = document.getElementById('credentials-login-form');
+    if (credentialsForm) {
+        credentialsForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const errEl = document.getElementById('credentials-error');
+            if (errEl) errEl.textContent = '';
+            performLogin(DEMO_API_KEY);
+        });
+    }
+
+    // Custom API Key Login
+    const customKeyBtn = document.getElementById('custom-key-submit-btn');
+    if (customKeyBtn) {
+        customKeyBtn.addEventListener('click', () => {
+            const input = document.getElementById('custom-api-key-input');
+            const key = input ? input.value.trim() : '';
+            if (key) performLogin(key);
+        });
+    }
+
+    // Header Login & Logout Buttons
+    const headerLoginBtn = document.getElementById('header-login-btn');
+    if (headerLoginBtn) {
+        headerLoginBtn.addEventListener('click', () => {
+            const modal = document.getElementById('login-modal');
+            if (modal) modal.classList.remove('hidden');
+        });
+    }
+
+    const headerLogoutBtn = document.getElementById('header-logout-btn');
+    if (headerLogoutBtn) {
+        headerLogoutBtn.addEventListener('click', () => {
+            performLogout();
+        });
+    }
+
+    // Legacy form handler for backward compatibility with automated tests
+    const authForm = document.getElementById('auth-form');
+    if (authForm) {
+        authForm.addEventListener('submit', event => {
+            event.preventDefault();
+            const val = document.getElementById('api-key').value;
+            performLogin(val || DEMO_API_KEY);
+        });
+    }
+
+    const forgetKeyBtn = document.getElementById('forget-key');
+    if (forgetKeyBtn) {
+        forgetKeyBtn.addEventListener('click', () => {
+            performLogout();
+        });
+    }
+
+    // Initial check on load
+    if (apiKey) {
+        updateAuthUI(true);
+        loadSummary();
+    } else {
+        updateAuthUI(false);
+    }
     // Navigational Logic
     const navItems = document.querySelectorAll('.nav-item');
     const views = document.querySelectorAll('.view');

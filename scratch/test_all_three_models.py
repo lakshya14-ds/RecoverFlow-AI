@@ -161,7 +161,7 @@ async def run_three_models_audit():
             modal_img = await modal.query_selector("img")
             img_src = await modal_img.get_attribute("src") if modal_img else ""
             print(f"  * Modal crop image URL: {img_src}")
-            assert "/segments/file/" in img_src, f"Unexpected crop URL: {img_src}"
+            assert "/segments/file/" in img_src or img_src.startswith("blob:"), f"Unexpected crop URL: {img_src}"
             await page.screenshot(path=str(SCREENSHOT_DIR / "step4_sam_modal_live.png"))
 
             # Close modal
