@@ -4,6 +4,25 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **EC2 Staging Deployment & Live Chrome QA Verification Passed 100% (2026-11-03, Antigravity):**
+  - Synchronized all 5 defect fixes to AWS EC2 staging host (`15.207.249.218` / `https://recoverflaw.duckdns.org/`):
+    - Committed changes to master (`c3f4448`) and pushed to `origin/master`.
+    - Pulled clean fast-forward updates onto EC2.
+    - Executed AWS RDS PostgreSQL schema migration adding `extraction_method VARCHAR` to `processing_jobs`.
+    - Restarted `recoverflow-api` and `recoverflow-worker` systemd services; verified active and healthy.
+  - Executed automated Chrome audit via Playwright (`scripts/live_audit_meta_fixes.py`) against live staging host:
+    1. Audio Intake & Storage Path: Verified WAV upload processes cleanly through intake pipeline without `storage_path` AttributeError.
+    2. Poppler-Free PDF Upload: Verified dedicated PDF upload (`#upload-form`) extracts without `pdf2image` or `poppler` missing errors, using bundled `pypdfium2` and digital text extraction.
+    3. Batch Upload Status Preservation: Uploaded multi-file batch (WAV + PDF); verified UI displays distinct per-file outcomes (`2 succeeded, 0 failed`) without overwriting.
+    4. Confirmation State & Label Consistency: Confirmed evidence records synchronize to `trust_state = "verified"` without contradictory "staff confirmation pending" tags.
+    5. Meta Model Suite Attribution Verified Live on UI:
+       - `META MUSE SPARK 1.3` badges Executive Briefing and Customer Negotiation Co-pilot (`Powered by Meta Muse Spark 1.3`).
+       - `Meta SAM 3.1` badges Visual Proof & Stamps and Perceptual Crop Inspector modal.
+       - `Meta Muse Voice Transcribe` badges Voice Intelligence player and audio evidence.
+       - Intake Engine Legend visibly attributes all three models (`Meta SAM 3.1`, `Meta Muse Voice Transcribe`, `Meta Muse Spark 1.3`).
+  - Executed full case file test suite (`scripts/test_all_cases.py`): 14/14 cases opened and displayed case workspaces with 0 errors.
+  - Verified test suites: `tests/test_audio_and_pdf_fixes.py` (10/10 passed), regression suite (37/37 passed), zero emojis across all code and handoff entries.
+
 - **Pre-Submission Defect Fixes Complete, 5 Phases (2026-11-03, Meta Muse Code Agent):**
   - Phase 1: `uploadIntakeFiles` MIME map extended with wav/mp3/ogg/m4a; `#intake-files` accept adds `audio/*`; `_process_audio` resolves `source_path` (with `storage_path` fallback) instead of crashing with AttributeError.
   - Phase 2: `extract_invoice_fields` now tries pypdfium2 rasterization, then pdf2image only if poppler exists, then pypdf digital text, then Tesseract OCR only when needed; `process_invoice_pipeline` falls back to `vision_extraction.extract` when the orchestrator is incomplete or raises; new nullable `ProcessingJob.extraction_method` column (model + migrations + legacy SQLite ALTER) surfaced via `GET /jobs/{id}`; invoice upload form shows "Processed via Meta Vision / PDFium" or "Processed via Document OCR" and refreshes case list plus review queue.
