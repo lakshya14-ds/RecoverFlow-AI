@@ -4,6 +4,14 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Pre-Submission Defect Fixes Complete, 5 Phases (2026-11-03, Meta Muse Code Agent):**
+  - Phase 1: `uploadIntakeFiles` MIME map extended with wav/mp3/ogg/m4a; `#intake-files` accept adds `audio/*`; `_process_audio` resolves `source_path` (with `storage_path` fallback) instead of crashing with AttributeError.
+  - Phase 2: `extract_invoice_fields` now tries pypdfium2 rasterization, then pdf2image only if poppler exists, then pypdf digital text, then Tesseract OCR only when needed; `process_invoice_pipeline` falls back to `vision_extraction.extract` when the orchestrator is incomplete or raises; new nullable `ProcessingJob.extraction_method` column (model + migrations + legacy SQLite ALTER) surfaced via `GET /jobs/{id}`; invoice upload form shows "Processed via Meta Vision / PDFium" or "Processed via Document OCR" and refreshes case list plus review queue.
+  - Phase 3: Batch uploader accumulates per-file outcomes and renders a succeeded/failed summary with one row per file; no outcome is overwritten.
+  - Phase 4: Review-queue confirmation verifies linked `invoice_total` evidence with "Verified invoice total (...)" descriptions; case-level invoice/receipt confirmations rewrite descriptions ("Verified invoice total (...)" / "Staff-confirmed payment receipt posted to ledger"); frontend renders legacy "staff confirmation pending" text on verified records as "Verified by staff".
+  - Phase 5: Meta suite attributed across the frontend: META MUSE SPARK 1.3 badge on the executive briefing, negotiation header "Powered by Meta Muse Spark 1.3" with bounded-policy subtext, "VISUAL PROOF & STAMPS (Meta SAM 3.1 AI Computer Vision Perception)" header, "Perceptual crop segmented via Meta SAM 3.1" in the crop modal, "Meta Muse Voice Transcribe (Multilingual Speech Intelligence & Diarization)" voice badge, and an intake engine legend listing all three models.
+  - Verification: new `tests/test_audio_and_pdf_fixes.py` (10 tests) failed 6/10 before the fix and passes 10/10 after; full suite 389 passed + 5 skipped, exit 0 (384 pre-existing collected, zero regressions); `node --check` clean; `git diff --check` clean; spec emoji scan clean; simulated-payment and sandbox boundaries untouched. Not committed; not deployed to EC2 staging in this session.
+
 - **Case File Opening Stability & Worker Exception Resolution (2026-11-03, Antigravity):**
   - Resolved `KeyError: 'manual_review'` in `app/services/controlled_agent.py`: added `'manual_review'` rationale mapping with resilient `.get(action, ...)` fallback, eliminating periodic background worker crashes on invoices under investigation hold.
   - Resolved "Open file" button instability in `frontend/app.js`: removed redundant `loadCases()` invocation inside `openCase(id)` that was triggering full table re-renders, DOM flickers, and dropped button clicks when opening case files; enhanced smooth scroll to case workspace; added responsive loading and disabled state to `.intake-retry` buttons.
@@ -206,6 +214,27 @@ ecoverflow.example.com.
 2. For a production rollout, replace local pilot identity and SQLite storage with managed tenant credentials, PostgreSQL, database migrations (e.g. Alembic), automated backups, monitoring, and provider-specific operational tests. See `docs/PROJECT_ANALYSIS_AND_SYSTEM_STATE.md` for details.
 
 ## Iteration log
+
+### 2026-11-03 — Meta Muse Code Agent — Pre-Submission Defect Fixes (Phases 1-5)
+
+- **Objective:** Fix the five confirmed pre-submission defects: audio intake rejection + `storage_path` AttributeError, poppler-dependent PDF extraction, batch upload status overwrites, review-queue vs case-level confirmation inconsistencies, and Meta model attribution.
+- **Changed:**
+  - `frontend/app.js`: extended `mimeFor` with wav/mp3/ogg/m4a; rewrote `uploadIntakeFiles` to accumulate per-file outcomes and render a `batch-upload-summary` with `upload-result-item` rows; invoice upload polling shows the extraction method ("Processed via Meta Vision / PDFium" / "Processed via Document OCR") and calls `loadCases()` plus `loadReviewQueue()`; verified evidence with legacy "staff confirmation pending" text renders as "Verified by staff"; added META MUSE SPARK 1.3 briefing badge, VISUAL PROOF & STAMPS (Meta SAM 3.1 AI Computer Vision Perception) header, "Perceptual crop segmented via Meta SAM 3.1" modal line, and Meta Muse Voice Transcribe voice badge.
+  - `frontend/index.html`: `#intake-files` accept adds `audio/*`; negotiation header/subtext attribute Meta Muse Spark 1.3 with bounded-policy wording (sandbox disclosure retained); intake engine legend lists all three Meta models.
+  - `frontend/styles.css`: added `.badge.meta-badge` style.
+  - `app/services/intake_pipeline.py`: `_process_audio` resolves `source_path` with `storage_path` fallback; verified no other `storage_path` misuse on job objects.
+  - `app/skills/extract_invoice_fields.py`: pypdfium2 primary rasterization, pdf2image secondary (poppler only), pypdf digital text, Tesseract OCR only when needed and installed; field-parsing rules unchanged.
+  - `app/api/invoices.py`: `process_invoice_pipeline` catches primary extractor failure and merges `vision_extraction.extract` fallback fields (customer_name mapped to counterparty_name); tracks `extraction_method`; `confirm_extracted_invoice` verifies linked `invoice_total` evidence with actor, timestamp, reason, and refreshed description; `get_job` returns `extraction_method`.
+  - `app/api/intake.py`: `confirm_invoice` rewrites the evidence description to "Verified invoice total (...)"; `confirm_receipt` rewrites it to "Staff-confirmed payment receipt posted to ledger".
+  - `app/database/models.py`, `app/database/migrations.py`, `app/database/db_manager.py`: nullable `ProcessingJob.extraction_method` column with ADDITIONS and legacy SQLite ALTER coverage.
+  - `tests/test_audio_and_pdf_fixes.py` (new): 10 tests covering all five phases (audio resilience, poppler-free PDF extraction via stubbed pdf2image failure, review-queue evidence sync, audio MIME acceptance x4, batch feedback markup, description sanitization, attribution strings).
+- **Verification:**
+  - New file failed 6/10 before the fix (AttributeError, poppler/RuntimeError path, unverified evidence, missing frontend strings) and passes 10/10 after; the 4 MIME tests passed pre-fix as behavior guards.
+  - Full suite: 389 passed, 5 skipped, exit 0 (`py -3.12 -m pytest`); 394 collected = 384 pre-existing + 10 new; zero regressions.
+  - `node --check frontend/app.js` clean; `git diff --check` clean; spec emoji scan clean across all touched files; line endings restored to per-file originals; test-regenerated challan PDF restored.
+  - Boundaries intact: payments SIMULATED, messaging sandboxed, Decimal/cents money math only.
+- **Decisions:** (1) Nullable `extraction_method` column instead of error-field encoding so the frontend reports the true per-job method. (2) Secondary fallback failure routes to `needs_review` (staff review) rather than the old fail-after-retries loop. (3) Partial primary data is kept and only missing fields are filled from the fallback. (4) Prior "(Meta SAM 3.1 AI Perception)" chip/modal strings retained for seeded-perception attribution alongside the new header wording.
+- **Next steps:** Commit on master; sync backend + frontend + migration files to EC2 staging; re-run the live Chrome audit (audio upload end-to-end, invoice PDF upload without poppler, held-case and attribution spot checks).
 
 ### 2026-11-03 — Meta Muse Code Agent — Prioritized QA Defect Resolution (Phases 1-6)
 

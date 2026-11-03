@@ -341,13 +341,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 const data = await res.json();
                 resultDiv.textContent = `Upload queued. Job: ${data.job_id}`;
+                const methodLabel = method => method === 'vision-resilient-fallback'
+                    ? 'Processed via Meta Vision / PDFium'
+                    : method === 'orchestrator-ocr' ? 'Processed via Document OCR' : '';
                 const poll = async () => {
                     try {
                         const job = await (await apiFetch(`/api/v1/invoices/jobs/${data.job_id}`)).json();
-                        resultDiv.textContent = `Processing: ${job.status}${job.invoice_id ? ' — invoice ' + job.invoice_id : ''}${job.error ? ' — ' + job.error : ''}`;
+                        const methodNote = methodLabel(job.extraction_method);
+                        resultDiv.textContent = `Processing: ${job.status}${job.invoice_id ? ' — invoice ' + job.invoice_id : ''}${methodNote ? ' — ' + methodNote : ''}${job.error ? ' — ' + job.error : ''}`;
                         if (job.status === 'queued' || job.status === 'processing') setTimeout(poll, 1500);
                         else {
-                            loadSummary(); loadReviewQueue();
+                            loadSummary(); loadReviewQueue(); loadCases();
                             if (!job.invoice_id && (job.status === 'failed' || job.status === 'needs_review')) {
                                 const retry = document.createElement('button');
                                 retry.type = 'button'; retry.className = 'btn'; retry.textContent = 'Retry processing';
@@ -578,6 +582,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="executive-ai-brief">
                     <div class="brief-badge">
                         <span class="brief-model">${escapeHtml(data.executive_summary?.generation_label || 'Deterministic Summary')}</span>
+                        <span class="badge meta-badge">META MUSE SPARK 1.3</span>
                         <span>Executive Brief &amp; Resolution Recommendation</span>
                     </div>
                     <p class="brief-text">
@@ -628,7 +633,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <strong>${(ev.audio_url || localEvidence.has(ev.source_reference) || String(ev.source_reference).startsWith('/api/v1/intake/uploads/') || String(ev.source_reference).includes('docs/') || String(ev.source_reference).includes('data/')) ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.audio_url || (String(ev.source_reference).startsWith('/api/v1/') ? ev.source_reference : `/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}`))}" data-title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)} · Open ${ev.is_audio || String(ev.source_reference).toLowerCase().endsWith('.wav') ? 'Audio' : String(ev.source_reference).toLowerCase().endsWith('.png') ? 'Image' : 'Document'}</button>` : escapeHtml(ev.title)}</strong>
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
-                            <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
+                            <p style="margin:4px 0;font-size:13px;">${escapeHtml((ev.trust_state === 'verified' || ev.verified === true) && String(ev.description || '').includes('staff confirmation pending') ? 'Verified by staff' : (ev.description || ''))}</p>
                             ${ev.decided_by ? `<div class="audit-badge">${ev.decided_by === 'seed_hero_case' ? '✓ Verified by System Audit · Pre-verified baseline record' : `Decided by ${escapeHtml(ev.decided_by)} · ${escapeHtml(ev.decision_reason || '')}`}</div>` : (ev.currency && ev.currency !== data.currency ? `<div class="audit-badge">Claim currency ${escapeHtml(ev.currency)}</div>` : '')}
                             ${['accepted', 'rejected', 'verified'].includes(ev.trust_state) ? `<span class="trust-pill ${escapeHtml(ev.trust_state)}">✓ ${escapeHtml(ev.trust_state)}</span>` : `<span class="trust-review" data-id="${Number(ev.id)}"><button type="button" class="btn trust-btn" data-trust="verified">Verify</button> <button type="button" class="btn trust-btn" data-trust="accepted">Accept</button> <button type="button" class="btn trust-btn" data-trust="rejected">Reject</button></span>`}
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
@@ -640,7 +645,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${(ev.is_audio || ev.audio_url || ev.source_type === 'whatsapp_voice_note' || String(ev.source_reference).endsWith('.wav') || String(ev.source_reference).endsWith('.mp3') || String(ev.source_reference).endsWith('.ogg') || String(ev.source_reference).includes('/audio/')) ? (() => {
                                 const vt = (data.voice_transcriptions || []).find(v => v.evidence_id === ev.id || (ev.voice_id && v.id === ev.voice_id) || String(ev.source_reference).includes(v.original_filename)) || (data.voice_transcriptions || [])[0];
                                 const resolvedAudioUrl = ev.audio_url || vt?.audio_url || (ev.source_reference ? `/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${encodeURIComponent(ev.source_reference.split('/').pop())}` : '');
-                                const modelLabel = (vt && vt.model_name === 'muse-voice-transcribe' && vt.confidence > 0) ? 'Meta Muse Voice' : (vt && vt.model_name === 'fixture') ? 'Meta Muse Voice (Demo Fixture)' : 'Audio Note';
+                                const modelLabel = (vt && vt.model_name === 'muse-voice-transcribe' && vt.confidence > 0) ? 'Meta Muse Voice Transcribe (Multilingual Speech Intelligence & Diarization)' : (vt && vt.model_name === 'fixture') ? 'Meta Muse Voice Transcribe (Demo Fixture)' : 'Audio Note';
                                 const confLabel = (vt && vt.confidence > 0) ? `${Math.round(vt.confidence * 100)}% Confidence` : 'Deterministic Fallback';
                                 const diarization = vt?.diarization || [];
                                 const disputeCents = vt?.extracted_dispute_amount_cents || 0;
@@ -697,8 +702,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             ${ev.segments && ev.segments.length > 0 ? `
                                 <div class="sam-perception-panel">
                                     <div class="sam-badge">
-                                        <span class="sam-tag">${ev.segments[0].processing_method === 'fixture' ? 'Visual Proof &amp; Stamps' : ev.segments[0].processing_method === 'sam_api' ? 'Visual Perception' : 'Document Crops'}</span>
-                                        <span class="sam-model-badge">${ev.segments[0].processing_method === 'fixture' ? '(Seeded Reference)' : ev.segments[0].processing_method === 'sam_api' ? '(Meta SAM 3.1 AI Perception)' : '(Unverified Preview)'}</span>
+                                        <span class="sam-tag">${ev.segments[0].processing_method === 'fixture' || ev.segments[0].processing_method === 'sam_api' ? 'VISUAL PROOF &amp; STAMPS' : 'Document Crops'}</span>
+                                        <span class="sam-model-badge">${ev.segments[0].processing_method === 'fixture' ? '(Seeded Reference)' : ev.segments[0].processing_method === 'sam_api' ? '(Meta SAM 3.1 AI Computer Vision Perception)' : '(Unverified Preview)'}</span>
                                     </div>
                                     <div style="font-size:0.82rem; color:#475569; margin:4px 0 8px 0; font-weight:500;">${(ev.segments[0].processing_method === 'fixture' || ev.segments[0].processing_method === 'sam_api') ? 'Click any crop below to inspect stamps, signatures, or delivery notes:' : 'Click any crop below to inspect the unverified document regions:'}</div>
                                     <div class="sam-segments-grid">
@@ -837,6 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <button type="button" class="btn sam-close-btn" style="padding:4px 10px;">✕</button>
                         </div>
                         <p style="font-size:12px;color:#555;margin:6px 0;">${confNote}</p>
+                        ${isModel || isFixture ? '<p style="font-size:12px;color:#555;margin:6px 0;">Perceptual crop segmented via Meta SAM 3.1</p>' : ''}
                         ${notes ? `<div class="snippet-box"><strong>Observation / Metadata:</strong><br>${escapeHtml(notes)}</div>` : ''}
                         <img src="${objectUrl}" class="sam-modal-crop" alt="${escapeHtml(label)}">
                         <div style="text-align:right;margin-top:10px;">
@@ -1599,17 +1605,51 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     async function uploadIntakeFiles(files) {
         const result = document.getElementById('intake-upload-result');
-        const mimeFor = file => ({csv:'text/csv',pdf:'application/pdf',jpg:'image/jpeg',
-            jpeg:'image/jpeg',png:'image/png'})[file.name.split('.').pop().toLowerCase()];
+        const mimeFor = file => ({
+            csv: 'text/csv',
+            pdf: 'application/pdf',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            png: 'image/png',
+            wav: 'audio/wav',
+            mp3: 'audio/mpeg',
+            ogg: 'audio/ogg',
+            m4a: 'audio/mp4'
+        })[file.name.split('.').pop().toLowerCase()];
+
+        const outcomes = [];
+        result.innerHTML = '<div class="upload-progress">Uploading files to processing queue...</div>';
+
         for (const file of files) {
             try {
-                if (!mimeFor(file)) throw new Error(`${file.name}: unsupported file type`);
-                if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name}: file exceeds 10 MB`);
-                await apiFetch('/api/v1/intake/uploads', {method:'POST',
-                    headers:{'Content-Type':mimeFor(file),'X-Filename':file.name}, body:file});
-                result.textContent = `Uploaded ${file.name} to the local processing queue.`;
-            } catch (error) { result.textContent = `${file.name}: ${error.message}`; }
+                const mime = mimeFor(file);
+                if (!mime) throw new Error('Unsupported file type');
+                if (file.size > 10 * 1024 * 1024) throw new Error('File exceeds 10 MB limit');
+                await apiFetch('/api/v1/intake/uploads', {
+                    method: 'POST',
+                    headers: { 'Content-Type': mime, 'X-Filename': file.name },
+                    body: file
+                });
+                outcomes.push({ name: file.name, success: true, message: 'Queued for processing' });
+            } catch (error) {
+                outcomes.push({ name: file.name, success: false, message: error.message });
+            }
         }
+
+        // Render a distinct status item for every uploaded file so no
+        // per-file outcome is overwritten by later files in the batch.
+        result.innerHTML = `
+            <div class="batch-upload-summary">
+                <div class="summary-badge">${outcomes.filter(o => o.success).length} succeeded, ${outcomes.filter(o => !o.success).length} failed</div>
+                <ul class="upload-results-list" style="list-style:none; padding:0; margin:6px 0;">
+                    ${outcomes.map(o => `
+                        <li class="upload-result-item ${o.success ? 'success' : 'error'}" style="margin-bottom:4px; font-size:13px;">
+                            <strong>${escapeHtml(o.name)}</strong>: ${escapeHtml(o.message)}
+                        </li>
+                    `).join('')}
+                </ul>
+            </div>
+        `;
         loadIntakeUploads();
     }
     const intakeInput = document.getElementById('intake-files');

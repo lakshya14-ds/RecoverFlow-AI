@@ -36,41 +36,70 @@ def clean_amount(val_str: str) -> Optional[Decimal]:
 
 def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
     """
-    Extract structured fields from a PDF invoice using Tesseract and
-    simple text parsing rules.
+    Extract structured fields from a PDF invoice using bundled rasterization,
+    digital text fallback, and Tesseract OCR only when needed.
     """
     from app.config import settings
 
     try:
-        import pdf2image
         import pytesseract
-    except ImportError as exc:
-        raise RuntimeError("PDF OCR requires pdf2image and pytesseract; install requirements.txt") from exc
+    except ImportError:
+        pytesseract = None
     fields = InvoiceFields()
 
     try:
         import os
-        tesseract_cmd = settings.TESSERACT_CMD
-        local_tess = settings.BASE_DIR / "bin" / "tesseract" / "tesseract.exe"
-        if (not tesseract_cmd or tesseract_cmd == "tesseract") and local_tess.exists():
-            tesseract_cmd = str(local_tess)
-            os.environ.setdefault("TESSDATA_PREFIX", str(settings.BASE_DIR / "bin" / "tesseract" / "tessdata"))
-        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+        if pytesseract is not None:
+            tesseract_cmd = settings.TESSERACT_CMD
+            local_tess = settings.BASE_DIR / "bin" / "tesseract" / "tesseract.exe"
+            if (not tesseract_cmd or tesseract_cmd == "tesseract") and local_tess.exists():
+                tesseract_cmd = str(local_tess)
+                os.environ.setdefault("TESSDATA_PREFIX", str(settings.BASE_DIR / "bin" / "tesseract" / "tessdata"))
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
-        poppler_kwargs = {}
-        poppler_path = getattr(settings, "POPPLER_PATH", "")
-        if not poppler_path:
-            local_poppler = settings.BASE_DIR / "bin" / "poppler" / "poppler-24.08.0" / "Library" / "bin"
-            if local_poppler.exists():
-                poppler_path = str(local_poppler)
-        if poppler_path:
-            poppler_kwargs["poppler_path"] = poppler_path
+        images = []
+        # 1. Primary: high-fidelity pypdfium2 rasterization (bundled binary, no system poppler needed).
+        try:
+            import pypdfium2 as pdfium
+            pdf = pdfium.PdfDocument(pdf_path)
+            for page in pdf:
+                images.append(page.render(scale=2).to_pil().convert("RGB"))
+        except Exception:
+            # 2. Secondary fallback: pdf2image (only when system poppler is present).
+            try:
+                import pdf2image
+                poppler_kwargs = {}
+                poppler_path = getattr(settings, "POPPLER_PATH", "")
+                if not poppler_path:
+                    local_poppler = settings.BASE_DIR / "bin" / "poppler" / "poppler-24.08.0" / "Library" / "bin"
+                    if local_poppler.exists():
+                        poppler_path = str(local_poppler)
+                if poppler_path:
+                    poppler_kwargs["poppler_path"] = poppler_path
+                images = pdf2image.convert_from_path(pdf_path, dpi=settings.OCR_DPI, **poppler_kwargs)
+            except Exception:
+                images = []
 
-        images = pdf2image.convert_from_path(pdf_path, dpi=settings.OCR_DPI, **poppler_kwargs)
+        # 3. Direct digital text extraction fallback via pypdf.
         raw_text = ""
-        for img in images:
-            raw_text += pytesseract.image_to_string(img, lang=settings.OCR_LANG)
-        
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(pdf_path)
+            for page in reader.pages:
+                page_text = page.extract_text()
+                if page_text:
+                    raw_text += page_text + "\n"
+        except Exception:
+            pass
+
+        # If digital text was not available and images were rendered, perform OCR.
+        if not raw_text.strip() and images and pytesseract is not None:
+            for img in images:
+                try:
+                    raw_text += pytesseract.image_to_string(img, lang=settings.OCR_LANG)
+                except Exception:
+                    pass
+
         fields.raw_text = raw_text
 
         # Basic field extraction rules.

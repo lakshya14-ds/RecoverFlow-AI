@@ -125,7 +125,7 @@ def _process_csv(db, job):
 def _process_audio(db, job):
     """Transcribe audio upload via Meta Muse Voice and link dispute evidence."""
     from app.services.voice_transcribe_agent import voice_agent
-    audio_path = Path(job.storage_path)
+    audio_path = Path(getattr(job, "source_path", getattr(job, "storage_path", "")))
     if not audio_path.is_file():
         raise ValueError("Audio file missing from storage")
 

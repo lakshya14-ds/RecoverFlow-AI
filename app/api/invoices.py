@@ -42,12 +42,15 @@ class ManualInvoice(BaseModel):
         return self
 
 
-def _set_job(job_id: str, status: str, error: Optional[str] = None) -> None:
+def _set_job(job_id: str, status: str, error: Optional[str] = None,
+             extraction_method: Optional[str] = None) -> None:
     with SessionLocal() as db:
         job = db.get(models.ProcessingJob, job_id)
         if job:
             job.status = status
             job.error = error
+            if extraction_method is not None:
+                job.extraction_method = extraction_method
             if status not in ("queued", "processing"):
                 job.locked_until = None
             if status in ("needs_review", "failed"):
@@ -71,24 +74,56 @@ def process_invoice_pipeline(job_id: str) -> None:
         invoice_type = job.invoice_type or "AP"
     _set_job(job_id, "processing")
     try:
-        result = recoverflow_orchestrator.invoke({"invoice_path": file_path,
-                                                  "invoice_type": invoice_type,
-                                                  "tenant_id": job.tenant_id, "errors": []})
-        data = result.get("invoice_data") or {}
+        try:
+            result = recoverflow_orchestrator.invoke({"invoice_path": file_path,
+                                                      "invoice_type": invoice_type,
+                                                      "tenant_id": job.tenant_id, "errors": []})
+        except Exception as primary_exc:
+            logging.warning("Primary invoice extraction failed for job %s: %s", job_id, primary_exc)
+            result = {"invoice_data": {}, "errors": [f"Primary extractor unavailable: {primary_exc}"]}
+        data = dict(result.get("invoice_data") or {})
         required = ("invoice_number", "counterparty_name", "issue_date", "due_date", "total_amount")
         missing = [key for key in required if data.get(key) is None or data.get(key) == ""]
+        extraction_method = "orchestrator-ocr"
         if missing:
-            errors = "; ".join(result.get("errors", []))
+            # Resilient secondary extractor: Meta vision / offline PDFium rules.
+            try:
+                from app.services import vision_extraction
+                secondary = vision_extraction.extract(Path(file_path).read_bytes(), "application/pdf")
+                document = secondary["document"]
+                fallback = {
+                    "invoice_number": document.invoice_number or "",
+                    "counterparty_name": document.customer_name or "",
+                    "issue_date": document.issue_date or "",
+                    "due_date": document.due_date or "",
+                    "total_amount": secondary.get("total") if secondary.get("total") is not None else "",
+                    "raw_text": document.text or "",
+                }
+                for key, value in fallback.items():
+                    if (data.get(key) is None or data.get(key) == "") and value not in (None, ""):
+                        data[key] = value
+                missing = [key for key in required if data.get(key) is None or data.get(key) == ""]
+                if not missing:
+                    extraction_method = "vision-resilient-fallback"
+                    errors = list(result.get("errors", []))
+                    errors.append("Primary extractor incomplete; fields recovered via Meta Vision / PDFium fallback")
+                    result["errors"] = errors
+            except Exception as fallback_exc:
+                logging.warning("Vision fallback extraction failed for job %s: %s", job_id, fallback_exc)
+        if missing:
+            errors = "; ".join(str(item) for item in result.get("errors", []))
             _set_job(job_id, "needs_review",
                      "Missing extracted fields: " + ", ".join(missing) +
-                     ("; " + errors if errors else ""))
+                     ("; " + errors if errors else ""),
+                     extraction_method=extraction_method)
             return
         issue_date = date.fromisoformat(data["issue_date"])
         due_date = date.fromisoformat(data["due_date"])
         amount_cents = cents(data["total_amount"])
         amount = Decimal(amount_cents) / 100
         if amount <= 0 or due_date < issue_date:
-            _set_job(job_id, "needs_review", "Invalid amount or invoice dates")
+            _set_job(job_id, "needs_review", "Invalid amount or invoice dates",
+                     extraction_method=extraction_method)
             return
         with SessionLocal() as db:
             invoice = models.Invoice(
@@ -138,7 +173,8 @@ def process_invoice_pipeline(job_id: str) -> None:
             job.invoice_id = invoice.id
             job.status = "needs_review" if invoice.requires_human_review else "completed"
             job.locked_until = None
-            job.error = "; ".join(result.get("errors", [])) or None
+            job.extraction_method = extraction_method
+            job.error = "; ".join(str(item) for item in result.get("errors", [])) or None
             db.add(models.AuditEvent(
                 tenant_id=job.tenant_id,
                 actor=job.actor, action="invoice_processed", entity_type="invoice",
@@ -206,7 +242,8 @@ def get_job(job_id: str, db: Session = Depends(get_db),
     if not job or job.tenant_id != identity.tenant_id:
         raise HTTPException(status_code=404, detail="Job not found")
     return {"id": job.id, "status": job.status, "invoice_id": job.invoice_id,
-            "invoice_type": job.invoice_type, "attempts": job.attempts, "error": job.error}
+            "invoice_type": job.invoice_type, "attempts": job.attempts, "error": job.error,
+            "extraction_method": job.extraction_method}
 
 
 @router.post("/jobs/{job_id}/retry")
@@ -282,6 +319,15 @@ def confirm_extracted_invoice(invoice_id: int, payload: ManualInvoice,
     invoice.currency = payload.currency
     invoice.requires_human_review = False
     invoice.status = "pending"
+    for evidence in db.query(models.CaseEvidence).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice.id, claim_type="invoice_total"
+    ).all():
+        evidence.verified = True
+        evidence.trust_state = "verified"
+        evidence.decided_by = identity.actor
+        evidence.decided_at = datetime.now(timezone.utc)
+        evidence.decision_reason = "Staff confirmed extracted invoice in review queue"
+        evidence.description = f"Verified invoice total ({evidence.currency or invoice.currency or 'INR'} {invoice.amount})"
     job = db.query(models.ProcessingJob).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).first()
     if job:

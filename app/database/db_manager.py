@@ -136,6 +136,7 @@ def _upgrade_legacy_sqlite(models):
                 "invoice_type": "TEXT NOT NULL DEFAULT 'AP'",
                 "attempts": "INTEGER NOT NULL DEFAULT 0",
                 "locked_until": "DATETIME",
+                "extraction_method": "TEXT",
             },
             "agent_policies": {
                 "autonomy_mode": "TEXT NOT NULL DEFAULT 'review_all'",

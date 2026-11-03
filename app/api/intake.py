@@ -171,6 +171,7 @@ def confirm_invoice(job_id: str, db: Session = Depends(get_db),
             evidence.decided_at = datetime.now(timezone.utc)
             evidence.decision_reason = "Staff confirmed the extracted invoice after review"
             evidence.currency = evidence.currency or invoice.currency or "INR"
+            evidence.description = f"Verified invoice total ({evidence.currency} {invoice.amount})"
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
         action="uploaded_invoice_confirmed", entity_type="invoice",
         entity_id=str(invoice.id), details=f"upload_id={job_id}"))
@@ -216,6 +217,7 @@ def confirm_receipt(job_id: str, db: Session = Depends(get_db),
             evidence.decided_at = datetime.now(timezone.utc)
             evidence.decision_reason = f"Staff-confirmed receipt posted as ledger entry {entry.id}"
             evidence.currency = invoice.currency or "INR"
+            evidence.description = "Staff-confirmed payment receipt posted to ledger"
         row.status = "ready_for_review"
         row.stage = "Ready for review"
         row.error = None

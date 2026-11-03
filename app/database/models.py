@@ -396,6 +396,7 @@ class ProcessingJob(Base):
     status = Column(String, nullable=False, default="queued")
     invoice_id = Column(Integer, ForeignKey("invoices.id"))
     error = Column(Text)
+    extraction_method = Column(String)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -46,6 +46,7 @@ ADDITIONS = {
                        "heartbeat_at": "TIMESTAMP",
                        "lease_expires_at": "TIMESTAMP",
                        "not_before": "TIMESTAMP"},
+    "processing_jobs": {"extraction_method": "VARCHAR"},
     "evidence_segments": {
         "processing_method": "VARCHAR NOT NULL DEFAULT 'unverified_preview'",
         "model_name": "VARCHAR",
