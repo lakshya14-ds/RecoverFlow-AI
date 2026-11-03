@@ -56,8 +56,8 @@ if __name__ == "__main__":
         [
             "Invoice Number: INV-2026-HERO",
             "Date: 2026-09-09 | Due Date: 2026-10-09",
-            "Customer: Apex Enterprises Pvt Ltd",
-            "GSTIN: 27AABCA1234D1Z8",
+            "Customer: Bharat Retail Ventures Pvt Ltd",
+            "GSTIN: 27AABCS8899P1Z2",
             "----------------------------------------------------------------------",
             "Item: Precision Valve Sets (SKU: PVS-100)",
             "Quantity: 80 Units",
@@ -75,12 +75,12 @@ if __name__ == "__main__":
         [
             "PO Reference: PO-2026-HERO",
             "PO Date: 2026-09-01",
-            "Buyer: Apex Enterprises Pvt Ltd (Procurement Dept)",
+            "Buyer: Bharat Retail Ventures Pvt Ltd (Procurement Dept)",
             "Delivery Location: Warehouse Unit 4, Industrial Area Phase II",
             "----------------------------------------------------------------------",
             "Authorized Items:",
             "- 80 Units x Precision Valve Sets @ INR 3,000.00 = INR 2,40,000.00",
             "Payment Terms: Net 30 Days from invoice date",
-            "Authorized Signature: Procurement Manager, Apex Enterprises Pvt Ltd"
+            "Authorized Signature: Procurement Manager, Bharat Retail Ventures Pvt Ltd"
         ]
     )

@@ -103,23 +103,30 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
         fields.raw_text = raw_text
 
         # Basic field extraction rules.
-        # Invoice number.
-        inv_match = re.search(r'(?:Invoice|INV)[^A-Za-z0-9]*([A-Z0-9-]{3,10})', raw_text, re.IGNORECASE)
+        # Invoice number: match "Invoice Number: ...", "Invoice No: ...", "INV-..."
+        inv_match = re.search(r'\b(?:Invoice\s*(?:No\.?|Number|#))\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{2,25})', raw_text, re.IGNORECASE)
+        if not inv_match:
+            inv_match = re.search(r'\b(INV-[A-Z0-9-]{3,25})\b', raw_text, re.IGNORECASE)
+        if not inv_match:
+            inv_match = re.search(r'\b(?:INV)\s*[:#-]?\s*([A-Z0-9][A-Z0-9-]{2,25})', raw_text, re.IGNORECASE)
         if inv_match:
-            fields.invoice_number = inv_match.group(1).strip()
-            fields.confidence_scores["invoice_number"] = 0.85
+            candidate_inv = inv_match.group(1).strip()
+            if candidate_inv.lower() not in ("original", "duplicate", "triplicate", "invoice", "number", "tax", "oice"):
+                fields.invoice_number = candidate_inv
+                fields.confidence_scores["invoice_number"] = 0.85
 
-        # Amounts
-        amounts = re.findall(r'\$\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', raw_text)
+        # Amounts: support INR, Rs, ₹, $, and standard Indian / international comma numbers
+        amounts = re.findall(r'(?:INR|Rs\.?|₹|\$)\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{2})?)', raw_text, re.IGNORECASE)
+        if not amounts:
+            amounts = re.findall(r'\b(\d{1,3}(?:,\d{2,3})+,\d{3}(?:\.\d{2})?)\b', raw_text)
         if amounts:
             numeric_amounts = sorted([clean_amount(a) for a in amounts if clean_amount(a)], reverse=True)
             if numeric_amounts:
                 fields.total_amount = numeric_amounts[0]
                 fields.confidence_scores["total_amount"] = 0.90
-                # Missing totals receive low confidence and require review.
         
         # Due date and issue date.
-        dates = re.findall(r'(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4})', raw_text, re.IGNORECASE)
+        dates = re.findall(r'(\b\d{4}-\d{2}-\d{2}\b|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4})', raw_text, re.IGNORECASE)
         if dates:
             try:
                 parsed_dates = sorted([dateutil.parser.parse(d).date() for d in dates])
@@ -133,10 +140,42 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
             except Exception:
                 pass
 
-        # Assume the first non-empty line is the counterparty name.
+        # Extract counterparty name, skipping standard header titles and seller company
+        HEADER_TITLES = {
+            "tax invoice", "commercial invoice", "invoice", "original for recipient",
+            "duplicate for supplier", "triplicate for transporter", "bill of supply",
+            "commercial tax invoice", "proforma invoice", "purchase order", "receipt",
+            "synthetic sample - for software testing only", "original", "from", "bill to"
+        }
+        SELLER_NAMES = {"apex enterprises", "apex distributors"}
         lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
-        if lines:
-            fields.counterparty_name = lines[0]
+        candidate_name = None
+        for i, line in enumerate(lines):
+            lower_line = line.lower().rstrip(":")
+            if lower_line in ("bill to", "customer", "buyer", "to"):
+                for offset in (1, 2, 3, 4):
+                    if i + offset < len(lines):
+                        nxt = lines[i + offset].strip()
+                        nxt_lower = nxt.lower()
+                        if nxt_lower not in HEADER_TITLES and not any(s in nxt_lower for s in SELLER_NAMES) and "plot" not in nxt_lower and "shop" not in nxt_lower and len(nxt) > 3:
+                            candidate_name = nxt
+                            break
+                if candidate_name:
+                    break
+            elif any(lower_line.startswith(prefix) for prefix in ("bill to:", "customer:", "buyer:", "to:")):
+                inline_val = re.sub(r'^(?:bill to|customer|buyer|to)\s*[:#-]?\s*', '', line, flags=re.I).strip()
+                inline_lower = inline_val.lower()
+                if inline_lower and inline_lower not in HEADER_TITLES and not any(s in inline_lower for s in SELLER_NAMES):
+                    candidate_name = inline_val
+                    break
+        if not candidate_name:
+            for line in lines:
+                l_lower = line.lower()
+                if l_lower not in HEADER_TITLES and not any(s in l_lower for s in SELLER_NAMES) and len(line) > 3 and not re.match(r'^[0-9\W]+$', line):
+                    candidate_name = line
+                    break
+        if candidate_name:
+            fields.counterparty_name = candidate_name
             fields.confidence_scores["counterparty_name"] = 0.70
 
     except Exception as e:

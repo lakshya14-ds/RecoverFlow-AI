@@ -32,8 +32,8 @@ def seed_hero_case() -> models.Invoice:
             [
                 "Invoice Number: INV-2026-HERO",
                 "Date: 2026-09-09 | Due Date: 2026-10-09",
-                "Customer: Apex Enterprises Pvt Ltd",
-                "GSTIN: 27AABCA1234D1Z8",
+                "Customer: Bharat Retail Ventures Pvt Ltd",
+                "GSTIN: 27AABCS8899P1Z2",
                 "----------------------------------------------------------------------",
                 "Item: Precision Valve Sets (SKU: PVS-100)",
                 "Quantity: 80 Units",
@@ -51,13 +51,13 @@ def seed_hero_case() -> models.Invoice:
             [
                 "PO Reference: PO-2026-HERO",
                 "PO Date: 2026-09-01",
-                "Buyer: Apex Enterprises Pvt Ltd (Procurement Dept)",
+                "Buyer: Bharat Retail Ventures Pvt Ltd (Procurement Dept)",
                 "Delivery Location: Warehouse Unit 4, Industrial Area Phase II",
                 "----------------------------------------------------------------------",
                 "Authorized Items:",
                 "- 80 Units x Precision Valve Sets @ INR 3,000.00 = INR 2,40,000.00",
                 "Payment Terms: Net 30 Days from invoice date",
-                "Authorized Signature: Procurement Manager, Apex Enterprises Pvt Ltd"
+                "Authorized Signature: Procurement Manager, Bharat Retail Ventures Pvt Ltd"
             ]
         )
 
@@ -127,15 +127,15 @@ def seed_hero_case() -> models.Invoice:
             db.commit()
 
         # 1. Create Counterparty
-        counterparty = db.query(models.Counterparty).filter_by(tenant_id=tenant_id, tax_id="27AABCA1234D1Z8").first()
+        counterparty = db.query(models.Counterparty).filter_by(tenant_id=tenant_id, tax_id="27AABCS8899P1Z2").first()
         if not counterparty:
             counterparty = models.Counterparty(
                 tenant_id=tenant_id,
-                name="Apex Enterprises Pvt Ltd",
+                name="Bharat Retail Ventures Pvt Ltd",
                 type="customer",
-                email="procurement@apexenterprises.in",
+                email="procurement@bharatretail.in",
                 phone="+91 98200 12345",
-                tax_id="27AABCA1234D1Z8",
+                tax_id="27AABCS8899P1Z2",
                 payment_terms=30,
                 credit_limit=Decimal("500000.00"),
             )
@@ -147,10 +147,10 @@ def seed_hero_case() -> models.Invoice:
             tenant_id=tenant_id,
             invoice_number=inv_num,
             invoice_type="AR",
-            counterparty_name="Apex Enterprises Pvt Ltd",
-            counterparty_email="procurement@apexenterprises.in",
+            counterparty_name="Bharat Retail Ventures Pvt Ltd",
+            counterparty_email="procurement@bharatretail.in",
             counterparty_phone="+91 98200 12345",
-            counterparty_tax_id="27AABCA1234D1Z8",
+            counterparty_tax_id="27AABCS8899P1Z2",
             issue_date=date(2026, 9, 9),
             due_date=date(2026, 10, 9),
             amount=Decimal("240000.00"),
@@ -197,7 +197,7 @@ def seed_hero_case() -> models.Invoice:
                 "The remaining undisputed balance of INR 60,000 will be remitted as soon as the delivery "
                 "shortfall is adjusted."
             ),
-            actor="procurement@apexenterprises.in",
+            actor="procurement@bharatretail.in",
             is_injection=False,
         )
         db.add(reply_message)
@@ -236,7 +236,7 @@ def seed_hero_case() -> models.Invoice:
                 description="Bank RTGS credit of INR 1,50,000 received on Oct 15 and matched to invoice.",
                 source_type="bank_receipt",
                 source_reference="BANK-RTGS-99214",
-                source_snippet="CR UTR-AXIS-20261015-99214 INR 1,50,000.00 from Apex Enterprises Pvt Ltd",
+                source_snippet="CR UTR-AXIS-20261015-99214 INR 1,50,000.00 from Bharat Retail Ventures Pvt Ltd",
                 amount_cents=15000000,
                 verified=True,
             ),
@@ -281,7 +281,7 @@ def seed_hero_case() -> models.Invoice:
                 invoice_id=hero_id,
                 claim_type="dispute_item",
                 title="WhatsApp Voice Note (Customer Statement)",
-                description="Audio note from Apex Enterprises procurement incharge: 10 units shortage at Bay 4, remitting INR 60,000 on Tuesday.",
+                description="Audio note from Bharat Retail procurement incharge: 10 units shortage at Bay 4, remitting INR 60,000 on Tuesday.",
                 source_type="whatsapp_voice_note",
                 source_reference="docs/audio/VOICENOTE-2026-HERO.wav",
                 source_snippet="Transcribed via Meta Muse Voice Transcribe: 'Jo 80 precision valve sets bheje the, usme se 10 piece ka carton bay 4 pe damaged aur missing nikla... remaining INR 60,000 hum Tuesday ko UTR se transfer kar denge.'",

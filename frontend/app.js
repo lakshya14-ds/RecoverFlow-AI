@@ -24,13 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return `${value < 0n ? '-' : ''}${whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${fraction}`;
     };
     const money = (currency, cents) => `${currency === 'INR' ? '₹' : escapeHtml(currency) + ' '}${formatCents(cents)}`;
-    const localEvidence = new Set([
-        'docs/invoices/INV-2026-HERO.pdf',
-        'docs/po/PO-2026-HERO.pdf',
-        'docs/challan/CHALLAN-2026-HERO.png',
-        'docs/challan/CHALLAN-2026-HERO.pdf',
-        'docs/audio/VOICENOTE-2026-HERO.wav'
-    ]);
     const activeAudioUrls = new Set();
     let activeCaseAudioToken = 0;
 
@@ -630,11 +623,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(data.evidence || []).map(ev => `
                         <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
-                                <strong>${(ev.audio_url || localEvidence.has(ev.source_reference) || String(ev.source_reference).startsWith('/api/v1/intake/uploads/') || String(ev.source_reference).includes('docs/') || String(ev.source_reference).includes('data/')) ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.audio_url || (String(ev.source_reference).startsWith('/api/v1/') ? ev.source_reference : `/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}`))}" data-title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)} · Open ${ev.is_audio || String(ev.source_reference).toLowerCase().endsWith('.wav') ? 'Audio' : String(ev.source_reference).toLowerCase().endsWith('.png') ? 'Image' : 'Document'}</button>` : escapeHtml(ev.title)}</strong>
+                                <strong>${(ev.audio_url || (ev.source_reference && (/\.(pdf|png|jpe?g|wav|mp3|ogg|m4a|csv)$/i.test(String(ev.source_reference)))) || String(ev.source_reference).startsWith('/api/v1/intake/uploads/') || String(ev.source_reference).includes('docs/') || String(ev.source_reference).includes('data/')) ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.audio_url || (String(ev.source_reference).startsWith('/api/v1/') ? ev.source_reference : `/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}`))}" data-title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)} · Open ${ev.is_audio || String(ev.source_reference).toLowerCase().endsWith('.wav') ? 'Audio' : String(ev.source_reference).toLowerCase().endsWith('.png') ? 'Image' : 'Document'}</button>` : escapeHtml(ev.title)}</strong>
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml((ev.trust_state === 'verified' || ev.verified === true) && String(ev.description || '').includes('staff confirmation pending') ? 'Verified by staff' : (ev.description || ''))}</p>
-                            ${ev.decided_by ? `<div class="audit-badge">${ev.decided_by === 'seed_hero_case' ? '✓ Verified by System Audit · Pre-verified baseline record' : `Decided by ${escapeHtml(ev.decided_by)} · ${escapeHtml(ev.decision_reason || '')}`}</div>` : (ev.currency && ev.currency !== data.currency ? `<div class="audit-badge">Claim currency ${escapeHtml(ev.currency)}</div>` : '')}
+                            ${ev.decided_by ? `<div class="audit-badge">${String(ev.decided_by).startsWith('seed') ? '✓ Verified by System Audit · Pre-verified baseline record' : `Decided by ${escapeHtml(ev.decided_by)} · ${escapeHtml(ev.decision_reason || '')}`}</div>` : (ev.currency && ev.currency !== data.currency ? `<div class="audit-badge">Claim currency ${escapeHtml(ev.currency)}</div>` : '')}
                             ${['accepted', 'rejected', 'verified'].includes(ev.trust_state) ? `<span class="trust-pill ${escapeHtml(ev.trust_state)}">✓ ${escapeHtml(ev.trust_state)}</span>` : `<span class="trust-review" data-id="${Number(ev.id)}"><button type="button" class="btn trust-btn" data-trust="verified">Verify</button> <button type="button" class="btn trust-btn" data-trust="accepted">Accept</button> <button type="button" class="btn trust-btn" data-trust="rejected">Reject</button></span>`}
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-top:2px;">
                                 <span class="evidence-ref">Source: ${escapeHtml(ev.source_reference)}</span>

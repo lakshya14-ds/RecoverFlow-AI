@@ -26,25 +26,25 @@ HERO_DIARIZATION = [
     {
         "start": 0.0,
         "end": 3.1,
-        "speaker": "Customer (Apex Enterprises)",
-        "text": "Bhaiya, Apex Enterprises se bol raha hoon regarding invoice 2026-HERO."
+        "speaker": "Customer (Bharat Retail Ventures)",
+        "text": "Bhaiya, Bharat Retail se bol raha hoon regarding invoice 2026-HERO."
     },
     {
         "start": 3.3,
         "end": 7.3,
-        "speaker": "Customer (Apex Enterprises)",
+        "speaker": "Customer (Bharat Retail Ventures)",
         "text": "Jo 80 precision valve sets bheje the, usme se 10 piece ka carton bay 4 pe damaged aur missing nikla. 70 units receive ho gaye hain."
     },
     {
         "start": 7.8,
         "end": 11.3,
-        "speaker": "Customer (Apex Enterprises)",
+        "speaker": "Customer (Bharat Retail Ventures)",
         "text": "Isliye ₹30,000 deduct karke remaining ₹60,000 hum Tuesday ko UTR se transfer kar denge."
     },
     {
         "start": 11.7,
         "end": 14.5,
-        "speaker": "Customer (Apex Enterprises)",
+        "speaker": "Customer (Bharat Retail Ventures)",
         "text": "Kripya ₹30,000 ka credit note issue kar dijiye."
     }
 ]
@@ -94,7 +94,7 @@ class VoiceTranscribeAgent:
             "model": self.model,
             "response_format": "verbose_json",
             "language": "hi",
-            "prompt": "Apex Enterprises invoice dispute and payment promise."
+            "prompt": "Indian MSME invoice dispute and payment reconciliation."
         }
 
         try:
@@ -153,9 +153,7 @@ class VoiceTranscribeAgent:
         name_upper = (orig_name or "").upper()
         is_hero_fixture = (
             is_hero is True
-            or "HERO" in name_upper
-            or "SAMPLE" in name_upper
-            or "VOICENOTE" in name_upper
+            or (is_hero is None and ("VOICENOTE-2026-HERO" in name_upper or "INV-2026-HERO" in name_upper))
         )
 
         if meta_result:

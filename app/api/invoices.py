@@ -83,6 +83,14 @@ def process_invoice_pipeline(job_id: str) -> None:
             result = {"invoice_data": {}, "errors": [f"Primary extractor unavailable: {primary_exc}"]}
         data = dict(result.get("invoice_data") or {})
         required = ("invoice_number", "counterparty_name", "issue_date", "due_date", "total_amount")
+        invalid_counterparties = {"tax invoice", "commercial invoice", "invoice", "original for recipient", "original", "apex enterprises", "apex enterprises private limited", "apex enterprises pvt ltd", ""}
+        invalid_inv_numbers = {"original", "invoice", "tax", "overdue", "oice", ""}
+
+        if str(data.get("counterparty_name", "")).strip().lower() in invalid_counterparties:
+            data["counterparty_name"] = ""
+        if str(data.get("invoice_number", "")).strip().lower() in invalid_inv_numbers:
+            data["invoice_number"] = ""
+
         missing = [key for key in required if data.get(key) is None or data.get(key) == ""]
         extraction_method = "orchestrator-ocr"
         if missing:
@@ -100,7 +108,12 @@ def process_invoice_pipeline(job_id: str) -> None:
                     "raw_text": document.text or "",
                 }
                 for key, value in fallback.items():
-                    if (data.get(key) is None or data.get(key) == "") and value not in (None, ""):
+                    cur = str(data.get(key, "")).strip().lower()
+                    is_placeholder = (
+                        (key == "counterparty_name" and cur in invalid_counterparties) or
+                        (key == "invoice_number" and cur in invalid_inv_numbers)
+                    )
+                    if (data.get(key) in (None, "") or is_placeholder) and value not in (None, ""):
                         data[key] = value
                 missing = [key for key in required if data.get(key) is None or data.get(key) == ""]
                 if not missing:

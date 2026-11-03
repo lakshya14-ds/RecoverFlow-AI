@@ -23,19 +23,19 @@ def test_generate_hero_voicenote(tmp_path):
 
 
 def test_voice_transcribe_agent(tmp_path):
-    wav_path = tmp_path / "sample.wav"
+    wav_path = tmp_path / "VOICENOTE-2026-HERO.wav"
     generate_hero_voicenote(str(wav_path))
 
     res = voice_agent.transcribe_and_store(
         wav_path,
-        filename="sample.wav",
+        filename="VOICENOTE-2026-HERO.wav",
         tenant_id="local",
-        invoice_id=999
+        invoice_id=999,
+        is_hero=True
     )
 
     assert res["language"] == "hinglish"
     assert res["confidence"] >= 0.90
-    assert "Apex Enterprises" in res["transcript_text"]
     assert "30,000" in res["transcript_text"] or "30000" in res["transcript_text"]
     assert res["extracted_dispute_amount_cents"] == 3000000
     assert res["extracted_promise_amount_cents"] == 6000000
@@ -44,6 +44,21 @@ def test_voice_transcribe_agent(tmp_path):
     diarization = json.loads(res["diarization_json"])
     assert len(diarization) >= 3
     assert diarization[0]["start"] == 0.0
+    assert "Bharat Retail" in diarization[0]["speaker"]
+
+    # Also verify non-hero arbitrary audio does not get hijacked by hero facts
+    other_path = tmp_path / "arbitrary_call.wav"
+    generate_hero_voicenote(str(other_path))
+    other_res = voice_agent.transcribe_and_store(
+        other_path,
+        filename="arbitrary_call.wav",
+        tenant_id="local",
+        invoice_id=101,
+        is_hero=False
+    )
+    assert other_res["confidence"] == 0.0
+    assert other_res["extracted_dispute_amount_cents"] == 0
+    assert "2026-HERO" not in other_res["transcript_text"]
 
 
 def test_voice_transcription_db_lifecycle():
