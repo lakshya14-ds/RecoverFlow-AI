@@ -192,9 +192,10 @@ def _fallback(facts: dict, action: str) -> tuple[str, str, str]:
     rationale = {
         "no_action": "No routine collection action is currently eligible.",
         "staff_review": "A staff member must review the case before the next action.",
+        "manual_review": "An active investigation hold requires staff review before further actions.",
         "reply_draft": "The recent triaged customer question can receive a staff-approved acknowledgement.",
         "collection_draft": "The overdue receivable may receive an internal draft; sending still requires approval.",
-    }[action]
+    }.get(action, "A staff member must review the case before the next action.")
     draft = ("Thank you for your message. Our team has received your question and "
              "will review the account before following up." if action == "reply_draft" else "")
     return " ".join(lines)[:1200], rationale, draft

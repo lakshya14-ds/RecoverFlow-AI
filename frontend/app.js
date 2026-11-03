@@ -318,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     document.getElementById('overview-open-cases').addEventListener('click', () => navigate('cases'));
-    document.getElementById('case-close').addEventListener('click', () => { cleanupCaseAudio(); document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; const neg = document.getElementById('negotiation-panel'); if (neg) neg.classList.add('hidden'); });
+    document.getElementById('case-close').addEventListener('click', () => { cleanupCaseAudio(); document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; const neg = document.getElementById('negotiation-panel'); if (neg) neg.classList.add('hidden'); const caseList = document.getElementById('case-list-panel'); if (caseList) caseList.scrollIntoView({behavior: 'smooth', block: 'start'}); });
     document.getElementById('case-search').addEventListener('input', event => renderCases(event.target.value));
 
     // Upload Form
@@ -889,7 +889,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 })();
             });
-            loadCases();
             loadNegotiation();
 
             // Wire Case Tabs
@@ -1583,8 +1582,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     : file.status === 'needs_attention' && file.cases_created === 0
                         ? `<button type="button" class="btn intake-retry" data-id="${escapeHtml(file.id)}">Retry extraction</button>` : ''}</div>`).join('') : '<p>No files uploaded yet.</p>';
             tracker.querySelectorAll('.intake-retry').forEach(button => button.addEventListener('click', async () => {
-                try { await apiFetch(`/api/v1/intake/uploads/${button.dataset.id}/retry`, {method: 'POST'}); loadIntakeUploads(); }
-                catch (error) { document.getElementById('intake-upload-result').textContent = error.message; }
+                const orig = button.textContent;
+                button.textContent = 'Retrying extraction...';
+                button.disabled = true;
+                try {
+                    await apiFetch(`/api/v1/intake/uploads/${button.dataset.id}/retry`, {method: 'POST'});
+                    setTimeout(loadIntakeUploads, 1000);
+                } catch (error) {
+                    button.textContent = orig;
+                    button.disabled = false;
+                    const res = document.getElementById('intake-upload-result');
+                    if (res) res.textContent = error.message;
+                }
             }));
         } catch (error) { tracker.textContent = error.message; }
     }

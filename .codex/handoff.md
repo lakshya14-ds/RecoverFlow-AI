@@ -4,6 +4,13 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **Case File Opening Stability & Worker Exception Resolution (2026-11-03, Antigravity):**
+  - Resolved `KeyError: 'manual_review'` in `app/services/controlled_agent.py`: added `'manual_review'` rationale mapping with resilient `.get(action, ...)` fallback, eliminating periodic background worker crashes on invoices under investigation hold.
+  - Resolved "Open file" button instability in `frontend/app.js`: removed redundant `loadCases()` invocation inside `openCase(id)` that was triggering full table re-renders, DOM flickers, and dropped button clicks when opening case files; enhanced smooth scroll to case workspace; added responsive loading and disabled state to `.intake-retry` buttons.
+  - Verified live across all 14 cases on `https://recoverflaw.duckdns.org/` via Playwright (`scripts/test_all_cases.py`): 14/14 cases opened and displayed case details with 0 errors.
+  - Verified `recoverflow-worker.service` running quietly with zero crashes in systemd journal.
+  - Verified zero emojis across all modified files and handoff entries.
+
 - **EC2 Staging Sync & Live Chrome QA Audit Passed 100% (2026-11-03, Antigravity):**
   - Synchronized all 6 prioritized QA defect phases to AWS EC2 staging host (15.207.249.218 / https://recoverflaw.duckdns.org/):
     - Backend: `app/database/models.py`, `app/database/__init__.py`, `app/services/sam_agent.py`.
