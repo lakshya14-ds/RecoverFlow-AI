@@ -208,7 +208,6 @@ document.addEventListener('DOMContentLoaded', () => {
         reconciliation: 'review',
         dunning: 'review',
         fraud: 'review',
-        agent: 'review',
         control: 'control',
         dashboard: 'dashboard',
         connected: 'connected'
@@ -467,6 +466,37 @@ document.addEventListener('DOMContentLoaded', () => {
             selectedCaseId = id;
             detail.classList.remove('hidden');
 
+            // Collection eligibility mirrors backend policy (cases.build_case_executive_summary):
+            // held cases never offer collection even when an undisputed balance exists.
+            // The backend reports paused contact as contact_suppressed; accept a
+            // contact_paused alias as well so either payload shape stays correct.
+            const contactPaused = Boolean(data.contact_paused || data.contact_suppressed);
+            const isHeld = Boolean(
+                data.investigation_hold ||
+                data.reconciliation_error ||
+                contactPaused ||
+                data.requires_human_review ||
+                data.status === 'pending_review' ||
+                data.status === 'investigation_hold'
+            );
+            const undisputedCents = Number(data.undisputed_cents || 0);
+            const canCollect = Boolean(
+                !isHeld &&
+                data.executive_summary?.can_collect !== false &&
+                undisputedCents > 0
+            );
+            const contactPolicyNote = contactPaused ? 'Contact paused by staff'
+                : data.investigation_hold ? 'Contact held: Active investigation'
+                : data.reconciliation_error ? 'Contact suppressed: Reconciliation mismatch'
+                : (data.requires_human_review || data.status === 'pending_review') ? 'Contact suppressed: Staff review required'
+                : 'Contact eligible under policy';
+            const undisputedLabel = canCollect ? 'Undisputed · Ready to Collect'
+                : (undisputedCents > 0 ? 'Undisputed · On Hold (Staff Review Required)' : 'Undisputed · Ready to Collect');
+
+            const evCount = (data.evidence || []).length;
+            const evTab = document.getElementById('tab-btn-evidence');
+            if (evTab) evTab.textContent = `Verified Evidence & AI Proof (${evCount})`;
+
             const injectionMsg = (data.messages || []).find(m => m.is_injection);
             const injectionHtml = injectionMsg ? `
                 <div class="injection-alert">
@@ -507,8 +537,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const metric = (label, cents, claim, className = '') => { const source = sourceFor(claim, cents); return `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source || '<span class="source-unavailable">Ledger record</span>'}</div>`; };
             const leaf = (label, cents, claim, className) => {
                 const source = sourceFor(claim, cents);
-                const actionHtml = className === 'undisputed' && cents > 0 ?
-                    `<button type="button" class="btn btn-primary quick-collect-btn" id="quick-collect-btn" style="margin-top:10px;width:100%;">⚡ Collect ${money(data.currency, cents)} Now</button>` :
+                const actionHtml = className === 'undisputed' && canCollect ?
+                    `<button type="button" class="btn btn-primary" id="quick-collect-btn">Collect ${money(data.currency, undisputedCents)} Now</button>` :
+                    className === 'undisputed' && cents > 0 ?
+                    `<span class="badge-held">Collection blocked under policy</span>` :
                     className === 'disputed' && cents > 0 ?
                     `<div class="dispute-sub-note">${escapeHtml(data.investigation_reason || (data.evidence || []).find(e => e.claim_type === 'dispute_item')?.title || 'Disputed line item(s) · On hold')}</div>` : '';
                 return `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source || ''}${actionHtml}</div>`;
@@ -527,7 +559,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="case-meta">
                     <span>Due <strong>${escapeHtml(data.due_date)}</strong></span>
                     <span>Status <strong>${escapeHtml(displayStatus(data.status))}</strong></span>
-                    <span>${data.contact_suppressed ? 'Contact paused' : 'Contact eligible under policy'}</span>
+                    <span>${contactPolicyNote}</span>
                 </div>
                 <div class="balance-story">
                     <div class="balance-waterfall-main">
@@ -539,8 +571,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         ${metric('Remaining Balance', data.outstanding_cents, 'undisputed_balance', 'outstanding')}
                     </div>
                     <div class="balance-split">
-                        ${leaf('⚠️ Disputed · On Hold', data.disputed_cents, 'dispute_item', 'disputed')}
-                        ${leaf('🎯 Undisputed · Ready to Collect', data.undisputed_cents, 'undisputed_balance', 'undisputed')}
+                        ${leaf('Disputed · On Hold', data.disputed_cents, 'dispute_item', 'disputed')}
+                        ${leaf(undisputedLabel, undisputedCents, 'undisputed_balance', 'undisputed')}
                     </div>
                 </div>
                 <div class="executive-ai-brief">
@@ -666,22 +698,27 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="sam-perception-panel">
                                     <div class="sam-badge">
                                         <span class="sam-tag">${ev.segments[0].processing_method === 'fixture' ? 'Visual Proof &amp; Stamps' : ev.segments[0].processing_method === 'sam_api' ? 'Visual Perception' : 'Document Crops'}</span>
-                                        <span class="sam-model-badge">${ev.segments[0].processing_method === 'fixture' ? '(Meta SAM 3.1 Demo Reference)' : ev.segments[0].processing_method === 'sam_api' ? '(Meta SAM 3.1 AI Perception)' : '(Deterministic Crop Preview)'}</span>
+                                        <span class="sam-model-badge">${ev.segments[0].processing_method === 'fixture' ? '(Seeded Reference)' : ev.segments[0].processing_method === 'sam_api' ? '(Meta SAM 3.1 AI Perception)' : '(Unverified Preview)'}</span>
                                     </div>
-                                    <div style="font-size:0.82rem; color:#475569; margin:4px 0 8px 0; font-weight:500;">Click any crop below to inspect stamps, signatures, or delivery notes:</div>
+                                    <div style="font-size:0.82rem; color:#475569; margin:4px 0 8px 0; font-weight:500;">${(ev.segments[0].processing_method === 'fixture' || ev.segments[0].processing_method === 'sam_api') ? 'Click any crop below to inspect stamps, signatures, or delivery notes:' : 'Click any crop below to inspect the unverified document regions:'}</div>
                                     <div class="sam-segments-grid">
-                                        ${ev.segments.map(seg => `
-                                            <div class="sam-segment-chip" data-crop="${escapeHtml(seg.crop_url)}" data-label="${escapeHtml(seg.label)}" data-notes="${escapeHtml(seg.notes || '')}" data-conf="${Math.round((seg.confidence || 0) * 100)}" data-method="${escapeHtml(seg.processing_method || 'unverified_preview')}" data-state="${escapeHtml(seg.verification_state || 'unverified')}">
-                                                <span class="sam-icon">${seg.concept === 'stamp_signature' ? '🔏' : seg.concept === 'receiving_notes' ? '📝' : seg.concept === 'damaged_goods' ? '📦' : '🔍'}</span>
+                                        ${ev.segments.map(seg => {
+                                            const segMethod = seg.processing_method || 'unverified_preview';
+                                            const segConf = Math.round((seg.confidence || 0) * 100);
+                                            const segIcon = seg.concept === 'stamp_signature' ? '[STAMP]' : seg.concept === 'receiving_notes' ? '[NOTE]' : seg.concept === 'damaged_goods' ? '[PHOTO]' : '[DOC]';
+                                            const segConfBadge = segMethod === 'fixture' && segConf > 0 ? `${segConf}% (Seeded Reference)` : segMethod === 'sam_api' && segConf > 0 ? `${segConf}% (Meta SAM 3.1 AI Perception)` : 'Unverified (0%)';
+                                            return `
+                                            <div class="sam-segment-chip" data-crop="${escapeHtml(seg.crop_url)}" data-label="${escapeHtml(seg.label)}" data-notes="${escapeHtml(seg.notes || '')}" data-conf="${segConf}" data-method="${escapeHtml(segMethod)}" data-state="${escapeHtml(seg.verification_state || 'unverified')}">
+                                                <span class="sam-icon">${segIcon}</span>
                                                 <span class="sam-chip-label">${escapeHtml(seg.label)}</span>
-                                                <span class="sam-chip-conf">${(seg.confidence && seg.confidence > 0) ? `${Math.round(seg.confidence * 100)}%` : 'Preview'}</span>
+                                                <span class="sam-chip-conf">${segConfBadge}</span>
                                             </div>
-                                        `).join('')}
+                                        `;}).join('')}
                                     </div>
                                 </div>
                             ` : ((/\.(png|jpe?g|webp|pdf)$/i.test(ev.source_reference || '') || ['delivery_challan', 'goods_receipt', 'physical_inspection', 'pod'].includes(ev.source_type)) && !/\.(csv|tsv|txt)$/i.test(ev.source_reference || '')) ? `
                                 <div style="margin-top:8px;">
-                                    <button type="button" class="btn run-sam-btn" data-evidence-id="${Number(ev.id)}">🔍 Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span></button>
+                                    <button type="button" class="btn run-sam-btn" data-evidence-id="${Number(ev.id)}">Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span></button>
                                 </div>
                             ` : ''}
                         </div>
@@ -756,14 +793,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (error) { alert(error.message); }
             }));
             detail.querySelectorAll('.run-sam-btn').forEach(button => button.addEventListener('click', async () => {
-                button.innerHTML = '⏳ Extracting visual proof &amp; stamps <span class="model-tag-bracket">(Meta SAM 3.1)...</span>';
+                button.innerHTML = 'Extracting visual proof &amp; stamps <span class="model-tag-bracket">(Meta SAM 3.1)...</span>';
                 button.disabled = true;
                 try {
                     await apiFetch(`/api/v1/cases/${id}/evidence/${button.dataset.evidenceId}/segment`, {method: 'POST'});
                     openCase(id);
                 } catch (error) {
                     alert('Visual proof extraction failed: ' + error.message);
-                    button.innerHTML = '🔍 Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span>';
+                    button.innerHTML = 'Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span>';
                     button.disabled = false;
                 }
             }));
@@ -785,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isFixture = method === 'fixture';
                 const badgeTitle = isModel ? 'Verified Visual Proof' : isFixture ? 'Synthetic Benchmark Fixture' : 'Unverified Document Preview';
                 const modelBadge = isModel ? '(Meta SAM 3.1 AI Perception)' : isFixture ? '(Seeded Reference)' : '(Deterministic Crop)';
-                const confNote = isModel ? `Visual Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API` : isFixture ? `Ground-truth demo fixture · Benchmark confidence: <strong>${escapeHtml(conf)}%</strong>` : `<span style="color:#b45309;font-weight:600;">Unverified preview crop · Meta SAM 3.1 unconfigured. Does not verify stamps, signatures, or shortages.</span>`;
+                const confNote = isModel ? `Visual Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API` : isFixture ? `Ground-truth demo fixture · Benchmark confidence: <strong>${escapeHtml(conf)}%</strong>` : `<span style="color:#b45309;font-weight:600;">Unverified preview crop · Meta SAM 3.1 unconfigured. Does not establish stamps, signatures, or physical defects.</span>`;
 
                 const modal = document.createElement('div');
                 modal.className = 'sam-crop-preview-modal';
@@ -1064,7 +1101,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const rl = data.rate_limits;
             const modelText = data.model_configured
                 ? (rl ? `${data.model} (RPM: ${rl.rpm_used}/${rl.rpm_limit}, RPD: ${rl.rpd_used}/${rl.rpd_limit})` : data.model)
-                : 'rules-only; add Meta API key to enable AI';
+                : 'Rules Fallback Mode (Deterministic); add Meta API key to enable AI';
             status.textContent = `AI wording: ${modelText} • Agent: ${data.policy?.enabled ? 'enabled' : 'off'}`;
             const policy = data.policy || {enabled: false, auto_assess: false,
                 auto_execute_internal: false, max_assessments_per_day: 20,
@@ -1082,6 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadAgentProposals() {
         const container = document.getElementById('agent-proposals');
+        if (!container) return null;
         try {
             const rows = await (await apiFetch('/api/v1/agent/proposals')).json();
             container.innerHTML = rows.length ? `<div class="stack">${rows.map(item => {
@@ -1313,9 +1351,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             statusData = statusData || await (await apiFetch('/api/v1/agent/status')).json();
             const rl = statusData.rate_limits || {};
-            statusEl.innerHTML = `
+            if (statusEl) statusEl.innerHTML = `
                 <strong>Active Model:</strong> <code>${escapeHtml(statusData.model)}</code> •
-                <strong>Configured:</strong> ${statusData.model_configured ? '<span style="color:var(--color-success);font-weight:600;">Yes</span>' : '<span style="color:var(--color-text-muted);">Rules Fallback</span>'} •
+                <strong>Configured:</strong> ${statusData.model_configured ? '<span style="color:var(--color-success);font-weight:600;">Yes</span>' : '<span style="color:var(--color-text-muted);">Rules Fallback Mode (Deterministic)</span>'} •
                 <strong>Rate Limits:</strong> RPM: ${rl.rpm_remaining !== undefined ? rl.rpm_remaining : '—'}/${rl.rpm_limit || 15} remaining | RPD: ${rl.rpd_remaining !== undefined ? rl.rpd_remaining : '—'}/${rl.rpd_limit || 1500} remaining
             `;
 
@@ -1335,6 +1373,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 form.elements['max_balance_cents'].value = (pol.max_balance_cents / 100).toFixed(2);
             }
 
+            // The legacy proposal review panel was removed; keep status and
+            // policy updates above, and skip proposal rendering when unmounted.
+            if (!proposalsEl) return;
             // Load proposals
             proposals = proposals || await (await apiFetch('/api/v1/agent/proposals')).json();
             if (!proposals.length) {
@@ -1476,7 +1517,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
         } catch (e) {
-            proposalsEl.textContent = e.message;
+            if (proposalsEl) proposalsEl.textContent = e.message;
         }
     }
 
@@ -1590,7 +1631,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <small>Owner: ${escapeHtml(item.owner || 'staff')} · Due: ${escapeHtml(item.deadline || '—')} · Affects: ${formatCents(item.affected_cents)}${item.approval_required ? ' · Approval required' : ''}</small>
                 ${(item.uncertainty || []).length ? `<small>Uncertain: ${item.uncertainty.map(escapeHtml).join('; ')}</small>` : ''}</div>
                 <div><button type="button" class="btn btn-primary queue-open" data-id="${Number(item.invoice_id)}">Open bill</button></div></div>`).join('')
-                : '<div class="empty-queue-box"><h4>🎉 All Caught Up!</h4><p>No urgent bill decisions or approvals pending. All accounts are running on schedule.</p></div>';
+                : '<div class="empty-queue-box"><h4>All Caught Up!</h4><p>No urgent bill decisions or approvals pending. All accounts are running on schedule.</p></div>';
             container.querySelectorAll('.queue-open').forEach(button => button.addEventListener('click', () => navigate('cases', Number(button.dataset.id))));
         } catch (error) { container.textContent = error.message; }
     }
@@ -1620,7 +1661,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const status = await (await apiFetch('/api/v1/agent/status')).json();
             document.getElementById('autonomy-mode').value = status.policy?.autonomy_mode || 'review_all';
-            document.getElementById('key-assignment').innerHTML = (status.rate_limits?.slots || []).map(slot => `
+            const slots = status.rate_limits?.slots || [];
+            const anySlotConfigured = status.model_configured || slots.some(slot => slot.configured);
+            const fallbackBanner = anySlotConfigured ? '' : '<div class="intake-row"><div><strong>Rules Fallback Mode (Deterministic)</strong><small>No Meta model key configured; execution uses deterministic rules only.</small></div></div>';
+            document.getElementById('key-assignment').innerHTML = fallbackBanner + slots.map(slot => `
                 <div class="intake-row"><div><strong>Key ${slot.slot}</strong><small>${slot.agents.map(escapeHtml).join(', ')}</small></div>
                 <div><span>${slot.configured ? (slot.throttled ? 'Cooldown' : 'Ready') : 'Not configured'}</span><small>${slot.rpm_used}/${slot.rpm_limit} RPM · ${slot.rpd_used}/${slot.rpd_limit} RPD · ${slot.cooldown_seconds}s cooldown · ${slot.fallback_events} fallbacks</small></div></div>`).join('');
             const outbox = await (await apiFetch('/api/v1/agent/sandbox-outbox')).json();
@@ -1636,14 +1680,17 @@ document.addEventListener('DOMContentLoaded', () => {
             result.textContent = 'Autonomy mode saved. Outbound delivery remains sandbox only.';
         } catch (error) { result.textContent = error.message; }
     });
-    document.getElementById('bulk-approve').addEventListener('click', async () => {
-        const result = document.getElementById('bulk-approve-result');
-        try {
-            const data = await (await apiFetch('/api/v1/agent/bulk-approve', {method:'POST'})).json();
-            result.textContent = `${data.approved.length} approved; ${data.skipped.length} skipped by policy.`;
-            loadAgent();
-        } catch (error) { result.textContent = error.message; }
-    });
+    const bulkApproveBtn = document.getElementById('bulk-approve');
+    if (bulkApproveBtn) {
+        bulkApproveBtn.addEventListener('click', async () => {
+            const result = document.getElementById('bulk-approve-result');
+            try {
+                const data = await (await apiFetch('/api/v1/agent/bulk-approve', {method:'POST'})).json();
+                result.textContent = `${data.approved.length} approved; ${data.skipped.length} skipped by policy.`;
+                loadAgent();
+            } catch (error) { result.textContent = error.message; }
+        });
+    }
 
     async function loadNegotiation() {
         const panel = document.getElementById('negotiation-panel');
@@ -1651,6 +1698,14 @@ document.addEventListener('DOMContentLoaded', () => {
         panel.classList.remove('hidden');
         try {
             const data = await (await apiFetch(`/api/v1/negotiations/cases/${selectedCaseId}`)).json();
+            const offerBtn = document.getElementById('negotiation-next-offer');
+            if (offerBtn) {
+                const isDelegate = (data && data.mode === 'delegate' && data.status === 'active');
+                offerBtn.disabled = !isDelegate;
+                offerBtn.title = isDelegate
+                    ? 'Prepare next autonomous AI offer for staff review'
+                    : 'Switch mode to "Delegate to AI" to prepare autonomous offers';
+            }
             document.getElementById('negotiation-status').textContent = `${data.mode} · ${data.status} · ${data.round_count}/${data.bounds.max_ai_rounds} AI rounds`;
             document.getElementById('negotiation-transcript').innerHTML = data.transcript.map(turn => `
                 <div class="intake-row"><div><strong>${escapeHtml(turn.actor)} · ${escapeHtml(turn.status)}</strong><p>${escapeHtml(turn.body)}</p></div>
@@ -1670,6 +1725,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (error) {
             document.getElementById('negotiation-status').textContent = 'Choose Manual or Delegate to start this case.';
             document.getElementById('negotiation-transcript').textContent = '';
+            const offerBtn = document.getElementById('negotiation-next-offer');
+            if (offerBtn) {
+                offerBtn.disabled = true;
+                offerBtn.title = 'Start negotiation session to enable offers';
+            }
         }
     }
     async function negotiationAction(path, options = {method:'POST'}) {

@@ -22,8 +22,8 @@
                     <span>Systems Operational</span>
                 </div>
                 <div class="sidebar-brand-meta">
-                    <strong>Bank-Grade 256-Bit SSL</strong>
-                    <span>GST &amp; MSME SAMADHAAN Ready</span>
+                    <strong>TLS Encrypted Communication</strong>
+                    <span>Indian MSME Invoicing Standard (GST Formats)</span>
                 </div>
             </div>
         </aside>
@@ -114,19 +114,19 @@
                 <!-- Review & Negotiate Executive Sub-Navigation -->
                 <div class="review-subnav-bar">
                     <button type="button" class="subnav-tab-btn active" data-subview="cases">
-                        <span class="tab-icon">📋</span> Active Bills &amp; Receivables
+                        Active Bills &amp; Receivables
                     </button>
                     <button type="button" class="subnav-tab-btn" data-subview="invoices">
-                        <span class="tab-icon">📥</span> Invoices Awaiting Review
+                        Invoices Awaiting Review
                     </button>
                     <button type="button" class="subnav-tab-btn" data-subview="reconciliation">
-                        <span class="tab-icon">🔄</span> Reconciliations
+                        Reconciliations
                     </button>
                     <button type="button" class="subnav-tab-btn" data-subview="campaigns">
-                        <span class="tab-icon">📢</span> Collection Campaigns
+                        Collection Campaigns
                     </button>
                     <button type="button" class="subnav-tab-btn" data-subview="alerts">
-                        <span class="tab-icon">🛡️</span> Security &amp; Risk Alerts
+                        Security &amp; Risk Alerts
                     </button>
                 </div>
 
@@ -157,14 +157,12 @@
 
                         <!-- Case Workspace Navigation Tabs -->
                         <div class="case-tabs-bar">
-                            <button type="button" class="case-tab-pill active" id="tab-btn-evidence" data-case-tab="tab-evidence">
-                                📂 Verified Evidence &amp; AI Proof (7)
-                            </button>
+                            <button type="button" class="case-tab-pill active" id="tab-btn-evidence" data-case-tab="tab-evidence">Verified Evidence &amp; AI Proof</button>
                             <button type="button" class="case-tab-pill" id="tab-btn-negotiation" data-case-tab="tab-negotiation">
-                                💬 Negotiation &amp; AI Co-pilot
+                                Negotiation &amp; AI Co-pilot
                             </button>
                             <button type="button" class="case-tab-pill" id="tab-btn-actions" data-case-tab="tab-actions">
-                                ⚡ Ledger Actions &amp; Audit Trail
+                                Ledger Actions &amp; Audit Trail
                             </button>
                         </div>
 
@@ -374,46 +372,11 @@
                     <div id="legacy-provider-events">Open this tab to load events.</div>
                 </div>
             </div>
-            <div id="view-agent" class="view hidden">
-                <div class="card">
-                    <h3>Agent status and limits</h3>
-                    <p id="legacy-agent-status">Open this tab to load the agent status.</p>
-                    <p>Only internal case notes and collection drafts can run automatically. All customer replies require staff review and an explicit send.</p>
-                    <form id="legacy-agent-policy-form" class="data-form">
-                        <label class="agent-toggle"><input name="enabled" type="checkbox"><span>Enable controlled agent</span></label>
-                        <label class="agent-toggle"><input name="auto_assess" type="checkbox"><span>Assess cases hourly</span></label>
-                        <label class="agent-toggle"><input name="auto_execute_internal" type="checkbox"><span>Allow internal notes and drafts automatically</span></label>
-                        <label>Assessments per day <input name="max_assessments_per_day" type="number" min="1" max="100" required></label>
-                        <label>Internal actions per day <input name="max_internal_actions_per_day" type="number" min="1" max="100" required></label>
-                        <label>Maximum balance for automatic collection drafts (INR) <input name="max_balance_cents" type="number" min="1" step="0.01" required></label>
-                        <button type="submit" class="btn btn-primary">Save agent limits (admin)</button>
-                    </form>
-                    <p id="legacy-agent-policy-result"></p>
-                </div>
-                <div class="card">
-                    <h3>Assess a case</h3>
-                    <form id="agent-assess-form" class="data-form">
-                        <input name="invoice_id" type="number" min="1" placeholder="Case ID" aria-label="Case ID" required>
-                        <button type="submit" class="btn btn-primary">Propose next action</button>
-                    </form>
-                    <p id="agent-assess-result"></p>
-                </div>
-                <div class="card">
-                    <h3>Agent proposals</h3>
-                    <button type="button" class="btn" id="bulk-approve">Bulk approve high-confidence drafts</button><span id="bulk-approve-result"></span>
-                    <div id="agent-proposals">Open this tab to load proposals.</div>
-                </div>
-                <div class="card">
-                    <h3>Draft versions &amp; approval</h3>
-                    <p>Editing creates a new version. Approval records the exact version and hash.</p>
-                    <div id="agent-versions">Open this tab to review draft versions.</div>
-                </div>
-            </div>
             <div id="view-control" class="view hidden">
                 <!-- Executive Overview Banner & High-Level Metrics -->
                 <div class="control-header-panel">
                     <div class="control-title-area">
-                        <div class="control-badge-pill">⚙️ Business Control &amp; Automation Center</div>
+                        <div class="control-badge-pill">Business Control &amp; Automation Center</div>
                         <h3>Manage Receivables, Agent Autonomy &amp; Guardrails</h3>
                         <p class="muted">Monitor urgent bill decisions, set how autonomously the AI follows up on unpaid invoices, and configure financial protection limits for your business.</p>
                     </div>
@@ -444,16 +407,16 @@
                 <!-- Executive Sub-Navigation -->
                 <div class="control-subnav-bar">
                     <button type="button" class="control-subnav-btn active" data-control-subview="queue">
-                        ⚡ Urgent Action Queue <span id="queue-count-badge" class="subnav-counter">3</span>
+                        Urgent Action Queue <span id="queue-count-badge" class="subnav-counter">3</span>
                     </button>
                     <button type="button" class="control-subnav-btn" data-control-subview="autonomy">
-                        🤖 AI Autonomy &amp; Guardrails
+                        AI Autonomy &amp; Guardrails
                     </button>
                     <button type="button" class="control-subnav-btn" data-control-subview="channels">
-                        💳 Payment Links &amp; Channels
+                        Payment Links &amp; Channels
                     </button>
                     <button type="button" class="control-subnav-btn" data-control-subview="diagnostics">
-                        🛠️ System Audit &amp; Technical Logs
+                        System Audit &amp; Technical Logs
                     </button>
                 </div>
 
@@ -465,7 +428,7 @@
                                 <h3>Bills &amp; Tasks Requiring Your Approval</h3>
                                 <p class="muted">The AI has analyzed these overdue accounts and prepared actions. Your approval is required before any customer contact or ledger change.</p>
                             </div>
-                            <button type="button" class="btn" id="refresh-queue-btn">🔄 Refresh Queue</button>
+                            <button type="button" class="btn" id="refresh-queue-btn">Refresh Queue</button>
                         </div>
                         <div class="stack" id="owner-queue">
                             <p class="muted">Loading urgent actions…</p>
@@ -489,18 +452,19 @@
                                 <select id="autonomy-mode" class="input-styled">
                                     <option value="review_all">Review All (Recommended) — AI drafts reminders; you approve before sending</option>
                                     <option value="auto_prepare">Auto-Prepare — AI calculates splits, verifies proofs, and stages payment links</option>
-                                    <option value="auto_send_sandbox">Autonomous Pilot — AI auto-sends polite reminders for undisputed balances</option>
+                                    <option value="auto_send_sandbox">Autonomous Pilot — AI auto-prepares polite reminders for undisputed balances (sandbox dispatch only)</option>
                                 </select>
                                 <button type="button" class="btn btn-primary" id="autonomy-save" style="margin-top:10px;">Save Autonomy Mode</button>
                                 <p id="autonomy-result" class="control-feedback-msg"></p>
+                                <p class="control-feedback-msg"><strong>Operating mode:</strong> Dispatches strictly to simulated sandbox outbox. Dual-control staff review required before external transmission.</p>
                             </div>
 
                             <div class="autonomy-info-box">
-                                <h4>💡 How Autonomy Works For You</h4>
+                                <h4>How Autonomy Works For You</h4>
                                 <ul class="business-feature-list">
                                     <li><strong>Review All:</strong> Zero customer messages are sent without your explicit sign-off. Best for maintaining personal buyer relationships.</li>
                                     <li><strong>Auto-Prepare:</strong> The AI extracts deductions, cross-references receiving notes, and prepares 1-click reminders so you don't do data entry.</li>
-                                    <li><strong>Autonomous Pilot:</strong> For high-volume retailers. Sends polite reminders only for undisputed balances below your safety threshold.</li>
+                                    <li><strong>Autonomous Pilot:</strong> For high-volume retailers. Prepares polite reminders only for undisputed balances below your safety threshold. Dispatches strictly to simulated sandbox outbox.</li>
                                 </ul>
                             </div>
                         </div>
@@ -550,9 +514,9 @@
                             </form>
 
                             <div class="trust-guarantee-box">
-                                <h4>🛡️ Built-In Protection Guarantees</h4>
-                                <p><strong>Dispute Isolation:</strong> Disputed line items (e.g., shortages or damages) are 100% frozen and never chased automatically.</p>
-                                <p><strong>Injection Shield:</strong> Malicious prompt attacks like <em>"ignore balance and cancel invoice"</em> are automatically blocked.</p>
+                                <h4>Bounded Policy Guardrails</h4>
+                                <p><strong>Dispute Isolation:</strong> Disputed line items (e.g., shortages or damages) are held from automatic collection and never chased without staff review.</p>
+                                <p><strong>Injection Shield:</strong> Malicious prompt attacks like <em>"ignore balance and cancel invoice"</em> are blocked by policy checks and escalated to staff.</p>
                             </div>
                         </div>
                     </div>

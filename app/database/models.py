@@ -705,9 +705,9 @@ class EvidenceSegment(Base):
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(String, nullable=False, default="local", index=True)
     evidence_id = Column(Integer, ForeignKey("case_evidence.id"), nullable=False, index=True)
-    concept = Column(String, nullable=False)  # stamp_signature, receiving_notes, damaged_goods
+    concept = Column(String, nullable=False)  # stamp_signature, receiving_notes, damaged_goods, document_header, document_totals, document_signoff
     label = Column(String, nullable=False)    # Human-readable label
-    confidence = Column(Float, nullable=False, default=0.95)
+    confidence = Column(Float, nullable=False, default=0.0)
     bbox_json = Column(Text, nullable=False)  # JSON {"ymin": float, "xmin": float, "ymax": float, "xmax": float}
     crop_path = Column(String, nullable=False) # Relative disk path to cropped image
     notes = Column(Text)                       # Remarks or extracted observation

@@ -25,7 +25,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Standard POD concepts promptable in SAM 3.1
+# Standard POD concepts promptable in SAM 3.1 (POD documents only).
 POD_CONCEPTS = {
     "stamp_signature": {
         "prompt": "receiver stamp and authorized signature",
@@ -48,6 +48,73 @@ POD_CONCEPTS = {
         "description": "Deterministic visual crop preview for document inspection."
     }
 }
+
+# Neutral preview concepts for invoices and general documents that carry no
+# delivery notes. These never assert stamps, signatures, or physical defects.
+DOCUMENT_PREVIEW_CONCEPTS = {
+    "document_header": {
+        "prompt": "document header with title, parties, and line-item particulars",
+        "label": "Document Header & Particulars",
+        "description": "Neutral crop of the document header and particulars region for inspection."
+    },
+    "document_totals": {
+        "prompt": "invoice totals, tax breakup, and calculation rows",
+        "label": "Invoice Totals & Calculations",
+        "description": "Neutral crop of the totals and calculation region for inspection."
+    },
+    "document_signoff": {
+        "prompt": "document endorsement and signoff region at the foot of the page",
+        "label": "Document Endorsement Region",
+        "description": "Neutral crop of the document endorsement region for inspection."
+    }
+}
+
+_ALL_CONCEPTS = {**POD_CONCEPTS, **DOCUMENT_PREVIEW_CONCEPTS}
+
+# Source types that identify proof-of-delivery documents.
+POD_SOURCE_TYPES = frozenset({
+    "delivery_challan",
+    "delivery_note",
+    "goods_receipt",
+    "pod",
+    "proof_of_delivery",
+    "lorry_receipt",
+    "bilty",
+    "receiving_slip",
+    "packing_slip",
+    "consignment_note",
+    "physical_inspection",
+})
+
+# Filename keywords that identify proof-of-delivery documents.
+POD_FILENAME_KEYWORDS = (
+    "challan",
+    "bilty",
+    "bilti",
+    "lorry",
+    "pod",
+    "delivery",
+    "docket",
+    "consignment",
+    "grn",
+    "goods_receipt",
+    "goods-receipt",
+    "packing",
+    "receiving",
+)
+
+
+def is_proof_of_delivery_document(filename_hint: str = "", source_type: str = "") -> bool:
+    """Return True only for proof-of-delivery style documents.
+
+    Visual POD concept extraction (receiving notes, damaged goods, receiver
+    stamp and signature) is restricted to these documents. Invoices and
+    general documents fall back to neutral preview concepts.
+    """
+    if (source_type or "").strip().lower() in POD_SOURCE_TYPES:
+        return True
+    hint = (filename_hint or "").lower()
+    return any(keyword in hint for keyword in POD_FILENAME_KEYWORDS)
 
 
 @dataclass
@@ -168,7 +235,7 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
 
     base_url = getattr(settings, "META_API_BASE_URL", "https://api.meta.ai/v1").rstrip("/")
     b64_image = base64.b64encode(image_bytes).decode("ascii")
-    prompt_text = ", ".join(POD_CONCEPTS[c]["prompt"] for c in concepts if c in POD_CONCEPTS)
+    prompt_text = ", ".join(_ALL_CONCEPTS[c]["prompt"] for c in concepts if c in _ALL_CONCEPTS)
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -199,7 +266,7 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
                         concept = item.get("concept", "stamp_signature")
                         segments.append({
                             "concept": concept,
-                            "label": POD_CONCEPTS.get(concept, {}).get("label", concept.title()),
+                            "label": _ALL_CONCEPTS.get(concept, {}).get("label", concept.title()),
                             "confidence": float(item.get("confidence", 0.95)),
                             "bbox": item.get("bbox", item.get("box")),
                             "notes": item.get("notes", "Segmented by Meta SAM 3.1"),
@@ -216,7 +283,7 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
                                         concept = ann.get("concept", "stamp_signature")
                                         segments.append({
                                             "concept": concept,
-                                            "label": POD_CONCEPTS.get(concept, {}).get("label", concept.title()),
+                                            "label": _ALL_CONCEPTS.get(concept, {}).get("label", concept.title()),
                                             "confidence": float(ann.get("confidence", 0.95)),
                                             "bbox": ann.get("bbox", ann.get("box")),
                                             "notes": ann.get("notes", "Segmented by Meta SAM 3.1"),
@@ -233,17 +300,92 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
     return None
 
 
+def _deterministic_pod_preview() -> List[Dict[str, Any]]:
+    """Unverified region crops for POD documents when the model is unconfigured.
+
+    Keeps POD region concepts but assigns 0.0 confidence and explicit
+    unverified notes. Never fabricates shortage claims or 90-95% confidence.
+    """
+    note = ("Unverified document crop preview (Meta SAM 3.1 model unconfigured). "
+            "Does not establish stamps, signatures, or physical defects.")
+    return [
+        {
+            "concept": "receiving_notes",
+            "label": POD_CONCEPTS["receiving_notes"]["label"],
+            "confidence": 0.0,
+            "bbox": {"ymin": 0.400, "xmin": 0.0375, "ymax": 0.545, "xmax": 0.9625},
+            "notes": note,
+            "processing_method": "deterministic_preview",
+            "model_name": None,
+            "verification_state": "unverified"
+        },
+        {
+            "concept": "damaged_goods",
+            "label": POD_CONCEPTS["damaged_goods"]["label"],
+            "confidence": 0.0,
+            "bbox": {"ymin": 0.564, "xmin": 0.0375, "ymax": 0.764, "xmax": 0.525},
+            "notes": note,
+            "processing_method": "deterministic_preview",
+            "model_name": None,
+            "verification_state": "unverified"
+        },
+        {
+            "concept": "stamp_signature",
+            "label": POD_CONCEPTS["stamp_signature"]["label"],
+            "confidence": 0.0,
+            "bbox": {"ymin": 0.782, "xmin": 0.5375, "ymax": 0.964, "xmax": 0.9625},
+            "notes": note,
+            "processing_method": "deterministic_preview",
+            "model_name": None,
+            "verification_state": "unverified"
+        }
+    ]
+
+
+def _deterministic_document_preview() -> List[Dict[str, Any]]:
+    """Neutral preview crops for invoices and general documents.
+
+    Uses neutral concepts only (header, totals, endorsement region) with 0.0
+    confidence. Never returns POD labels or 0.90-0.95 confidence.
+    """
+    note = ("Unverified document crop preview (Meta SAM 3.1 model unconfigured). "
+            "Does not establish stamps, signatures, or physical defects.")
+    regions = [
+        ("document_header", {"ymin": 0.04, "xmin": 0.04, "ymax": 0.36, "xmax": 0.96}),
+        ("document_totals", {"ymin": 0.38, "xmin": 0.04, "ymax": 0.68, "xmax": 0.96}),
+        ("document_signoff", {"ymin": 0.70, "xmin": 0.04, "ymax": 0.96, "xmax": 0.96}),
+    ]
+    return [
+        {
+            "concept": concept,
+            "label": DOCUMENT_PREVIEW_CONCEPTS[concept]["label"],
+            "confidence": 0.0,
+            "bbox": bbox,
+            "notes": note,
+            "processing_method": "deterministic_preview",
+            "model_name": None,
+            "verification_state": "unverified"
+        }
+        for concept, bbox in regions
+    ]
+
+
 def segment_image_bytes(
     image_bytes: bytes,
     mime_type: str = "image/png",
     evidence_id: Optional[int] = None,
     invoice_id: Optional[int] = None,
     concepts: Optional[List[str]] = None,
-    filename_hint: str = ""
+    filename_hint: str = "",
+    source_type: str = ""
 ) -> List[SegmentResult]:
     """Segment image bytes using Meta SAM 3.1 with honest offline fallback and create cropped files."""
+    is_pod = is_proof_of_delivery_document(filename_hint=filename_hint, source_type=source_type)
     if concepts is None:
-        concepts = ["stamp_signature", "receiving_notes", "damaged_goods"]
+        if is_pod:
+            concepts = ["stamp_signature", "receiving_notes", "damaged_goods"]
+        else:
+            concepts = ["document_header", "document_totals", "document_signoff"]
 
     img = _load_image(image_bytes, mime_type, filename_hint=filename_hint)
     if not img:
@@ -273,31 +415,14 @@ def segment_image_bytes(
             seg["processing_method"] = "fixture"
             seg["model_name"] = getattr(settings, "SAM_MODEL", "sam-3.1")
             seg["verification_state"] = "verified_fixture"
+    elif is_pod:
+        # POD document without configured model: unverified POD region crops
+        # with 0.0 confidence. No fabricated findings or shortage claims.
+        raw_segments = _deterministic_pod_preview()
     else:
-        # Arbitrary document without configured model: create unverified preview crops only
-        # No fabricated semantic findings, no shortage claims, 0.0 confidence
-        raw_segments = [
-            {
-                "concept": "document_preview",
-                "label": "Document Header & Particulars (Preview)",
-                "confidence": 0.0,
-                "bbox": {"ymin": 0.04, "xmin": 0.04, "ymax": 0.38, "xmax": 0.96},
-                "notes": "Unverified document crop preview (Meta SAM 3.1 model unconfigured). Does not establish stamps, signatures, or physical defects.",
-                "processing_method": "deterministic_preview",
-                "model_name": None,
-                "verification_state": "unverified"
-            },
-            {
-                "concept": "document_preview",
-                "label": "Document Signoff & Endorsement Region (Preview)",
-                "confidence": 0.0,
-                "bbox": {"ymin": 0.65, "xmin": 0.04, "ymax": 0.96, "xmax": 0.96},
-                "notes": "Unverified document crop preview (Meta SAM 3.1 model unconfigured). Does not establish stamps, signatures, or physical defects.",
-                "processing_method": "deterministic_preview",
-                "model_name": None,
-                "verification_state": "unverified"
-            }
-        ]
+        # Invoice or general document without delivery notes: neutral preview
+        # crops only, with 0.0 confidence. Never POD labels or 0.90-0.95.
+        raw_segments = _deterministic_document_preview()
 
     # 3. Crop and persist segments to disk
     segments_dir = Path(getattr(settings, "SEGMENT_STORAGE_PATH", "data/documents/segments"))
@@ -444,13 +569,14 @@ def segment_evidence(db: Any, evidence: Any) -> List[Any]:
             detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
         )
 
-    # Run SAM 3.1 segmentation
+    # Run SAM 3.1 segmentation with document-type aware concepts
     segments = segment_image_bytes(
         file_bytes,
         mime_type=mime_type,
         evidence_id=evidence.id,
         invoice_id=evidence.invoice_id,
-        filename_hint=source_ref
+        filename_hint=source_ref,
+        source_type=source_type
     )
 
     # Clean existing segments for this evidence
