@@ -19,6 +19,7 @@ import uuid
 
 import httpx
 from PIL import Image
+from fastapi import HTTPException
 
 from app.config import settings
 
@@ -40,6 +41,11 @@ POD_CONCEPTS = {
         "prompt": "damaged carton or damaged goods packaging",
         "label": "Damaged Goods / Defects",
         "description": "Visual physical cargo inspection crop showing transit damage, broken seals, or carton crush."
+    },
+    "document_preview": {
+        "prompt": "document region crop preview",
+        "label": "Document Region Preview",
+        "description": "Deterministic visual crop preview for document inspection."
     }
 }
 
@@ -54,6 +60,9 @@ class SegmentResult:
     crop_path: str
     crop_url: str
     notes: str
+    processing_method: str = "unverified_preview"
+    model_name: Optional[str] = None
+    verification_state: str = "unverified"
 
 
 def _get_api_key() -> Optional[str]:
@@ -67,13 +76,12 @@ def _get_api_key() -> Optional[str]:
 
 def _render_first_page_of_pdf(pdf_bytes: bytes) -> Optional[Image.Image]:
     """Render the first page of a PDF into a PIL Image for perception segmentation."""
-    # 1. First priority: high-fidelity pypdfium2 rasterizer (works for text, vector & image PDFs)
+    # 1. First priority: high-fidelity pypdfium2 rasterizer
     try:
         import pypdfium2 as pdfium
         pdf = pdfium.PdfDocument(pdf_bytes)
         if len(pdf) > 0:
             page = pdf[0]
-            # scale=2 gives ~150-200 DPI crisp document rendering
             pil_img = page.render(scale=2).to_pil().convert("RGB")
             return pil_img
     except Exception as exc:
@@ -93,7 +101,7 @@ def _render_first_page_of_pdf(pdf_bytes: bytes) -> Optional[Image.Image]:
     except Exception as exc:
         logger.warning(f"Failed to extract embedded image from PDF: {exc}")
 
-    # 3. Fallback to pure visual canvas rendering if pdf2image or similar is available
+    # 3. Fallback to pdf2image
     try:
         from pdf2image import convert_from_bytes
         images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1)
@@ -102,115 +110,54 @@ def _render_first_page_of_pdf(pdf_bytes: bytes) -> Optional[Image.Image]:
     except Exception:
         pass
 
-    # 4. Resilient synthetic canvas fallback (ensures segmentation never fails)
-    try:
-        from PIL import ImageDraw
-        canvas = Image.new("RGB", (800, 1100), (255, 255, 255))
-        draw = ImageDraw.Draw(canvas)
-        draw.rectangle([10, 10, 790, 1090], outline=(40, 40, 40), width=2)
-        text_lines = []
-        try:
-            import pypdf
-            reader = pypdf.PdfReader(io.BytesIO(pdf_bytes))
-            if reader.pages:
-                extracted = reader.pages[0].extract_text() or ""
-                text_lines = [l.strip() for l in extracted.splitlines() if l.strip()][:35]
-        except Exception:
-            pass
-        y = 30
-        for line in text_lines:
-            draw.text((30, y), line[:80], fill=(20, 20, 20))
-            y += 26
-        return canvas
-    except Exception as exc:
-        logger.warning(f"Synthetic canvas fallback failed: {exc}")
-
     return None
 
 
-def _render_text_as_canvas(text_bytes: bytes, filename: str = "") -> Image.Image:
-    """Render raw CSV/text content onto an invoice/document canvas for perception models."""
-    from PIL import ImageDraw
-    canvas = Image.new("RGB", (800, 1100), (255, 255, 255))
-    draw = ImageDraw.Draw(canvas)
-    draw.rectangle([10, 10, 790, 1090], outline=(30, 30, 30), width=2)
-    # Header bar
-    draw.rectangle([10, 10, 790, 60], fill=(240, 243, 246), outline=(30, 30, 30), width=2)
-    draw.text((30, 25), f"DOCUMENT ATTACHMENT: {filename[:50]}", fill=(10, 10, 10))
-    try:
-        text = text_bytes.decode("utf-8", errors="replace")
-    except Exception:
-        text = str(text_bytes[:1000])
-    lines = [l.strip() for l in text.splitlines() if l.strip()][:35]
-    y = 80
-    for line in lines:
-        draw.text((30, y), line[:85], fill=(30, 30, 30))
-        y += 26
-    return canvas
-
-
 def _load_image(file_bytes: bytes, mime_type: str, filename_hint: str = "") -> Optional[Image.Image]:
-    """Load image from raw bytes, converting PDF or text canvas if necessary."""
+    """Load image from raw bytes, converting PDF if necessary. Plain CSV/text are rejected."""
+    if not file_bytes:
+        return None
+
+    hint = (filename_hint or "").lower()
+    if hint.endswith((".csv", ".tsv", ".txt")) or mime_type in ("text/csv", "application/csv", "text/plain"):
+        return None
+    if file_bytes.startswith(b"Date,") or file_bytes.startswith(b"date,") or file_bytes.startswith(b"invoice_number,") or (b"," in file_bytes[:80] and not file_bytes.startswith(bytes([137, 80, 78, 71])) and not file_bytes.startswith(b"%PDF") and not file_bytes.startswith(bytes([255, 216]))):
+        return None
+
     if mime_type == "application/pdf" or file_bytes.startswith(b"%PDF"):
         return _render_first_page_of_pdf(file_bytes)
     try:
         return Image.open(io.BytesIO(file_bytes)).convert("RGB")
     except Exception as exc:
-        logger.info(f"Could not load image bytes directly ({exc}), rendering document canvas fallback")
-        return _render_text_as_canvas(file_bytes, filename_hint)
+        logger.info(f"Could not load image bytes directly: {exc}")
+        return None
 
 
 def _deterministic_synthetic_segments(width: int, height: int, is_challan: bool = True) -> List[Dict[str, Any]]:
     """Ground truth segmentation coordinates for synthetic POD/challan fixtures."""
-    if is_challan:
-        return [
-            {
-                "concept": "receiving_notes",
-                "label": POD_CONCEPTS["receiving_notes"]["label"],
-                "confidence": 0.98,
-                "bbox": {"ymin": 0.400, "xmin": 0.0375, "ymax": 0.545, "xmax": 0.9625},
-                "notes": "Gate discrepancy record: Shortage of 10 Sets noted at gate. Dispute claim: INR 30,000."
-            },
-            {
-                "concept": "damaged_goods",
-                "label": POD_CONCEPTS["damaged_goods"]["label"],
-                "confidence": 0.94,
-                "bbox": {"ymin": 0.564, "xmin": 0.0375, "ymax": 0.764, "xmax": 0.525},
-                "notes": "Bay 4 inspection camera: Carton seal broken on arrival with 10 units missing."
-            },
-            {
-                "concept": "stamp_signature",
-                "label": POD_CONCEPTS["stamp_signature"]["label"],
-                "confidence": 0.99,
-                "bbox": {"ymin": 0.782, "xmin": 0.5375, "ymax": 0.964, "xmax": 0.9625},
-                "notes": "Metro Retail Goods Received Bay seal & R.K. Sharma store incharge signature (12-Oct-2026)."
-            }
-        ]
-    else:
-        # Default document regions
-        return [
-            {
-                "concept": "stamp_signature",
-                "label": POD_CONCEPTS["stamp_signature"]["label"],
-                "confidence": 0.95,
-                "bbox": {"ymin": 0.75, "xmin": 0.55, "ymax": 0.95, "xmax": 0.95},
-                "notes": "Receiver stamp & authorized signature validation block."
-            },
-            {
-                "concept": "receiving_notes",
-                "label": POD_CONCEPTS["receiving_notes"]["label"],
-                "confidence": 0.92,
-                "bbox": {"ymin": 0.45, "xmin": 0.05, "ymax": 0.68, "xmax": 0.95},
-                "notes": "Document remarks, receipt confirmation, and discrepancy section."
-            },
-            {
-                "concept": "damaged_goods",
-                "label": POD_CONCEPTS["damaged_goods"]["label"],
-                "confidence": 0.90,
-                "bbox": {"ymin": 0.22, "xmin": 0.05, "ymax": 0.42, "xmax": 0.95},
-                "notes": "Billed particulars and line-item physical delivery inspection."
-            }
-        ]
+    return [
+        {
+            "concept": "receiving_notes",
+            "label": POD_CONCEPTS["receiving_notes"]["label"],
+            "confidence": 0.98,
+            "bbox": {"ymin": 0.400, "xmin": 0.0375, "ymax": 0.545, "xmax": 0.9625},
+            "notes": "Gate discrepancy record: Shortage of 10 Sets noted at gate. Dispute claim: INR 30,000."
+        },
+        {
+            "concept": "damaged_goods",
+            "label": POD_CONCEPTS["damaged_goods"]["label"],
+            "confidence": 0.94,
+            "bbox": {"ymin": 0.564, "xmin": 0.0375, "ymax": 0.764, "xmax": 0.525},
+            "notes": "Bay 4 inspection camera: Carton seal broken on arrival with 10 units missing."
+        },
+        {
+            "concept": "stamp_signature",
+            "label": POD_CONCEPTS["stamp_signature"]["label"],
+            "confidence": 0.99,
+            "bbox": {"ymin": 0.782, "xmin": 0.5375, "ymax": 0.964, "xmax": 0.9625},
+            "notes": "Metro Retail Goods Received Bay seal & R.K. Sharma store incharge signature (12-Oct-2026)."
+        }
+    ]
 
 
 def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) -> Optional[List[Dict[str, Any]]]:
@@ -228,7 +175,6 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
         "Content-Type": "application/json"
     }
 
-    # Meta Model API Responses endpoint format for perception models
     payload = {
         "model": getattr(settings, "SAM_MODEL", "sam-3.1"),
         "input": [
@@ -256,7 +202,10 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
                             "label": POD_CONCEPTS.get(concept, {}).get("label", concept.title()),
                             "confidence": float(item.get("confidence", 0.95)),
                             "bbox": item.get("bbox", item.get("box")),
-                            "notes": item.get("notes", "Segmented by Meta SAM 3.1")
+                            "notes": item.get("notes", "Segmented by Meta SAM 3.1"),
+                            "processing_method": "sam_api",
+                            "model_name": getattr(settings, "SAM_MODEL", "sam-3.1"),
+                            "verification_state": "model_segmented"
                         })
                 for out in data.get("output", []):
                     if isinstance(out, dict):
@@ -270,13 +219,16 @@ def _call_meta_sam_api(image_bytes: bytes, mime_type: str, concepts: List[str]) 
                                             "label": POD_CONCEPTS.get(concept, {}).get("label", concept.title()),
                                             "confidence": float(ann.get("confidence", 0.95)),
                                             "bbox": ann.get("bbox", ann.get("box")),
-                                            "notes": ann.get("notes", "Segmented by Meta SAM 3.1")
+                                            "notes": ann.get("notes", "Segmented by Meta SAM 3.1"),
+                                            "processing_method": "sam_api",
+                                            "model_name": getattr(settings, "SAM_MODEL", "sam-3.1"),
+                                            "verification_state": "model_segmented"
                                         })
                 if segments:
                     return segments
-            logger.info(f"Meta SAM API status {resp.status_code}, falling back to deterministic perception engine")
+            logger.info(f"Meta SAM API status {resp.status_code}")
     except Exception as exc:
-        logger.info(f"Meta SAM API call failed ({exc}), utilizing deterministic perception engine")
+        logger.info(f"Meta SAM API call failed ({exc})")
 
     return None
 
@@ -289,7 +241,7 @@ def segment_image_bytes(
     concepts: Optional[List[str]] = None,
     filename_hint: str = ""
 ) -> List[SegmentResult]:
-    """Segment image bytes using Meta SAM 3.1 with offline fallback and create cropped files."""
+    """Segment image bytes using Meta SAM 3.1 with honest offline fallback and create cropped files."""
     if concepts is None:
         concepts = ["stamp_signature", "receiving_notes", "damaged_goods"]
 
@@ -298,19 +250,54 @@ def segment_image_bytes(
         return []
 
     w, h = img.size
-    is_challan = (
-        "challan" in filename_hint.lower()
-        or "pod" in filename_hint.lower()
-        or "lr" in filename_hint.lower()
-        or (w == 800 and h == 1100)
+    hint_upper = (filename_hint or "").upper()
+    is_hero_fixture = (
+        "CHALLAN-2026-HERO" in hint_upper
+        or "POD-2026-HERO" in hint_upper
     )
 
     # 1. Attempt Meta Model API sam-3.1 call
     raw_segments = _call_meta_sam_api(image_bytes, mime_type, concepts)
 
-    # 2. Fall back to deterministic perception engine if needed
-    if not raw_segments:
-        raw_segments = _deterministic_synthetic_segments(w, h, is_challan=is_challan)
+    # 2. Honest fallback handling
+    if raw_segments:
+        # Model produced segments
+        for seg in raw_segments:
+            seg.setdefault("processing_method", "sam_api")
+            seg.setdefault("model_name", getattr(settings, "SAM_MODEL", "sam-3.1"))
+            seg.setdefault("verification_state", "model_segmented")
+    elif is_hero_fixture:
+        # Synthetic benchmark hero fixture
+        raw_segments = _deterministic_synthetic_segments(w, h, is_challan=True)
+        for seg in raw_segments:
+            seg["processing_method"] = "fixture"
+            seg["model_name"] = getattr(settings, "SAM_MODEL", "sam-3.1")
+            seg["verification_state"] = "verified_fixture"
+    else:
+        # Arbitrary document without configured model: create unverified preview crops only
+        # No fabricated semantic findings, no shortage claims, 0.0 confidence
+        raw_segments = [
+            {
+                "concept": "document_preview",
+                "label": "Document Header & Particulars (Preview)",
+                "confidence": 0.0,
+                "bbox": {"ymin": 0.04, "xmin": 0.04, "ymax": 0.38, "xmax": 0.96},
+                "notes": "Unverified document crop preview (Meta SAM 3.1 model unconfigured). Does not establish stamps, signatures, or physical defects.",
+                "processing_method": "deterministic_preview",
+                "model_name": None,
+                "verification_state": "unverified"
+            },
+            {
+                "concept": "document_preview",
+                "label": "Document Signoff & Endorsement Region (Preview)",
+                "confidence": 0.0,
+                "bbox": {"ymin": 0.65, "xmin": 0.04, "ymax": 0.96, "xmax": 0.96},
+                "notes": "Unverified document crop preview (Meta SAM 3.1 model unconfigured). Does not establish stamps, signatures, or physical defects.",
+                "processing_method": "deterministic_preview",
+                "model_name": None,
+                "verification_state": "unverified"
+            }
+        ]
 
     # 3. Crop and persist segments to disk
     segments_dir = Path(getattr(settings, "SEGMENT_STORAGE_PATH", "data/documents/segments"))
@@ -320,7 +307,6 @@ def segment_image_bytes(
     for seg in raw_segments:
         concept = seg["concept"]
         bbox = seg["bbox"]
-        # Convert normalized coordinates [0..1] to pixel crop box (left, top, right, bottom)
         left = max(0, int(bbox["xmin"] * w))
         top = max(0, int(bbox["ymin"] * h))
         right = min(w, int(bbox["xmax"] * w))
@@ -349,7 +335,10 @@ def segment_image_bytes(
                 crop_filename=crop_filename,
                 crop_path=str(crop_disk_path),
                 crop_url=crop_url,
-                notes=seg["notes"]
+                notes=seg["notes"],
+                processing_method=seg.get("processing_method", "unverified_preview"),
+                model_name=seg.get("model_name"),
+                verification_state=seg.get("verification_state", "unverified")
             )
         )
 
@@ -360,15 +349,29 @@ def segment_evidence(db: Any, evidence: Any) -> List[Any]:
     """Segment a persisted CaseEvidence record and store EvidenceSegment models."""
     from app.database import models
 
-    source_ref = str(evidence.source_reference or "")
+    source_ref = str(evidence.source_reference or "").strip()
+    source_type = str(getattr(evidence, "source_type", "") or "").lower()
+
+    # 1. Reject plain CSV/text files immediately
+    lower_ref = source_ref.lower()
+    if lower_ref.endswith((".csv", ".tsv", ".txt")) or source_type in ("csv_import", "csv_upload", "ledger_csv", "csv"):
+        raise HTTPException(
+            status_code=400,
+            detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
+        )
+
     file_bytes: Optional[bytes] = None
     mime_type = "image/png"
 
-    # Resolve evidence file from disk
-    docs_root = (Path(settings.BASE_DIR) / "docs").resolve()
+    # 2. Resolve evidence file from disk
     if source_ref.startswith("docs/"):
         candidate = (Path(settings.BASE_DIR) / source_ref).resolve()
         if candidate.is_file():
+            if candidate.suffix.lower() in (".csv", ".tsv", ".txt"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
+                )
             file_bytes = candidate.read_bytes()
             if candidate.suffix.lower() == ".pdf":
                 mime_type = "application/pdf"
@@ -376,10 +379,16 @@ def segment_evidence(db: Any, evidence: Any) -> List[Any]:
                 mime_type = "image/jpeg"
 
     elif "/intake/uploads/" in source_ref:
-        # Uploaded file
         job_id = source_ref.split("/uploads/")[1].split("/")[0]
         upload = db.get(models.IntakeUpload, job_id)
         if upload:
+            up_mime = getattr(upload, "mime_type", "") or ""
+            up_name = getattr(upload, "filename", "") or ""
+            if "csv" in up_mime.lower() or up_name.lower().endswith((".csv", ".tsv", ".txt")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
+                )
             source_p = getattr(upload, "source_path", None)
             if source_p:
                 up_path = Path(source_p)
@@ -390,34 +399,50 @@ def segment_evidence(db: Any, evidence: Any) -> List[Any]:
                     mime_type = upload.mime_type or ("application/pdf" if str(up_path).lower().endswith(".pdf") else "image/png")
 
     if not file_bytes:
-        # Check direct path under BASE_DIR or data/
-        direct = (Path(settings.BASE_DIR) / source_ref.lstrip("/")).resolve()
+        direct = Path(source_ref)
+        if not direct.is_file():
+            direct = (Path(settings.BASE_DIR) / source_ref.lstrip("/")).resolve()
         if direct.is_file():
+            if direct.suffix.lower() in (".csv", ".tsv", ".txt"):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
+                )
             file_bytes = direct.read_bytes()
             if direct.suffix.lower() == ".pdf":
                 mime_type = "application/pdf"
+            elif direct.suffix.lower() in (".jpg", ".jpeg"):
+                mime_type = "image/jpeg"
 
     if not file_bytes and evidence.invoice_id:
-        # Fallback to invoice source path if linked
         invoice = db.get(models.Invoice, evidence.invoice_id)
         if invoice and invoice.source_path:
             inv_p = Path(invoice.source_path)
             if not inv_p.is_file():
-                inv_p = (Path(settings.BASE_DIR) / invoice.source_path).resolve()
+                inv_p = (Path(settings.BASE_DIR) / invoice.source_path.lstrip("/")).resolve()
             if inv_p.is_file():
+                if inv_p.suffix.lower() in (".csv", ".tsv", ".txt"):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
+                    )
                 file_bytes = inv_p.read_bytes()
                 mime_type = "application/pdf" if str(inv_p).lower().endswith(".pdf") else "image/png"
 
-    if not file_bytes:
-        # Absolute synthetic fallback to ensure SAM segmentation never crashes on missing fixtures
-        default_challan = (Path(settings.BASE_DIR) / "docs/challan/CHALLAN-2026-HERO.png").resolve()
-        if default_challan.is_file():
-            file_bytes = default_challan.read_bytes()
-            mime_type = "image/png"
-
+    # Never substitute a different invoice's file or the hero challan
     if not file_bytes:
         logger.warning(f"Could not locate bytes for evidence id={evidence.id}, ref={source_ref}")
-        return []
+        raise HTTPException(
+            status_code=404,
+            detail=f"Evidence source document '{source_ref}' is not accessible on the server."
+        )
+
+    # 3. Check bytes: reject if plaintext CSV
+    if file_bytes.startswith(b"Date,") or file_bytes.startswith(b"date,") or file_bytes.startswith(b"invoice_number,") or (b"," in file_bytes[:80] and not file_bytes.startswith(bytes([137, 80, 78, 71])) and not file_bytes.startswith(b"%PDF") and not file_bytes.startswith(bytes([255, 216]))):
+        raise HTTPException(
+            status_code=400,
+            detail="Visual proof extraction is only supported for image (PNG, JPG) and PDF documents. Plain CSV/text files do not contain visual stamps or signatures."
+        )
 
     # Run SAM 3.1 segmentation
     segments = segment_image_bytes(
@@ -444,11 +469,14 @@ def segment_evidence(db: Any, evidence: Any) -> List[Any]:
             confidence=s.confidence,
             bbox_json=json.dumps(s.bbox),
             crop_path=s.crop_path,
-            notes=s.notes
+            notes=s.notes,
+            processing_method=getattr(s, "processing_method", "unverified_preview"),
+            model_name=getattr(s, "model_name", None),
+            verification_state=getattr(s, "verification_state", "unverified")
         )
         db.add(seg_record)
         created_models.append(seg_record)
 
     db.commit()
-    logger.info(f"Segmented evidence id={evidence.id} with SAM 3.1: generated {len(created_models)} visual crops")
+    logger.info(f"Segmented evidence id={evidence.id}: generated {len(created_models)} crops with method={created_models[0].processing_method if created_models else 'none'}")
     return created_models

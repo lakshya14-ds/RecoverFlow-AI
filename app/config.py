@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     META_KEY_3_RESERVE_RPM: int = 5
     META_KEY_3_RESERVE_RPD: int = 300
     AGENT_MODEL: str = "muse-spark-1.3"
+    LLM_MODEL: str = "muse-spark-1.3"
     SAM_MODEL: str = "sam-3.1"
     SAM_ENABLED: bool = True
     VOICE_MODEL: str = "muse-voice-transcribe"

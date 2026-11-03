@@ -211,15 +211,51 @@ def purge_documents(payload: PurgeDocuments,
 
 
 @router.get("/config")
-def get_config():
-    """Return non-sensitive configuration values."""
+def get_config(identity: Identity = Depends(get_identity)):
+    """Return non-sensitive configuration values.
+    Preserves authentication, maps LLM_MODEL compatibility key to supported AGENT_MODEL,
+    and distinguishes configured model names from active execution engines."""
+    meta_configured = bool(settings.META_MODEL_API_KEY or settings.META_API_KEY_1)
+    sam_configured = bool(meta_configured and getattr(settings, "SAM_ENABLED", True))
+    voice_configured = bool(meta_configured and getattr(settings, "VOICE_ENABLED", True))
     safe_config = {
         "HOST": settings.HOST,
         "PORT": settings.PORT,
-        "LLM_MODEL": settings.LLM_MODEL,
         "DEBUG": settings.DEBUG,
+        # Preserve backwards compatibility for callers expecting LLM_MODEL key
+        "LLM_MODEL": settings.AGENT_MODEL,
+        "AGENT_MODEL": settings.AGENT_MODEL,
+        "SAM_MODEL": getattr(settings, "SAM_MODEL", "sam-3.1"),
+        "VOICE_MODEL": getattr(settings, "VOICE_MODEL", "muse-voice-transcribe"),
+        "MODELS_CONFIGURED": {
+            "agent": {
+                "model": settings.AGENT_MODEL,
+                "configured": meta_configured,
+                "active_engine": "meta_api" if meta_configured else "rules_fallback",
+            },
+            "sam": {
+                "model": getattr(settings, "SAM_MODEL", "sam-3.1"),
+                "configured": sam_configured,
+                "active_engine": "sam_api" if sam_configured else "deterministic_preview",
+            },
+            "voice": {
+                "model": getattr(settings, "VOICE_MODEL", "muse-voice-transcribe"),
+                "configured": voice_configured,
+                "active_engine": "meta_voice_api" if voice_configured else "rules_fallback",
+            },
+        },
+        "EXECUTION_MODE": "live_model_assisted" if meta_configured else "deterministic_rules_only",
         "AUTO_APPROVE_THRESHOLD": settings.AUTO_APPROVE_THRESHOLD,
+        "HUMAN_REVIEW_THRESHOLD": getattr(settings, "HUMAN_REVIEW_THRESHOLD", 0.60),
         "FRAUD_ALERT_THRESHOLD": settings.FRAUD_ALERT_THRESHOLD,
-        "DSO_FORECAST_HORIZON": settings.DSO_FORECAST_HORIZON
+        "DSO_FORECAST_HORIZON": settings.DSO_FORECAST_HORIZON,
+        "DSO_TARGET_DAYS": getattr(settings, "DSO_TARGET_DAYS", 30),
+        "PAYMENT_MODE": getattr(settings, "RAZORPAY_MODE", "test"),
+        "LIVE_PAYMENTS_ENABLED": getattr(settings, "RAZORPAY_LIVE_ENABLED", False),
+        "CHANNELS": {
+            "whatsapp_live": getattr(settings, "WHATSAPP_ENABLED", False),
+            "email_live": getattr(settings, "EMAIL_ENABLED", False),
+            "sandbox_only": True,
+        },
     }
     return safe_config

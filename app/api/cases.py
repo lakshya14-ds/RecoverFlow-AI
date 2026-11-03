@@ -172,21 +172,48 @@ EVIDENCE_DOC_DIRS = ("invoices", "po", "challan", "audio")
 def get_evidence_file(invoice_id: int, filename: str,
                       db: Session = Depends(get_db),
                       identity: Identity = Depends(get_identity)):
-    """Serve a synthetic doc fixture linked to this tenant's own evidence row."""
+    """Serve a synthetic doc fixture or stored audio recording linked to this tenant's own evidence row."""
     invoice = _invoice(db, invoice_id, identity)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(pdf|png|jpg|jpeg|wav|mp3|ogg|m4a)", filename or ""):
         raise HTTPException(status_code=404, detail="Evidence file not found")
     refs = {row.source_reference for row in db.query(models.CaseEvidence).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice.id).all()}
+
+    path = None
+    # 1. Match docs/{dir}/{filename}
     match = next((f"docs/{d}/{filename}" for d in EVIDENCE_DOC_DIRS
                   if f"docs/{d}/{filename}" in refs), None)
-    if match is None:
+    if match is not None:
+        docs_root = (Path(settings.BASE_DIR) / "docs").resolve()
+        candidate = (docs_root / match[5:]).resolve()
+        if docs_root in candidate.parents and candidate.is_file():
+            path = candidate
+
+    # 2. Check dedicated voice storage directory if filename matches an evidence reference
+    if path is None and any(filename in str(r) for r in refs):
+        voice_root = (Path(settings.BASE_DIR) / getattr(settings, "VOICE_STORAGE_PATH", "data/documents/audio")).resolve()
+        candidate = (voice_root / filename).resolve()
+        if voice_root in candidate.parents and candidate.is_file():
+            path = candidate
+
+    # 3. Check intake storage directory if filename matches an evidence reference
+    if path is None and any(filename in str(r) for r in refs):
+        intake_root = (Path(settings.BASE_DIR) / getattr(settings, "INTAKE_STORAGE_PATH", "data/intake")).resolve()
+        candidate = (intake_root / filename).resolve()
+        if intake_root in candidate.parents and candidate.is_file():
+            path = candidate
+
+    if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail="Evidence file not found")
-    docs_root = (Path(settings.BASE_DIR) / "docs").resolve()
-    path = (docs_root / match[5:]).resolve()
-    if docs_root not in path.parents or not path.is_file():
-        raise HTTPException(status_code=404, detail="Evidence file not found")
-    media = "image/png" if filename.lower().endswith(".png") else "image/jpeg" if filename.lower().endswith((".jpg", ".jpeg")) else "audio/wav" if filename.lower().endswith(".wav") else "audio/mpeg" if filename.lower().endswith(".mp3") else "audio/ogg" if filename.lower().endswith(".ogg") else "application/pdf"
+
+    ext = filename.lower()
+    media = ("image/png" if ext.endswith(".png")
+             else "image/jpeg" if ext.endswith((".jpg", ".jpeg"))
+             else "audio/wav" if ext.endswith(".wav")
+             else "audio/mpeg" if ext.endswith(".mp3")
+             else "audio/ogg" if ext.endswith(".ogg")
+             else "audio/mp4" if ext.endswith(".m4a")
+             else "application/pdf")
     return FileResponse(path, media_type=media, filename=filename)
 
 
@@ -206,7 +233,10 @@ def run_segmentation(invoice_id: int, evidence_id: int,
         "id": s.id, "concept": s.concept, "label": s.label,
         "confidence": s.confidence, "bbox": json.loads(s.bbox_json or "{}"),
         "crop_url": f"/api/v1/cases/{invoice.id}/evidence/{evidence.id}/segments/file/{Path(s.crop_path).name}",
-        "notes": s.notes
+        "notes": s.notes,
+        "processing_method": getattr(s, "processing_method", "unverified_preview"),
+        "model_name": getattr(s, "model_name", None),
+        "verification_state": getattr(s, "verification_state", "unverified")
     } for s in segments]
 
 
@@ -226,7 +256,10 @@ def list_segments(invoice_id: int, evidence_id: int,
         "id": s.id, "concept": s.concept, "label": s.label,
         "confidence": s.confidence, "bbox": json.loads(s.bbox_json or "{}"),
         "crop_url": f"/api/v1/cases/{invoice.id}/evidence/{evidence.id}/segments/file/{Path(s.crop_path).name}",
-        "notes": s.notes
+        "notes": s.notes,
+        "processing_method": getattr(s, "processing_method", "unverified_preview"),
+        "model_name": getattr(s, "model_name", None),
+        "verification_state": getattr(s, "verification_state", "unverified")
     } for s in segments]
 
 
@@ -294,7 +327,8 @@ async def upload_voice_note(invoice_id: int,
         contents,
         filename=filename,
         tenant_id=identity.tenant_id,
-        invoice_id=invoice.id
+        invoice_id=invoice.id,
+        is_hero=(invoice.invoice_number == "INV-2026-HERO")
     )
 
     # 1. Create or link CaseEvidence
@@ -388,6 +422,168 @@ def list_cases(db: Session = Depends(get_db), identity: Identity = Depends(get_i
     return [_summary(db, invoice) for invoice in invoices]
 
 
+
+
+def build_case_executive_summary(
+    invoice: models.Invoice,
+    split: dict,
+    evidence_rows: list,
+    entries: list,
+    messages: list,
+    promises: list,
+    voice_rows: list,
+    supporting_docs: list
+) -> dict:
+    currency = invoice.currency or "INR"
+    def _money(cents: int) -> str:
+        val = abs(cents) / 100.0
+        sign = "-" if cents < 0 else ""
+        return f"{sign}₹{val:,.2f}" if currency == "INR" else f"{sign}{currency} {val:,.2f}"
+
+    cust_name = invoice.counterparty_name or "Counterparty"
+    inv_num = invoice.invoice_number
+    total_cents = split["invoice_total_cents"]
+    received_cents = split["received_cents"]
+    outstanding_cents = split["outstanding_cents"]
+    disputed_cents = split["disputed_cents"]
+    undisputed_cents = split["undisputed_cents"]
+
+    # Check for linked purchase orders
+    po_ref = None
+    for doc in supporting_docs:
+        if str(doc.get("doc_type", "")).lower() in ("purchase_order", "po") and doc.get("number"):
+            po_ref = doc["number"]
+            break
+    if not po_ref:
+        for ev in evidence_rows:
+            if ev.claim_type == "purchase_order" or "PO-" in str(ev.title or ""):
+                po_ref = str(ev.title).replace("Customer Purchase Order (", "").replace(")", "").strip()
+                break
+
+    # Check for delivery evidence
+    delivery_ev = None
+    for ev in evidence_rows:
+        if ev.source_type in ("delivery_challan", "goods_receipt", "pod", "physical_inspection"):
+            delivery_ev = ev
+            break
+
+    # Check for audio evidence
+    audio_ev = None
+    for ev in evidence_rows:
+        if ev.source_type in ("whatsapp_voice_note", "audio") or str(ev.source_reference).endswith((".wav", ".mp3", ".ogg")):
+            audio_ev = ev
+            break
+
+    # Check for customer statement/messages
+    customer_ev = None
+    for ev in evidence_rows:
+        if ev.source_type in ("customer_email", "customer_message", "whatsapp_message"):
+            customer_ev = ev
+            break
+
+    has_substantive_evidence = bool(po_ref or delivery_ev or audio_ev or customer_ev or len(evidence_rows) > 1 or (len(evidence_rows) == 1 and evidence_rows[0].claim_type != "invoice_total"))
+
+    sources = []
+    text_parts = []
+
+    # 1. Billing and PO statement
+    billing_part = f"Customer {cust_name} was billed {_money(total_cents)} under invoice {inv_num}"
+    if po_ref:
+        billing_part += f" (referenced PO: {po_ref})"
+    billing_part += "."
+    text_parts.append(billing_part)
+    sources.append({"claim": "invoice_total", "title": f"Invoice {inv_num}"})
+
+    # 2. Payments to date
+    if received_cents > 0:
+        pay_method = ""
+        bank_ev = next((ev for ev in evidence_rows if ev.source_type in ("bank_receipt", "bank_remittance", "payment_receipt")), None)
+        if bank_ev:
+            pay_method = f" via {bank_ev.title}"
+            sources.append({"claim": "received_payment", "title": bank_ev.title})
+        text_parts.append(f"Payments received to date total {_money(received_cents)}{pay_method}.")
+    elif total_cents > 0:
+        text_parts.append("No payments have been received to date.")
+
+    # 3. Dispute or evidence findings
+    if not has_substantive_evidence and disputed_cents == 0:
+        text_parts.append(f"Current outstanding balance is {_money(outstanding_cents)}. Insufficient verified evidence to summarize delivery details or payment commitments.")
+    else:
+        if disputed_cents > 0:
+            disp_ev = next((ev for ev in evidence_rows if ev.claim_type == "dispute_item"), None)
+            is_verified = disp_ev and disp_ev.trust_state in ("verified", "accepted")
+            disp_title = disp_ev.title if disp_ev else "disputed line item"
+            if disp_ev:
+                sources.append({"claim": "dispute_item", "title": disp_title, "trust_state": disp_ev.trust_state})
+
+            if is_verified:
+                text_parts.append(f"A verified deduction of {_money(disputed_cents)} is held on freeze ({disp_title}).")
+            else:
+                text_parts.append(f"An unverified deduction of {_money(disputed_cents)} is held as an allegation pending staff review ({disp_title}).")
+
+        # 4. Undisputed balance & payment commitments
+        if undisputed_cents > 0:
+            undisp_text = f"The remaining {_money(undisputed_cents)} is undisputed balance."
+            promise_date = None
+            promise_amount = None
+            for p in promises:
+                if getattr(p, "status", "") in ("confirmed", "active", "pending"):
+                    promise_date = getattr(p, "promise_date", None)
+                    promise_amount = getattr(p, "amount_cents", None)
+                    break
+            if not promise_date:
+                for v in voice_rows:
+                    if getattr(v, "extracted_promise_date", None) and getattr(v, "extracted_promise_amount_cents", 0) > 0:
+                        promise_date = v.extracted_promise_date
+                        promise_amount = v.extracted_promise_amount_cents
+                        break
+            if promise_date and promise_amount:
+                undisp_text += f" Customer scheduled remittance of {_money(promise_amount)} on {promise_date}."
+            text_parts.append(undisp_text)
+        elif outstanding_cents == 0:
+            text_parts.append("The account balance is fully resolved.")
+
+    # 5. Recommendation (respecting case state)
+    if invoice.contact_suppressed:
+        rec = "Recommended Next Step: Customer contact is paused under policy. Staff review required before resuming communication."
+        action_type = "review"
+        can_collect = False
+    elif invoice.investigation_hold or split.get("reconciliation_error"):
+        rec = "Recommended Next Step: Investigation hold active. Staff reconciliation required between ledger balance and open dispute claims."
+        action_type = "review"
+        can_collect = False
+    elif invoice.requires_human_review:
+        rec = "Recommended Next Step: Staff review required to verify counterparty records and open claims."
+        action_type = "review"
+        can_collect = False
+    elif outstanding_cents == 0:
+        rec = "Recommended Next Step: Case fully resolved with zero outstanding balance. No further collection action required."
+        action_type = "resolved"
+        can_collect = False
+    elif undisputed_cents > 0:
+        if disputed_cents > 0:
+            rec = f"Recommended Next Step: Issue payment link or reminder for the undisputed {_money(undisputed_cents)}. Hold the {_money(disputed_cents)} dispute until delivery shortfall is settled."
+        else:
+            rec = f"Recommended Next Step: Issue payment link or reminder for the undisputed {_money(undisputed_cents)}."
+        action_type = "collect"
+        can_collect = True
+    else:
+        rec = f"Recommended Next Step: Outstanding balance of {_money(disputed_cents)} is under dispute. Hold collection action pending dispute investigation."
+        action_type = "hold"
+        can_collect = False
+
+    return {
+        "generation_method": "deterministic_summary",
+        "generation_label": "Deterministic Summary",
+        "text": " ".join(text_parts),
+        "recommended_next_step": rec,
+        "action_type": action_type,
+        "can_collect": can_collect,
+        "has_sufficient_evidence": has_substantive_evidence,
+        "sources": sources
+    }
+
+
 @router.get("/{invoice_id}")
 def get_case(invoice_id: int, db: Session = Depends(get_db),
              identity: Identity = Depends(get_identity)):
@@ -428,10 +624,31 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.ReceivableEntry.id).all()
     result["messages"] = db.query(models.CustomerMessage).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.CustomerMessage.id).all()
+    voice_rows = db.query(models.VoiceTranscription).filter_by(
+        tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.VoiceTranscription.id).all()
     ev_rows = db.query(models.CaseEvidence).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.CaseEvidence.id).all()
     evidence_payload = []
     for ev in ev_rows:
+        ref_name = Path(ev.source_reference or "").name
+        is_audio = bool(
+            ev.source_type in ("whatsapp_voice_note", "audio_call")
+            or ref_name.lower().endswith((".wav", ".mp3", ".ogg", ".m4a"))
+            or "/audio/" in (ev.source_reference or "").lower()
+        )
+        matching_vt = next(
+            (v for v in voice_rows
+             if v.evidence_id == ev.id
+             or (v.original_filename and v.original_filename == ref_name)
+             or (v.audio_path and Path(v.audio_path).name == ref_name)),
+            None
+        )
+        audio_url = None
+        if matching_vt:
+            audio_url = f"/api/v1/cases/{invoice.id}/voice/{matching_vt.id}/audio"
+        elif is_audio and ref_name:
+            audio_url = f"/api/v1/cases/{invoice.id}/evidence-files/{ref_name}"
+
         ev_dict = {
             "id": ev.id, "tenant_id": ev.tenant_id, "invoice_id": ev.invoice_id,
             "claim_type": ev.claim_type, "title": ev.title, "description": ev.description,
@@ -442,11 +659,17 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
             "decision_reason": ev.decision_reason,
             "decided_at": ev.decided_at.isoformat() if ev.decided_at else None,
             "created_at": ev.created_at.isoformat() if ev.created_at else None,
+            "is_audio": is_audio,
+            "audio_url": audio_url,
+            "voice_id": matching_vt.id if matching_vt else None,
             "segments": [{
                 "id": s.id, "concept": s.concept, "label": s.label,
                 "confidence": s.confidence, "bbox": json.loads(s.bbox_json or "{}"),
                 "crop_url": f"/api/v1/cases/{invoice.id}/evidence/{ev.id}/segments/file/{Path(s.crop_path).name}",
-                "notes": s.notes
+                "notes": s.notes,
+                "processing_method": getattr(s, "processing_method", "unverified_preview"),
+                "model_name": getattr(s, "model_name", None),
+                "verification_state": getattr(s, "verification_state", "unverified")
             } for s in db.query(models.EvidenceSegment).filter_by(tenant_id=identity.tenant_id, evidence_id=ev.id).all()]
         }
         evidence_payload.append(ev_dict)
@@ -464,8 +687,6 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
     result["promises"] = db.query(models.PromiseToPay).filter_by(
         tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(
         models.PromiseToPay.id).all()
-    voice_rows = db.query(models.VoiceTranscription).filter_by(
-        tenant_id=identity.tenant_id, invoice_id=invoice_id).order_by(models.VoiceTranscription.id).all()
     result["voice_transcriptions"] = [{
         "id": v.id,
         "evidence_id": v.evidence_id,
@@ -483,6 +704,16 @@ def get_case(invoice_id: int, db: Session = Depends(get_db),
         "audio_url": f"/api/v1/cases/{invoice.id}/voice/{v.id}/audio",
         "created_at": v.created_at.isoformat() if v.created_at else None
     } for v in voice_rows]
+    result["executive_summary"] = build_case_executive_summary(
+        invoice=invoice,
+        split=result,
+        evidence_rows=ev_rows,
+        entries=result["entries"],
+        messages=result["messages"],
+        promises=result["promises"],
+        voice_rows=voice_rows,
+        supporting_docs=result["supporting_documents"]
+    )
     return result
 
 

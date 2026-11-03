@@ -1781,6 +1781,27 @@ tr:hover td {
     outline: none;
 }
 
+.audio-loading-state {
+    font-size: 0.82rem;
+    color: #475569;
+    padding: 6px 10px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.audio-error-state {
+    font-size: 0.82rem;
+    color: #b91c1c;
+    padding: 6px 10px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+}
+
 .voice-intelligence-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

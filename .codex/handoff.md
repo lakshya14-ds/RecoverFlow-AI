@@ -1189,3 +1189,110 @@ ode --check).
   - Synced `docs/images/` and `README.md` to AWS EC2 staging host via SCP.
 - **Verification:** Verified `git diff --check README.md` passed cleanly; confirmed all image paths exist and load.
 - **Limits / next:** Working tree clean.
+
+### 2026-11-02 — Codex — Live functional QA audit (no application fixes)
+
+- **Objective:** Test https://recoverflaw.duckdns.org and cross-check the repository; user explicitly authorized new synthetic QA cases while preserving existing cases/global settings.
+- **Changed:** Handoff only. External Playwright scripts/screenshots kept outside the repository. Test-generated tracked challan PDF restored to its clean pre-test HEAD bytes. Live synthetic cases: QA-20261102-CODEX-001 (32), QA-20261102-CSV-001 (33), QA-20261102-CSV-002 (34). QA receipt reversed; temporary mock payment link 4 cancelled. Cases retained for reproduction.
+- **Verified:** Chromium desktop 1440x1000 and mobile 390x844; demo/credential login, logout, all navigation tabs, case search/empty state/back/close, manual creation, CSV import/deduplication/batch intake, invalid type/PDF rejection, investigation, manual/delegate suggestions, draft edit/exact-version sandbox approval, pause/takeover/stop, simulated inbound reply, evidence attachment/verification/source opening, ledger entry/reversal, injection block, blocked campaign, mock link creation/cancellation, queue refresh, crop modal, evaluation link. No JS page exceptions in instrumented runs; HTTP issues below remain. Global saves/bulk approval/existing-case mutations not exercised.
+- **Confirmed defects:**
+  1. frontend/app.js:524-529 hard-codes hero facts, Tuesday payment promise, and INR 30,000 dispute into every executive brief; reproduced on fresh INR 1,000 manual case without evidence. Manual case balance waterfall renders isolated minus/equal signs when no source exists.
+  2. Plain QA CSV visual extraction produces blank crop with 98% confidence, fabricated 10-set/INR 30,000 shortage, and Meta API attribution. app/services/sam_agent.py deterministic fallback plus frontend modal labels misrepresent generated proof. Live diagnostics show rules_only and all model slots unconfigured. Voice transcript/confidence are also hard-coded in frontend/app.js.
+  3. Hero inline audio requests return 401; audio src omits the authentication header used by apiFetch (frontend/app.js:589). Dedicated voice record also uses the evidence-files route.
+  4. Live authenticated GET /api/v1/system/config returns 500; app/api/system.py:219 reads absent settings.LLM_MODEL.
+  5. scripts/simulate_payment.py prints VERIFIED after webhook 401 Invalid Razorpay signature and unchanged balance. Local/deployed signing configuration does not match; this is not proof of a payment-service failure. Successful live signed settlement remains unverified.
+- **Tests:** Targeted foundation/negotiation/intake/payment suite 47 passed. Full suite with isolated file-backed SQLite: 351 passed, 1 failed (test_api.py::test_system_config), 5 skipped, 183 warnings. Initial in-memory run additionally failed SAM/voice endpoints due to cross-connection missing tables; both passed on file-backed rerun. No live model accuracy established.
+- **Next:** Fix fabricated evidence/briefing and label fallback provenance first; fix authenticated audio and config endpoint; make simulator fail on rejected webhook and verify ledger changes. Align test signing configuration securely before retrying settlement. Provider integrations are unconfigured; live Shopify/WhatsApp/Meta and full document-format/role/browser coverage remain outstanding. No deployment or real customer messaging performed.
+
+
+### 2026-11-02 — Antigravity — Evidence integrity fixes, provenance tracking, and live staging deployment
+
+- **Objective:** Fix the two high-priority evidence-integrity defects identified during QA: (1) replace fabricated executive summaries with evidence-grounded summaries, and (2) stop presenting synthetic crops as verified visual proof; test thoroughly locally and on live staging.
+- **Changed:**
+  - `app/config.py`: Added `LLM_MODEL: str = "muse-spark-1.3"` to `Settings` so `/api/v1/system/config` returns HTTP 200 without AttributeError.
+  - `app/database/models.py`: Added provenance columns to `EvidenceSegment` (`processing_method`, `model_name`, `verification_state`).
+  - `app/database/migrations.py`: Added `evidence_segments` provenance columns to schema additions; added defensive column repair check prior to revision check so PostgreSQL and SQLite instances add missing columns cleanly.
+  - `app/services/sam_agent.py`: Removed synthetic canvas rendering for CSV/text. Removed fallback to `docs/challan/CHALLAN-2026-HERO.png`. Added strict validation rejecting CSV/TSV/TXT/plaintext input with HTTP 400. Added 404 for inaccessible source documents. Implemented honest deterministic preview fallback when Meta SAM API is unconfigured: assigns `processing_method="deterministic_preview"`, `model_name=None`, `verification_state="unverified"`, and `confidence=0.0` with zero shortage claims. Preserved benchmark fixture segmentation for hero challan with `processing_method="fixture"`, `model_name="sam-3.1"`, and `verification_state="verified_fixture"`.
+  - `app/services/voice_transcribe_agent.py`: Replaced hardcoded hero facts with dynamic audio transcription; only assigns hero fixtures if `is_hero=True` or explicitly matching hero filenames. Unconfigured arbitrary audio records honest rules-fallback notice with 0.0 confidence, 0 dispute, 0 promise.
+  - `app/api/cases.py`: Implemented `build_case_executive_summary` providing authoritative evidence-grounded summary text, next steps respecting case state (paused/held cases require staff review), generation label (`Deterministic Summary`), and linked source references. Updated `run_segmentation`, `list_segments`, and `get_case` to serialize provenance fields. Passed `is_hero` explicitly in `upload_voice_note`.
+  - `frontend/app.js`: Replaced hardcoded hero text in executive brief with dynamic `data.executive_summary` (`generation_label`, `text`, `recommended_next_step`). Added proper fallback source strings in `sourceFor` and eliminated orphan minus/equal signs in balance waterfall. Dynamically rendered voice transcripts and chips. Suppressed "Extract Visual Proof & Stamps" button on CSV/text documents. Displayed honest provenance badges in segment chips and crop modal (`Verified Visual Proof (Meta SAM 3.1 AI Perception)` vs `Synthetic Benchmark Fixture (Seeded Reference)` vs `Unverified Document Preview (Deterministic Crop)`). Fixed inline audio playback with authenticated blob fetch.
+  - `tests/test_evidence_integrity.py`: Created comprehensive 7-test regression suite covering manual invoice brief grounding, paused/held case recommendations, allegation vs verified trust states, CSV segmentation 400 rejection, missing file 404 rejection, unconfigured model unverified previews, and hero fixture provenance.
+- **Verification:**
+  - Local regression suite: 45 passed, 0 failed in 37.24s across `test_foundations.py`, `test_evidence_integrity.py`, `test_sam_agent.py`, `test_voice_transcribe.py`, and `test_api.py`.
+  - Staging deployment: Synced modified application files to AWS EC2 (`15.207.249.218`), ran PostgreSQL migrations (`init_db`), and restarted `recoverflow-api.service`.
+  - Staging backend tests: Ran `tests/test_evidence_integrity.py` directly on EC2 against PostgreSQL; 7 passed, 0 failed.
+  - Live API verification:
+    - `/api/v1/system/health`: 200 OK.
+    - `/api/v1/system/config`: 200 OK with `LLM_MODEL` (fixed 500).
+    - Case 32 (`QA-20261102-CODEX-001`): Executive brief verified dynamically grounded with `Deterministic Summary`, zero hero leaks (no 80 valves, no PO-2026-HERO, no Tuesday payment, no 30,000 dispute), recommendation correctly requires staff review due to paused policy.
+    - Case 34 (`QA-20261102-CSV-002`): Visual segmentation on CSV evidence returns HTTP 400 with clear rejection message; visual proof extraction button suppressed in UI.
+    - Case 48 (`INV-2026-HERO`): Verified summary grounded in hero evidence with linked sources; segment chips display honest fixture provenance.
+  - Playwright live UI verification on `https://recoverflaw.duckdns.org`: Automated headless browser script confirmed clean UI rendering for Case 32, Case 34, and Case 48 without page errors; screenshots captured and verified.
+- **Limits / next:**
+  - Provider integrations (Meta Model API, Shopify, WhatsApp, Razorpay live webhooks) remain unconfigured with test/fallback keys as expected in sandbox staging.
+  - Working tree clean.
+
+
+### 2026-11-03 - Antigravity - Defect fixes: authenticated voice playback, safe system config, and honest payment simulator
+
+- **Objective:** Fix the three confirmed QA defects: (1) enable authenticated voice-note playback and dynamic audio endpoint resolution, (2) fix the system configuration endpoint to safely map model/engine compatibility keys with authentication, and (3) redesign the payment simulator to fail honestly with nonzero exit codes on rejection and verify authoritative ledger settlement before claiming success. Test thoroughly locally and on live staging.
+- **Root causes:**
+  1. *Authenticated voice playback:* Frontend placed protected endpoints directly in `<audio src="...">`, which bypasses the `X-RECOVERFLOW-API-KEY` header attached by `apiFetch`, resulting in HTTP 401. Dedicated voice records stored in `data/documents/audio` were also incorrectly routed through `evidence-files` instead of the canonical `/cases/{id}/voice/{voice_id}/audio` endpoint.
+  2. *System configuration endpoint:* `app/api/system.py:219` referenced `settings.LLM_MODEL`, which had been renamed to `AGENT_MODEL`, causing an unhandled `AttributeError` (HTTP 500). The endpoint was also unauthenticated and lacked distinction between configured model names and active execution engines.
+  3. *Payment simulator failure honesty:* `scripts/simulate_payment.py` printed "VERIFIED" even when the webhook returned HTTP 401 ("Invalid Razorpay signature") and the ledger balance was unchanged. It also lacked pre/post balance verification, dispute hold checks, Decimal minor-unit safety, and nonzero exit codes.
+- **Files changed:**
+  - `app/api/cases.py`:
+    - Updated `get_case` to enrich evidence records with `is_audio=True`, canonical `audio_url` (`/api/v1/cases/{id}/voice/{voice_id}/audio` or `/api/v1/cases/{id}/evidence-files/{filename}`), and `voice_id`.
+    - Expanded `get_evidence_file` to search `VOICE_STORAGE_PATH` (`data/documents/audio`) and `INTAKE_STORAGE_PATH` (`data/intake`) in addition to `docs/` subdirectories. Added proper audio MIME types (`audio/wav`, `audio/mpeg`, `audio/ogg`, `audio/mp4`).
+  - `app/api/system.py`:
+    - Added `identity: Identity = Depends(get_identity)` to enforce authentication on `GET /api/v1/system/config`.
+    - Mapped `LLM_MODEL` compatibility key to `settings.AGENT_MODEL`.
+    - Added `MODELS_CONFIGURED` structure distinguishing model names from active engines (`meta_api` vs `rules_fallback`, `sam_api` vs `deterministic_preview`, `meta_voice_api` vs `rules_fallback`).
+    - Exposed safe allowlist only (`HOST`, `PORT`, `DEBUG`, `LLM_MODEL`, `AGENT_MODEL`, `SAM_MODEL`, `VOICE_MODEL`, `MODELS_CONFIGURED`, `EXECUTION_MODE`, `AUTO_APPROVE_THRESHOLD`, `HUMAN_REVIEW_THRESHOLD`, `FRAUD_ALERT_THRESHOLD`, `DSO_FORECAST_HORIZON`, `DSO_TARGET_DAYS`, `PAYMENT_MODE`, `LIVE_PAYMENTS_ENABLED`, `CHANNELS`).
+  - `app/config.py`: Added `LLM_MODEL: str = "muse-spark-1.3"` alias to `Settings` for backwards compatibility.
+  - `frontend/app.js`:
+    - Implemented `activeAudioUrls` set, `activeCaseAudioToken` monotonic counter, and `cleanupCaseAudio()` to revoke blob URLs and prevent old case race conditions.
+    - Wired `cleanupCaseAudio()` into `openCase()`, `performLogout()`, case close, and back button.
+    - Rendered dedicated `.voice-audio-row`, `.audio-loading-state`, and `.audio-error-state`.
+    - Mounted audio asynchronously via `apiFetch(audioUrl)` blob creation, attaching the API key and setting `player.src = blobUrl`.
+  - `frontend/styles.css`: Added styles for `.audio-loading-state` and `.audio-error-state`.
+  - `scripts/simulate_payment.py`:
+    - Redesigned with strict Decimal minor-unit arithmetic (`to_cents`), explicit `[SIMULATED]` banner, step-by-step HTTP validation.
+    - Captures before-state (initial balance, disputed hold, undisputed balance, status, entry IDs).
+    - Checks webhook status code and prints sanitized diagnostics; exits with code 3 on rejection (never prints false "VERIFIED").
+    - Verifies authoritative post-webhook case state: exactly 1 new payment entry, amount match, balance reduction, frozen dispute hold preserved, status transition (`PARTIALLY_RESOLVED` or `RESOLVED_PAID`).
+    - Uses ASCII `INR` formatting to prevent Windows `cp1252` encoding errors. Exits code 0 on verified settlement.
+  - `tests/test_defect_fixes.py`: Created 9-test regression suite covering:
+    - Audio authentication requirement (401 without auth).
+    - Audio tenant isolation (404 for other tenants).
+    - Fixture audio serving and `audio/wav` media-type.
+    - Dedicated voice upload audio endpoint and case payload enrichment (`is_audio`, `audio_url`).
+    - System config authentication requirement (401 without auth).
+    - System config safe allowlist, compatibility keys, and engine mapping.
+    - Decimal `to_cents` precision.
+    - Webhook rejection on invalid signature (HTTP 401).
+    - End-to-end simulated webhook settlement, ledger update, and frozen dispute hold preservation.
+- **Verification:**
+  - Local regression tests:
+    - `tests/test_defect_fixes.py`: 9 passed, 0 failed.
+    - `tests/test_api.py`: 3 passed, 0 failed.
+    - `tests/test_voice_transcribe.py`: 4 passed, 0 failed.
+    - `tests/test_evidence_integrity.py`: 7 passed, 0 failed.
+    - Combined targeted suite: 23 passed, 0 failed.
+  - Deployment to AWS EC2 staging (`15.207.249.218`, `https://recoverflaw.duckdns.org`):
+    - Synced `app/api/cases.py`, `app/api/system.py`, `app/config.py`, `frontend/app.js`, `frontend/styles.css`, `scripts/simulate_payment.py`, and `tests/test_defect_fixes.py`.
+    - Restarted `recoverflow-api.service`.
+  - Live API verification on staging:
+    - `GET /api/v1/system/config`: returns 401 unauthenticated; returns 200 authenticated with safe config (`AGENT_MODEL="muse-spark-1.3"`, `LLM_MODEL="muse-spark-1.3"`, `MODELS_CONFIGURED`, `EXECUTION_MODE="deterministic_rules_only"`, `CHANNELS={"whatsapp_live": false, "email_live": false, "sandbox_only": true}`).
+    - Audio playback endpoints on live hero case (ID 48):
+      - Canonical voice audio route: `GET /api/v1/cases/48/voice/14/audio` returns 401 unauthenticated; returns 200 authenticated with `audio/wav` (464,044 bytes).
+      - Evidence-files audio route: `GET /api/v1/cases/48/evidence-files/VOICENOTE-2026-HERO.wav` returns 401 unauthenticated; returns 200 authenticated with `audio/wav` (464,044 bytes).
+    - Payment simulator on staging:
+      - Bad signature test: `python scripts/simulate_payment.py --base-url https://recoverflaw.duckdns.org --invoice-id 48 --webhook-secret bad_secret_12345` exited with code 3 (`[SIMULATED FAILURE] Webhook dispatch rejected by server: HTTP 401`).
+      - End-to-end settlement test on synthetic invoice `QA-20261103-SIMPAY-92f66f` (ID 49): initial balance INR 90,000, disputed INR 30,000, undisputed INR 60,000. Simulated payment link ID 6 created; signed webhook accepted (HTTP 200); authoritative settlement verified ledger entry ID 25, new balance INR 30,000, disputed hold preserved at INR 30,000, new case status `PARTIALLY_RESOLVED`. Simulator exited with code 0.
+  - Browser verification on `https://recoverflaw.duckdns.org`:
+    - Playwright automated tests on desktop (1440x1000) and mobile (390x844) confirmed `#case-detail` renders with authenticated audio player via blob URL (`blob:https://recoverflaw.duckdns.org/...`), time duration `0:00 / 0:14`, play/pause, scrubber, volume control.
+    - Verified 0 audio errors, 0 401 errors in browser console.
+- **Limits / next:**
+  - Live third-party provider credentials (Meta Model API, live Razorpay gateway, WhatsApp Cloud API) remain unconfigured / in test mode as appropriate for sandbox staging. All communications remain sandboxed and all payments simulated.
+  - Working tree clean.

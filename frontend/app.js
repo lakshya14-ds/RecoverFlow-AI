@@ -31,6 +31,16 @@ document.addEventListener('DOMContentLoaded', () => {
         'docs/challan/CHALLAN-2026-HERO.pdf',
         'docs/audio/VOICENOTE-2026-HERO.wav'
     ]);
+    const activeAudioUrls = new Set();
+    let activeCaseAudioToken = 0;
+
+    function cleanupCaseAudio() {
+        activeCaseAudioToken++;
+        activeAudioUrls.forEach(url => {
+            try { URL.revokeObjectURL(url); } catch (_) {}
+        });
+        activeAudioUrls.clear();
+    }
     async function apiFetch(url, options = {}) {
         if (!apiKey) throw new Error('Enter your API key first.');
         const headers = new Headers(options.headers || {});
@@ -112,6 +122,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function performLogout() {
+        cleanupCaseAudio();
         apiKey = '';
         sessionStorage.removeItem('recoverflowApiKey');
         sessionStorage.removeItem('apexApiKey');
@@ -308,7 +319,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     document.getElementById('overview-open-cases').addEventListener('click', () => navigate('cases'));
-    document.getElementById('case-close').addEventListener('click', () => { document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; const neg = document.getElementById('negotiation-panel'); if (neg) neg.classList.add('hidden'); });
+    document.getElementById('case-close').addEventListener('click', () => { cleanupCaseAudio(); document.getElementById('case-detail').classList.add('hidden'); selectedCaseId = null; const neg = document.getElementById('negotiation-panel'); if (neg) neg.classList.add('hidden'); });
     document.getElementById('case-search').addEventListener('input', event => renderCases(event.target.value));
 
     // Upload Form
@@ -449,6 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function openCase(id) {
+        cleanupCaseAudio();
         const detail = document.getElementById('case-detail');
         try {
             const data = await (await apiFetch(`/api/v1/cases/${id}`)).json();
@@ -469,21 +481,37 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (evidence) return `<button type="button" class="source-chip" data-claim="${escapeHtml(claim)}">Source · ${escapeHtml(evidence.title)}</button>`;
                 const hasInvoiceSource = (data.evidence || []).some(ev => ev.claim_type === 'invoice_total' && ev.source_reference);
                 const hasLedgerSource = (data.entries || []).length > 0;
-                if (claim === 'received_payment' && hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Current ledger activity</button>';
-                if (claim === 'credit_adjustment' && hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Posted credit activity</button>';
-                if ((claim === 'undisputed_balance') && hasInvoiceSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Invoice and ledger</button>';
-                if (cents === 0 && hasInvoiceSource) return '<span class="source-unavailable">No amount currently due</span>';
-                return null;
+                if (claim === 'invoice_total') {
+                    if (data.source === 'manual' || !hasInvoiceSource) return '<span class="source-chip-static">Source · Manual invoice billing</span>';
+                    return '<span class="source-chip-static">Source · Invoiced total</span>';
+                }
+                if (claim === 'received_payment') {
+                    if (hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Current ledger activity</button>';
+                    if (cents === 0) return '<span class="source-unavailable">No payments recorded</span>';
+                    return '<span class="source-unavailable">Unverified payment</span>';
+                }
+                if (claim === 'credit_adjustment') {
+                    if (hasLedgerSource) return '<button type="button" class="source-chip" data-claim="ledger">Source · Posted credit activity</button>';
+                    if (cents === 0) return '<span class="source-unavailable">No credits applied</span>';
+                    return '<span class="source-unavailable">Adjustment record</span>';
+                }
+                if (claim === 'undisputed_balance') {
+                    return '<span class="source-chip-static">Source · Ledger balance</span>';
+                }
+                if (claim === 'dispute_item') {
+                    if (cents === 0) return '<span class="source-unavailable">No active dispute</span>';
+                    return '<span class="source-unavailable">Dispute on hold</span>';
+                }
+                return '<span class="source-chip-static">Source · Account ledger</span>';
             };
-            const metric = (label, cents, claim, className = '') => { const source = sourceFor(claim, cents); return source == null ? '' : `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}</div>`; };
+            const metric = (label, cents, claim, className = '') => { const source = sourceFor(claim, cents); return `<div class="balance-step ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source || '<span class="source-unavailable">Ledger record</span>'}</div>`; };
             const leaf = (label, cents, claim, className) => {
                 const source = sourceFor(claim, cents);
-                if (source == null) return '';
                 const actionHtml = className === 'undisputed' && cents > 0 ?
                     `<button type="button" class="btn btn-primary quick-collect-btn" id="quick-collect-btn" style="margin-top:10px;width:100%;">⚡ Collect ${money(data.currency, cents)} Now</button>` :
                     className === 'disputed' && cents > 0 ?
-                    `<div class="dispute-sub-note">10 valve sets reported missing · On hold</div>` : '';
-                return `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source}${actionHtml}</div>`;
+                    `<div class="dispute-sub-note">${escapeHtml(data.investigation_reason || (data.evidence || []).find(e => e.claim_type === 'dispute_item')?.title || 'Disputed line item(s) · On hold')}</div>` : '';
+                return `<div class="balance-leaf ${className}"><span class="label">${label}</span><span class="val">${money(data.currency, cents)}</span>${source || ''}${actionHtml}</div>`;
             };
 
             const splitHtml = `
@@ -517,16 +545,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="executive-ai-brief">
                     <div class="brief-badge">
-                        <span class="brief-model">Meta Muse Spark</span>
+                        <span class="brief-model">${escapeHtml(data.executive_summary?.generation_label || 'Deterministic Summary')}</span>
                         <span>Executive Brief &amp; Resolution Recommendation</span>
                     </div>
                     <p class="brief-text">
-                        Customer <strong>${escapeHtml(data.customer)}</strong> was billed <strong>${money(data.currency, data.invoice_total_cents)}</strong> for 80 valve units under PO-2026-HERO.
-                        They remitted <strong>${money(data.currency, data.received_cents)}</strong> via bank RTGS. A <strong>${money(data.currency, data.disputed_cents)}</strong> deduction is held for 10 missing units, verified by physical Delivery Challan POD (analyzed by <em>Meta SAM 3.1</em>) and customer WhatsApp audio (transcribed by <em>Meta Muse Voice</em>).
-                        The remaining <strong>${money(data.currency, data.undisputed_cents)}</strong> is undisputed and confirmed for Tuesday payment.
+                        ${escapeHtml(data.executive_summary?.text || 'Insufficient verified evidence to summarize delivery details or payment commitments.')}
                     </p>
                     <div class="brief-next-step">
-                        <strong>Recommended Next Step:</strong> Issue payment link or reminder for the undisputed <strong>${money(data.currency, data.undisputed_cents)}</strong>. Do not demand the ₹30,000 dispute until the delivery shortfall is settled with warehouse dispatch.
+                        <strong>${escapeHtml(data.executive_summary?.recommended_next_step || 'Staff review recommended.')}</strong>
                     </div>
                 </div>
             `;
@@ -567,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     ${(data.evidence || []).map(ev => `
                         <div class="evidence-card" id="evidence-${Number(ev.id)}" data-claim="${escapeHtml(ev.claim_type)}">
                             <div class="evidence-header">
-                                <strong>${localEvidence.has(ev.source_reference) ? `<button type="button" class="source-chip uploaded-source" data-url="/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}">${escapeHtml(ev.title)} · Open ${ev.source_reference.toLowerCase().endsWith('.png') ? 'Image' : ev.source_reference.toLowerCase().endsWith('.wav') ? 'Audio' : 'PDF'}</button>` : String(ev.source_reference).startsWith('/api/v1/intake/uploads/') ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.source_reference)}">${escapeHtml(ev.title)} · Open source</button>` : escapeHtml(ev.title)}</strong>
+                                <strong>${(ev.audio_url || localEvidence.has(ev.source_reference) || String(ev.source_reference).startsWith('/api/v1/intake/uploads/') || String(ev.source_reference).includes('docs/') || String(ev.source_reference).includes('data/')) ? `<button type="button" class="source-chip uploaded-source" data-url="${escapeHtml(ev.audio_url || (String(ev.source_reference).startsWith('/api/v1/') ? ev.source_reference : `/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}`))}" data-title="${escapeHtml(ev.title)}">${escapeHtml(ev.title)} · Open ${ev.is_audio || String(ev.source_reference).toLowerCase().endsWith('.wav') ? 'Audio' : String(ev.source_reference).toLowerCase().endsWith('.png') ? 'Image' : 'Document'}</button>` : escapeHtml(ev.title)}</strong>
                                 <span class="source-tag">${escapeHtml(ev.source_type)} · Trust: ${escapeHtml(ev.trust_state || (ev.verified ? 'verified' : 'alleged'))}${ev.amount_cents != null && currentClaimAmounts[ev.claim_type] != null && ev.amount_cents !== currentClaimAmounts[ev.claim_type] ? ' · Historical amount' : ''}</span>
                             </div>
                             <p style="margin:4px 0;font-size:13px;">${escapeHtml(ev.description)}</p>
@@ -579,57 +605,81 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>
                             ${['alleged', 'extracted'].includes(ev.trust_state || 'alleged') && String(ev.source_reference).startsWith('/api/v1/intake/uploads/') && ['invoice_total','received_payment'].includes(ev.claim_type) ? `<button type="button" class="btn confirm-upload" data-url="${escapeHtml(ev.source_reference.replace(/\/file$/, ev.claim_type === 'invoice_total' ? '/confirm-invoice' : '/confirm-receipt'))}">Confirm ${ev.claim_type === 'invoice_total' ? 'invoice' : 'receipt'} after review</button>` : ''}
                             ${ev.source_snippet ? `<div class="snippet-box">"${escapeHtml(ev.source_snippet)}"</div>` : ''}
-                            ${(ev.source_type === 'whatsapp_voice_note' || String(ev.source_reference).endsWith('.wav') || String(ev.source_reference).endsWith('.mp3') || String(ev.source_reference).endsWith('.ogg') || String(ev.source_reference).includes('/audio/')) ? `
+                            ${(ev.is_audio || ev.audio_url || ev.source_type === 'whatsapp_voice_note' || String(ev.source_reference).endsWith('.wav') || String(ev.source_reference).endsWith('.mp3') || String(ev.source_reference).endsWith('.ogg') || String(ev.source_reference).includes('/audio/')) ? (() => {
+                                const vt = (data.voice_transcriptions || []).find(v => v.evidence_id === ev.id || (ev.voice_id && v.id === ev.voice_id) || String(ev.source_reference).includes(v.original_filename)) || (data.voice_transcriptions || [])[0];
+                                const resolvedAudioUrl = ev.audio_url || vt?.audio_url || (ev.source_reference ? `/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${encodeURIComponent(ev.source_reference.split('/').pop())}` : '');
+                                const modelLabel = (vt && vt.model_name === 'muse-voice-transcribe' && vt.confidence > 0) ? 'Meta Muse Voice' : (vt && vt.model_name === 'fixture') ? 'Meta Muse Voice (Demo Fixture)' : 'Audio Note';
+                                const confLabel = (vt && vt.confidence > 0) ? `${Math.round(vt.confidence * 100)}% Confidence` : 'Deterministic Fallback';
+                                const diarization = vt?.diarization || [];
+                                const disputeCents = vt?.extracted_dispute_amount_cents || 0;
+                                const promiseCents = vt?.extracted_promise_amount_cents || 0;
+                                const promiseDate = vt?.extracted_promise_date;
+                                const disputeReason = vt?.extracted_dispute_reason;
+                                return `
                                 <div class="voice-transcribe-panel">
                                     <div class="voice-badge">
-                                        <span class="voice-tag">Meta Muse Voice</span>
-                                        <span>Audio Intelligence (Hinglish) · 97% Confidence</span>
+                                        <span class="voice-tag">${escapeHtml(modelLabel)}</span>
+                                        <span>${escapeHtml(confLabel)}</span>
                                     </div>
-                                    <div class="voice-audio-row">
-                                        <audio controls preload="metadata" class="voice-audio-player">
-                                            <source src="/api/v1/cases/${Number(data.invoice_id)}/evidence-files/${escapeHtml(ev.source_reference.split('/').pop())}" type="audio/wav">
-                                            Your browser does not support audio playback.
-                                        </audio>
+                                    <div class="voice-audio-row" data-audio-url="${escapeHtml(resolvedAudioUrl)}">
+                                        <div class="audio-player-container">
+                                            <div class="audio-loading-state"><span class="audio-spinner"></span> Loading authenticated audio...</div>
+                                            <div class="audio-error-state hidden"></div>
+                                            <audio controls preload="metadata" class="voice-audio-player hidden" style="width:100%; margin-top:4px;">
+                                                Your browser does not support audio playback.
+                                            </audio>
+                                        </div>
                                     </div>
+                                    ${(disputeCents > 0 || promiseCents > 0) ? `
                                     <div class="voice-intelligence-grid">
+                                        ${disputeCents > 0 ? `
                                         <div class="voice-intel-chip dispute-chip">
                                             <span class="chip-title">Disputed Shortfall</span>
-                                            <strong>₹30,000.00</strong>
-                                            <span class="chip-sub">10 valve sets missing at bay 4</span>
-                                        </div>
+                                            <strong>${money(data.currency, disputeCents)}</strong>
+                                            ${disputeReason ? `<span class="chip-sub">${escapeHtml(disputeReason)}</span>` : ''}
+                                        </div>` : ''}
+                                        ${promiseCents > 0 ? `
                                         <div class="voice-intel-chip promise-chip">
                                             <span class="chip-title">Payment Promise</span>
-                                            <strong>₹60,000.00</strong>
-                                            <span class="chip-sub">Scheduled remittance: Tuesday</span>
-                                        </div>
-                                    </div>
+                                            <strong>${money(data.currency, promiseCents)}</strong>
+                                            ${promiseDate ? `<span class="chip-sub">Scheduled: ${escapeHtml(promiseDate)}</span>` : ''}
+                                        </div>` : ''}
+                                    </div>` : ''}
+                                    ${diarization.length > 0 ? `
                                     <div class="voice-utterances-box">
                                         <div class="voice-utterance-title">Diarized Customer Utterances</div>
-                                        <div class="voice-utterance-line"><span class="voice-time">0:00 - 0:03</span> <span class="voice-text">"Bhaiya, Apex Enterprises se bol raha hoon regarding invoice 2026-HERO."</span></div>
-                                        <div class="voice-utterance-line"><span class="voice-time">0:03 - 0:07</span> <span class="voice-text">"Jo 80 precision valve sets bheje the, usme se 10 piece ka carton bay 4 pe damaged aur missing nikla. 70 units receive ho gaye hain."</span></div>
-                                        <div class="voice-utterance-line"><span class="voice-time">0:07 - 0:11</span> <span class="voice-text">"Isliye ₹30,000 deduct karke remaining ₹60,000 hum Tuesday ko UTR se transfer kar denge."</span></div>
-                                        <div class="voice-utterance-line"><span class="voice-time">0:11 - 0:14</span> <span class="voice-text">"Kripya ₹30,000 ka credit note issue kar dijiye."</span></div>
-                                    </div>
+                                        ${diarization.map(d => `
+                                            <div class="voice-utterance-line">
+                                                <span class="voice-time">${d.start != null ? `${Number(d.start).toFixed(1)}s` : ''}${d.end != null ? ` - ${Number(d.end).toFixed(1)}s` : ''}</span>
+                                                <span class="voice-text">"${escapeHtml(d.text)}"</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>` : (vt && vt.transcript_text ? `
+                                    <div class="voice-utterances-box">
+                                        <div class="voice-utterance-title">Transcript</div>
+                                        <p style="margin:4px 0;font-size:13px;">${escapeHtml(vt.transcript_text)}</p>
+                                    </div>` : '')}
                                 </div>
-                            ` : ''}
+                                `;
+                            })() : ''}
                             ${ev.segments && ev.segments.length > 0 ? `
                                 <div class="sam-perception-panel">
                                     <div class="sam-badge">
-                                        <span class="sam-tag">Visual Proof &amp; Stamps</span>
-                                        <span class="sam-model-badge">(Meta SAM 3.1 AI Perception)</span>
+                                        <span class="sam-tag">${ev.segments[0].processing_method === 'fixture' ? 'Visual Proof &amp; Stamps' : ev.segments[0].processing_method === 'sam_api' ? 'Visual Perception' : 'Document Crops'}</span>
+                                        <span class="sam-model-badge">${ev.segments[0].processing_method === 'fixture' ? '(Meta SAM 3.1 Demo Reference)' : ev.segments[0].processing_method === 'sam_api' ? '(Meta SAM 3.1 AI Perception)' : '(Deterministic Crop Preview)'}</span>
                                     </div>
-                                    <div style="font-size:0.82rem; color:#475569; margin:4px 0 8px 0; font-weight:500;">Click any verified crop below to inspect stamps, signatures, or delivery notes:</div>
+                                    <div style="font-size:0.82rem; color:#475569; margin:4px 0 8px 0; font-weight:500;">Click any crop below to inspect stamps, signatures, or delivery notes:</div>
                                     <div class="sam-segments-grid">
                                         ${ev.segments.map(seg => `
-                                            <div class="sam-segment-chip" data-crop="${escapeHtml(seg.crop_url)}" data-label="${escapeHtml(seg.label)}" data-notes="${escapeHtml(seg.notes || '')}" data-conf="${Math.round(seg.confidence * 100)}">
-                                                <span class="sam-icon">${seg.concept === 'stamp_signature' ? '🔏' : seg.concept === 'receiving_notes' ? '📝' : '📦'}</span>
+                                            <div class="sam-segment-chip" data-crop="${escapeHtml(seg.crop_url)}" data-label="${escapeHtml(seg.label)}" data-notes="${escapeHtml(seg.notes || '')}" data-conf="${Math.round((seg.confidence || 0) * 100)}" data-method="${escapeHtml(seg.processing_method || 'unverified_preview')}" data-state="${escapeHtml(seg.verification_state || 'unverified')}">
+                                                <span class="sam-icon">${seg.concept === 'stamp_signature' ? '🔏' : seg.concept === 'receiving_notes' ? '📝' : seg.concept === 'damaged_goods' ? '📦' : '🔍'}</span>
                                                 <span class="sam-chip-label">${escapeHtml(seg.label)}</span>
-                                                <span class="sam-chip-conf">${Math.round(seg.confidence * 100)}%</span>
+                                                <span class="sam-chip-conf">${(seg.confidence && seg.confidence > 0) ? `${Math.round(seg.confidence * 100)}%` : 'Preview'}</span>
                                             </div>
                                         `).join('')}
                                     </div>
                                 </div>
-                            ` : (String(ev.source_reference).includes('challan') || String(ev.source_reference).includes('.png') || String(ev.source_reference).includes('.jpg') || String(ev.source_reference).includes('.pdf') || String(ev.source_reference).includes('upload')) ? `
+                            ` : ((/\.(png|jpe?g|webp|pdf)$/i.test(ev.source_reference || '') || ['delivery_challan', 'goods_receipt', 'physical_inspection', 'pod'].includes(ev.source_type)) && !/\.(csv|tsv|txt)$/i.test(ev.source_reference || '')) ? `
                                 <div style="margin-top:8px;">
                                     <button type="button" class="btn run-sam-btn" data-evidence-id="${Number(ev.id)}">🔍 Extract Visual Proof &amp; Stamps <span class="model-tag-bracket">(Powered by Meta SAM 3.1)</span></button>
                                 </div>
@@ -722,6 +772,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const label = chip.dataset.label;
                 const notes = chip.dataset.notes;
                 const conf = chip.dataset.conf;
+                const method = chip.dataset.method;
+                const state = chip.dataset.state;
                 let objectUrl = cropUrl;
                 try {
                     const response = await apiFetch(cropUrl);
@@ -729,21 +781,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 } catch (err) {
                     console.warn("Could not load blob for crop:", err);
                 }
+                const isModel = method === 'sam_api';
+                const isFixture = method === 'fixture';
+                const badgeTitle = isModel ? 'Verified Visual Proof' : isFixture ? 'Synthetic Benchmark Fixture' : 'Unverified Document Preview';
+                const modelBadge = isModel ? '(Meta SAM 3.1 AI Perception)' : isFixture ? '(Seeded Reference)' : '(Deterministic Crop)';
+                const confNote = isModel ? `Visual Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API` : isFixture ? `Ground-truth demo fixture · Benchmark confidence: <strong>${escapeHtml(conf)}%</strong>` : `<span style="color:#b45309;font-weight:600;">Unverified preview crop · Meta SAM 3.1 unconfigured. Does not verify stamps, signatures, or shortages.</span>`;
+
                 const modal = document.createElement('div');
                 modal.className = 'sam-crop-preview-modal';
                 modal.innerHTML = `
                     <div class="sam-modal-content">
                         <div style="display:flex;justify-content:space-between;align-items:center;">
                             <div>
-                                <span class="sam-tag">Verified Visual Proof</span>
-                                <span class="sam-model-badge">(Meta SAM 3.1)</span>
+                                <span class="sam-tag ${isModel || isFixture ? '' : 'unverified'}">${escapeHtml(badgeTitle)}</span>
+                                <span class="sam-model-badge">${escapeHtml(modelBadge)}</span>
                                 <h3 style="margin:4px 0 0 0;">${escapeHtml(label)}</h3>
                             </div>
                             <button type="button" class="btn sam-close-btn" style="padding:4px 10px;">✕</button>
                         </div>
-                        <p style="font-size:12px;color:#555;margin:4px 0;">Visual Perception Confidence: <strong>${escapeHtml(conf)}%</strong> via Meta Model API</p>
+                        <p style="font-size:12px;color:#555;margin:6px 0;">${confNote}</p>
+                        ${notes ? `<div class="snippet-box"><strong>Observation / Metadata:</strong><br>${escapeHtml(notes)}</div>` : ''}
                         <img src="${objectUrl}" class="sam-modal-crop" alt="${escapeHtml(label)}">
-                        ${notes ? `<div class="snippet-box"><strong>Visual Proof Observation:</strong><br>${escapeHtml(notes)}</div>` : ''}
                         <div style="text-align:right;margin-top:10px;">
                             <button type="button" class="btn sam-close-btn">Close</button>
                         </div>
@@ -757,6 +815,43 @@ document.addEventListener('DOMContentLoaded', () => {
                 modal.querySelectorAll('.sam-close-btn').forEach(b => b.addEventListener('click', closeModal));
                 modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
             }));
+
+            // Authenticated Audio Player setup with race-condition prevention and object URL cleanup
+            const mountCaseToken = activeCaseAudioToken;
+            detail.querySelectorAll('.voice-audio-row').forEach(row => {
+                const audioUrl = row.dataset.audioUrl;
+                const loadingEl = row.querySelector('.audio-loading-state');
+                const errorEl = row.querySelector('.audio-error-state');
+                const player = row.querySelector('.voice-audio-player');
+                if (!audioUrl) {
+                    if (loadingEl) loadingEl.classList.add('hidden');
+                    if (errorEl) {
+                        errorEl.textContent = 'Audio source unavailable.';
+                        errorEl.classList.remove('hidden');
+                    }
+                    return;
+                }
+                (async () => {
+                    try {
+                        const res = await apiFetch(audioUrl);
+                        if (mountCaseToken !== activeCaseAudioToken || selectedCaseId !== id) return;
+                        const blob = await res.blob();
+                        if (mountCaseToken !== activeCaseAudioToken || selectedCaseId !== id) return;
+                        const blobUrl = URL.createObjectURL(blob);
+                        activeAudioUrls.add(blobUrl);
+                        player.src = blobUrl;
+                        if (loadingEl) loadingEl.classList.add('hidden');
+                        player.classList.remove('hidden');
+                    } catch (err) {
+                        if (mountCaseToken !== activeCaseAudioToken || selectedCaseId !== id) return;
+                        if (loadingEl) loadingEl.classList.add('hidden');
+                        if (errorEl) {
+                            errorEl.textContent = `Audio unavailable: ${err.message || 'Authentication error'}`;
+                            errorEl.classList.remove('hidden');
+                        }
+                    }
+                })();
+            });
             loadCases();
             loadNegotiation();
 
@@ -787,6 +882,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const backBtn = document.getElementById('case-back-btn');
             if (backBtn) {
                 backBtn.addEventListener('click', () => {
+                    cleanupCaseAudio();
                     detail.classList.add('hidden');
                     selectedCaseId = null;
                     const caseList = document.getElementById('case-list-panel');

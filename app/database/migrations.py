@@ -46,7 +46,12 @@ ADDITIONS = {
                        "heartbeat_at": "TIMESTAMP",
                        "lease_expires_at": "TIMESTAMP",
                        "not_before": "TIMESTAMP"},
-    "supervisor_tasks": {"claimed_by": "VARCHAR", "claimed_at": "TIMESTAMP",
+    "evidence_segments": {
+        "processing_method": "VARCHAR NOT NULL DEFAULT 'unverified_preview'",
+        "model_name": "VARCHAR",
+        "verification_state": "VARCHAR NOT NULL DEFAULT 'unverified'",
+    },
+    "supervisor_tasks": {"claimed_by": "VARCHAR",  "claimed_at": "TIMESTAMP",
                          "heartbeat_at": "TIMESTAMP",
                          "lease_expires_at": "TIMESTAMP",
                          "not_before": "TIMESTAMP", "elapsed_ms": "INTEGER"},
@@ -139,6 +144,11 @@ def migrate(engine, metadata):
             intake_columns = {c["name"] for c in inspect(conn).get_columns("intake_uploads")}
             if "sha256" not in intake_columns:
                 conn.execute(text('ALTER TABLE "intake_uploads" ADD COLUMN "sha256" VARCHAR(64)'))
+        if inspect(conn).has_table("evidence_segments"):
+            seg_columns = {c["name"] for c in inspect(conn).get_columns("evidence_segments")}
+            for col_name, col_ddl in ADDITIONS.get("evidence_segments", {}).items():
+                if col_name not in seg_columns:
+                    conn.execute(text(f'ALTER TABLE "evidence_segments" ADD COLUMN "{col_name}" {col_ddl}'))
         if _applied(conn, REVISION):
             return
         for table in ("supervisor_tasks", "competing_explanations",

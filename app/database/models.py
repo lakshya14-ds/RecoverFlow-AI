@@ -711,6 +711,9 @@ class EvidenceSegment(Base):
     bbox_json = Column(Text, nullable=False)  # JSON {"ymin": float, "xmin": float, "ymax": float, "xmax": float}
     crop_path = Column(String, nullable=False) # Relative disk path to cropped image
     notes = Column(Text)                       # Remarks or extracted observation
+    processing_method = Column(String, default="unverified_preview", nullable=False)  # sam_api, fixture, deterministic_preview
+    model_name = Column(String, nullable=True)  # sam-3.1 or None
+    verification_state = Column(String, default="unverified", nullable=False)  # model_segmented, verified_fixture, unverified
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
