@@ -231,3 +231,47 @@ def test_normalize_vision_dict_handles_line_amount_and_indian_dates():
     assert len(doc.line_items) == 3
     assert doc.line_items[0].amount == "310000.00"
     assert doc.line_items[0].unit_price == "12400.00"
+
+
+def test_normalize_vision_dict_handles_dispute_and_debit_note():
+    raw_payload = {
+        "document_type": "invoice",
+        "invoice_number": "INV-2026-9104",
+        "issue_date": "2026-11-22",
+        "due_date": "2026-12-22",
+        "customer_name": "Coromandel Heavy Engineering Ltd",
+        "total_amount": "295000.00",
+        "tax_amount": "45000.00",
+        "line_items": [
+            {
+                "description": "3-Phase Thyristor Power Controller Module 100A",
+                "quantity": "20",
+                "unit_price": "10000.00",
+                "amount": "200000.00"
+            },
+            {
+                "description": "Industrial Hall Effect Current Transducer Sensor",
+                "quantity": "50",
+                "unit_price": "1000.00",
+                "amount": "50000.00"
+            }
+        ]
+    }
+    fallback_text = (
+        "Coromandel Heavy Engineering Ltd Tax Invoice INV-2026-9104\n"
+        "Total Amount Due: INR 295,000.00\n"
+        "Active Dispute / Debit Note Ref: DN-2026-0412\n"
+        "Disputed Hold Amount: INR 20,060.00\n"
+        "Undisputed Balance: INR 274,940.00\n"
+        "Reason: Short Delivery of 2 units Item #1\n"
+    )
+    norm = vision_extraction._normalize_vision_dict(raw_payload, fallback_text=fallback_text)
+    doc = vision_extraction.VisionDocument(**norm)
+    res = vision_extraction.validate_document(doc)
+    assert res["total"] == Decimal("295000.00")
+    assert doc.invoice_number == "INV-2026-9104"
+    assert doc.disputed_amount == "20060.00"
+    assert doc.undisputed_amount == "274940.00"
+    assert doc.debit_note_ref == "DN-2026-0412"
+    assert "Short Delivery" in (doc.dispute_reason or "")
+

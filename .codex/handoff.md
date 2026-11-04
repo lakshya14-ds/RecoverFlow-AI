@@ -4,6 +4,30 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **2026-11-04 Antigravity resolution:** Universal disputed amount, debit note, and dispute hold extraction for invoice intake.
+  1. Root cause:
+     a. Vision extraction model schema and system prompt previously omitted explicit extraction for `disputed_amount`, `undisputed_amount`, `paid_amount`, `debit_note_ref`, and `dispute_reason`.
+     b. When the vision model returned JSON without raw text, regex fallback had no document text to analyze.
+     c. Intake pipeline created invoices with `disputed_cents = 0` regardless of dispute hold annotations on uploaded bills, causing the case workspace to show "No active dispute" and Undisputed equal to the full invoice total.
+  2. In `app/skills/extract_invoice_fields.py`:
+     a. Added `disputed_amount`, `undisputed_amount`, `paid_amount`, `debit_note_ref`, and `dispute_reason` to `InvoiceFields`.
+     b. Implemented robust regex extractors for dispute hold amounts, debit note references, undisputed balances, and short delivery / dispute reasons.
+  3. In `app/services/vision_extraction.py`:
+     a. Extended `VisionDocument` and `VISION_SCHEMA` with dispute and payment fields.
+     b. Updated prompt instruction to explicitly request `disputed_amount`, `undisputed_amount`, `paid_amount`, `debit_note_ref`, and `dispute_reason`.
+     c. Added text extraction from PDF payloads passed into `_normalize_vision_dict` as `fallback_text`.
+     d. In `_normalize_vision_dict`: mapped aliases, sanitized currency strings, extracted missing dispute fields and dates from raw text via regex, and reconciled dispute hold math (`diff = total - paid - undisputed`).
+  4. In `app/services/intake_pipeline.py`:
+     a. In `_process_vision`: calculated `disputed_cents` from extracted dispute/undisputed figures.
+     b. When `disputed_cents > 0`, initialized `models.Invoice` with `disputed_cents`, `dispute_open = True`, and `status = "disputed"`.
+     c. Created `models.CaseEvidence` (`claim_type = "dispute_item"`) linking the debit note reference and dispute hold reason as verified evidence for the case workspace.
+  5. In `app/api/intake.py`:
+     a. In `confirm_invoice`: sets `invoice.status = "disputed"` if `disputed_cents > 0`, and links and verifies any associated `dispute_item` evidence.
+  6. Verification:
+     a. Verified extraction on `industry_invoice.pdf` (`INV-2026-9104`): extracts Total INR 2,95,000.00, Disputed INR 20,060.00, Undisputed INR 2,74,940.00, Paid INR 0.00, Debit Note DN-2026-0412, and Short Delivery reason via `meta_model`.
+     b. Added regression test `test_normalize_vision_dict_handles_dispute_and_debit_note` in `tests/test_vision_extraction.py`.
+     c. Full test suite passes 100% (393 passed, 0 failed in `tests/`). Zero emojis, zero secrets.
+
 - **2026-11-04 Antigravity resolution:** Universal generalized invoice date parsing and non-overdue intake completion.
   1. Addressed "Extracted invoice dates are missing" across all document variations without hardcoding:
      a. In `app/skills/extract_invoice_fields.py`: Expanded labeled date detection to cover all standard and Indian invoice variations (`Date of Invoice`, `Invoice/Bill/Billing/Inv Date/Dt`, `Payment Due Date`, `Due Dt/On/By`, `Pay By/Before`). Added credit terms regex (`Net 30`, `30 Days`) to automatically calculate due date from issue date when credit terms are specified without an explicit due date. Expanded general date pattern to handle dotted formats (`DD.MM.YYYY`), suffixes (`18th Nov 2026`), and enabled `dayfirst=True` for Indian standard date handling.
@@ -1580,6 +1604,22 @@ ode --check).
   - *Code & Asset Hygiene:* Zero trailing whitespace errors across `app/`, `frontend/`, `scripts/`. Zero emojis in code, tests, or handoff.
 - **Limits / next steps:**
   - Live third-party provider accounts (production Meta Model API keys, WhatsApp Cloud API, live Razorpay gateway) remain unconfigured/in test mode as required for sandbox evaluation. All payments remain simulated.
+
+
+### 2026-11-04 - Antigravity - Universal Disputed and Undisputed Invoice Balance Extraction
+
+- **Changes:**
+  - `app/skills/extract_invoice_fields.py`: Added `disputed_amount`, `undisputed_amount`, `paid_amount`, `debit_note_ref`, and `dispute_reason` to `InvoiceFields`. Added regex extraction for disputed amounts (`r'\b(?:Disputed\s*(?:Hold\s*Amount|Amount|Hold|Balance)|Dispute\s*(?:Amount|Hold|Claim)|Amount\s*on\s*Hold)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)'`), undisputed amounts, paid amounts, debit note references (`r'\bDebit\s*Note\s*(?:Ref|Reference|No|Number)?\s*[:\-]\s*([A-Za-z0-9\-]+)'`), and short delivery / dispute reasons. Reconciled disputed hold from `total - paid - undisputed` if not explicitly labeled.
+  - `app/services/vision_extraction.py`: Extended `VisionDocument` and `VISION_SCHEMA` with dispute and payment fields. Updated prompt instruction to explicitly request `disputed_amount`, `undisputed_amount`, `paid_amount`, `debit_note_ref`, and `dispute_reason`. Added text extraction from PDF payloads passed into `_normalize_vision_dict` as `fallback_text`. In `_normalize_vision_dict`, mapped aliases, sanitized currency strings, extracted missing dispute fields and dates from raw text via regex, and reconciled dispute hold math.
+  - `app/services/intake_pipeline.py`: In `_process_vision`, calculated `disputed_cents` from extracted dispute/undisputed figures. Initialized `models.Invoice` with `disputed_cents`, `dispute_open = True`, and `status = "disputed"` when a dispute is present. Added `models.CaseEvidence` (`claim_type = "dispute_item"`) linking the debit note reference and dispute hold reason as verified evidence for the case workspace.
+  - `app/api/intake.py`: In `confirm_invoice`, sets `invoice.status = "disputed"` if `disputed_cents > 0`, and links and verifies any associated `dispute_item` evidence.
+  - `tests/test_vision_extraction.py`: Added regression test `test_normalize_vision_dict_handles_dispute_and_debit_note`.
+- **Verification:**
+  - Verified extraction on `industry_invoice.pdf` (`INV-2026-9104`): extracts Total INR 2,95,000.00, Disputed INR 20,060.00, Undisputed INR 2,74,940.00, Paid INR 0.00, Debit Note DN-2026-0412, and Short Delivery reason via `meta_model`.
+  - Full test suite: 393 passed, 0 failed in `tests/`.
+  - Zero emojis across code, tests, and documentation.
+- **Limits / next steps:**
+  - Deploy to EC2 staging host, update invoice 63 record on EC2, and verify via browser on live workspace.
 
 
 ### 2026-11-04 - Codex - Submission audit and screenshot walkthrough

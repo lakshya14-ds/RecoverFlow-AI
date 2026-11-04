@@ -45,6 +45,11 @@ class VisionDocument(BaseModel):
     cgst_amount: str = ""
     sgst_amount: str = ""
     igst_amount: str = ""
+    disputed_amount: str = ""
+    undisputed_amount: str = ""
+    paid_amount: str = ""
+    debit_note_ref: str = ""
+    dispute_reason: str = ""
     currency: str = "INR"
     text: str = ""
     line_items: list[ExtractedLine] = Field(default_factory=list)
@@ -66,6 +71,11 @@ VISION_SCHEMA = {
         "discount_amount": {"type": "string"},
         "cgst_amount": {"type": "string"}, "sgst_amount": {"type": "string"},
         "igst_amount": {"type": "string"},
+        "disputed_amount": {"type": "string"},
+        "undisputed_amount": {"type": "string"},
+        "paid_amount": {"type": "string"},
+        "debit_note_ref": {"type": "string"},
+        "dispute_reason": {"type": "string"},
         "currency": {"type": "string"},
         "text": {"type": "string"},
         "line_items": {"type": "array", "items": {"type": "object", "properties": {
@@ -129,6 +139,7 @@ def validate_document(document: VisionDocument) -> dict:
         raise ValueError("Unsupported extracted document type")
     text_parts = [document.invoice_number, document.invoice_reference,
                   document.customer_name, document.issue_date, document.due_date,
+                  document.disputed_amount, document.undisputed_amount, document.dispute_reason,
                   document.text,
                   *(part for line in document.line_items for part in
                     (line.description, line.quantity, line.unit_price, line.amount,
@@ -371,7 +382,7 @@ def _clean_date_str(val) -> str:
         return ""
 
 
-def _normalize_vision_dict(raw: dict) -> dict:
+def _normalize_vision_dict(raw: dict, fallback_text: str = "") -> dict:
     if not isinstance(raw, dict):
         return raw
     data = dict(raw)
@@ -399,6 +410,24 @@ def _normalize_vision_dict(raw: dict) -> dict:
         "total_tax": "tax_amount",
         "shipping": "shipping_amount",
         "discount": "discount_amount",
+        "disputed_amount": "disputed_amount",
+        "dispute_amount": "disputed_amount",
+        "disputed_hold": "disputed_amount",
+        "disputed_hold_amount": "disputed_amount",
+        "disputed": "disputed_amount",
+        "hold_amount": "disputed_amount",
+        "undisputed_amount": "undisputed_amount",
+        "undisputed_balance": "undisputed_amount",
+        "undisputed": "undisputed_amount",
+        "paid_amount": "paid_amount",
+        "amount_paid": "paid_amount",
+        "paid_to_date": "paid_amount",
+        "total_paid": "paid_amount",
+        "debit_note_ref": "debit_note_ref",
+        "debit_note": "debit_note_ref",
+        "dn_ref": "debit_note_ref",
+        "dispute_reason": "dispute_reason",
+        "dispute_status": "dispute_reason",
     }
     for old_k, new_k in aliases.items():
         if old_k in data and (new_k not in data or not data[new_k]):
@@ -419,6 +448,9 @@ def _normalize_vision_dict(raw: dict) -> dict:
         elif not isinstance(val, (str, dict, list)):
             data[key] = str(val)
 
+    if not data.get("text") and fallback_text:
+        data["text"] = fallback_text[:3000]
+
     if data.get("issue_date"):
         data["issue_date"] = _clean_date_str(data["issue_date"])
     if data.get("due_date"):
@@ -430,6 +462,8 @@ def _normalize_vision_dict(raw: dict) -> dict:
 
     if not data.get("issue_date") or not data.get("due_date"):
         full_text = " ".join([str(data.get(k) or "") for k in ("text", "raw_text")])
+        if not full_text and fallback_text:
+            full_text = fallback_text
         if full_text:
             date_matches = re.findall(
                 r'(\b\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}\b|\b\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4}\b|\b\d{1,2}(?:st|nd|rd|th)?[-\s/\.](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/\.,]*\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b)',
@@ -450,9 +484,50 @@ def _normalize_vision_dict(raw: dict) -> dict:
                     data["due_date"] = parsed[-1].isoformat()
 
     for m_field in ("total_amount", "tax_amount", "shipping_amount", "discount_amount",
-                    "cgst_amount", "sgst_amount", "igst_amount"):
+                    "cgst_amount", "sgst_amount", "igst_amount",
+                    "disputed_amount", "undisputed_amount", "paid_amount"):
         if data.get(m_field):
             data[m_field] = _clean_money_str(data[m_field])
+
+    # Extract dispute, hold, and debit note references from text if omitted by model
+    full_text = " ".join([str(data.get(k) or "") for k in ("text", "raw_text")])
+    if not full_text and fallback_text:
+        full_text = fallback_text
+    if full_text:
+        if not data.get("disputed_amount"):
+            dm = re.search(r'\b(?:Disputed\s*(?:Hold\s*Amount|Amount|Hold|Balance)|Dispute\s*(?:Amount|Hold|Claim)|Amount\s*on\s*Hold)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', full_text, re.IGNORECASE)
+            if dm:
+                data["disputed_amount"] = _clean_money_str(dm.group(1))
+        if not data.get("undisputed_amount"):
+            um = re.search(r'\b(?:Undisputed\s*(?:Balance|Amount|Payable)?)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', full_text, re.IGNORECASE)
+            if um:
+                data["undisputed_amount"] = _clean_money_str(um.group(1))
+        if not data.get("paid_amount"):
+            pm = re.search(r'\b(?:Paid\s*to\s*Date|Amount\s*Paid|Total\s*Paid)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', full_text, re.IGNORECASE)
+            if pm:
+                data["paid_amount"] = _clean_money_str(pm.group(1))
+        if not data.get("debit_note_ref"):
+            dnm = re.search(r'\bDebit\s*Note\s*(?:Ref|Reference|No|Number)?\s*[:\-]\s*([A-Za-z0-9\-]+)', full_text, re.IGNORECASE)
+            if dnm:
+                data["debit_note_ref"] = dnm.group(1).strip()
+        if not data.get("dispute_reason"):
+            rm = re.search(r'\"(DISPUTE FILED[^\"]+)\"', full_text, re.IGNORECASE) or \
+                 re.search(r'\((Short\s*Delivery[^)]+)\)', full_text, re.IGNORECASE) or \
+                 re.search(r'\b(?:Dispute\s*(?:Reason|Status)?|Reason)\s*[:\-]\s*([^\n\r]+)', full_text, re.IGNORECASE) or \
+                 re.search(r'\b(Short\s*Delivery\s*[:\-]?[^\n\r]+)', full_text, re.IGNORECASE)
+            if rm:
+                data["dispute_reason"] = re.sub(r'\s+', ' ', rm.group(1)).strip()
+
+    if not data.get("disputed_amount") and data.get("undisputed_amount") and data.get("total_amount"):
+        try:
+            tot = Decimal(data["total_amount"])
+            und = Decimal(data["undisputed_amount"])
+            pd = Decimal(data["paid_amount"]) if data.get("paid_amount") else Decimal(0)
+            diff = tot - pd - und
+            if diff > Decimal(0):
+                data["disputed_amount"] = str(diff)
+        except Exception:
+            pass
 
     raw_lines = data.get("line_items")
     norm_lines = []
@@ -624,6 +699,11 @@ def _offline_general_pdf(data: bytes) -> dict | None:
             due_date=due_str,
             total_amount=total_str,
             tax_amount=tax_str,
+            disputed_amount=f"{fields.disputed_amount:.2f}" if fields.disputed_amount is not None else "",
+            undisputed_amount=f"{fields.undisputed_amount:.2f}" if fields.undisputed_amount is not None else "",
+            paid_amount=f"{fields.paid_amount:.2f}" if fields.paid_amount is not None else "",
+            debit_note_ref=fields.debit_note_ref or "",
+            dispute_reason=fields.dispute_reason or "",
             currency="INR" if any(k in (fields.raw_text or "") for k in ("₹", "INR", "Rs", "GSTIN", "IGST", "CGST", "SGST", "Lakh")) else (fields.currency or "INR"),
             text=(fields.raw_text or "")[:3000],
             line_items=lines,
@@ -667,7 +747,8 @@ def extract(data: bytes, mime: str) -> dict:
                    "Put those adjustments in tax_amount, shipping_amount, and discount_amount as strings; "
                    "use empty strings when absent. The server will verify line sum + tax + shipping - discount = total. "
                    "Use empty strings for missing text and 0 confidence for missing fields. "
-                   "Classify invoice, receipt, purchase_order, message, delivery_note, return_note, discount_agreement, credit_note, debit_note, delivery_challan, freight_bill, or scheme_letter. Extract explicit SKU and unit when printed; never invent aliases. Extract per-line HSN, tax rate, and CGST/SGST/IGST amounts when printed, and invoice-level CGST/SGST/IGST amounts when printed. Return JSON only.")
+                   "Classify invoice, receipt, purchase_order, message, delivery_note, return_note, discount_agreement, credit_note, debit_note, delivery_challan, freight_bill, or scheme_letter. Extract explicit SKU and unit when printed; never invent aliases. Extract per-line HSN, tax rate, and CGST/SGST/IGST amounts when printed, and invoice-level CGST/SGST/IGST amounts when printed. "
+                   "Extract disputed_amount, undisputed_amount, paid_amount, debit_note_ref, and dispute_reason if printed (e.g. debit note hold, dispute hold, amount on hold, undisputed balance). Return JSON only.")
     encoded = base64.b64encode(data).decode("ascii")
     if mime == "application/pdf":
         attachment = {"type": "file", "file": {"filename": "document.pdf",
@@ -683,7 +764,16 @@ def extract(data: bytes, mime: str) -> dict:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         json_str = match.group(0) if match else text.strip()
         raw_dict = json.loads(json_str)
-        norm_dict = _normalize_vision_dict(raw_dict)
+
+        pdf_text = ""
+        if mime == "application/pdf":
+            try:
+                pages = PdfReader(io.BytesIO(data)).pages
+                pdf_text = "\n".join(page.extract_text() or "" for page in pages)
+            except Exception:
+                pdf_text = ""
+
+        norm_dict = _normalize_vision_dict(raw_dict, fallback_text=pdf_text)
         document = VisionDocument(**norm_dict)
         result = validate_document(document)
         result["engine"] = "meta_model"

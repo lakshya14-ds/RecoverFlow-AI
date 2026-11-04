@@ -160,18 +160,22 @@ def confirm_invoice(job_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail="Uploaded invoice not found")
     invoice.requires_human_review = False
     if invoice.status == "pending_review":
-        invoice.status = "pending"
+        invoice.status = "disputed" if invoice.disputed_cents else "pending"
     for evidence in db.query(models.CaseEvidence).filter_by(
-        tenant_id=identity.tenant_id, invoice_id=invoice.id,
-        claim_type="invoice_total").all():
+        tenant_id=identity.tenant_id, invoice_id=invoice.id).all():
         if evidence.source_reference == f"/api/v1/intake/uploads/{job_id}/file":
             evidence.verified = True
             evidence.trust_state = "verified"
             evidence.decided_by = identity.actor
             evidence.decided_at = datetime.now(timezone.utc)
-            evidence.decision_reason = "Staff confirmed the extracted invoice after review"
-            evidence.currency = evidence.currency or invoice.currency or "INR"
-            evidence.description = f"Verified invoice total ({evidence.currency} {invoice.amount})"
+            if evidence.claim_type == "invoice_total":
+                evidence.decision_reason = "Staff confirmed the extracted invoice after review"
+                evidence.currency = evidence.currency or invoice.currency or "INR"
+                evidence.description = f"Verified invoice total ({evidence.currency} {invoice.amount})"
+            elif evidence.claim_type == "dispute_item":
+                evidence.decision_reason = "Staff confirmed the extracted invoice dispute annotation after review"
+                evidence.currency = evidence.currency or invoice.currency or "INR"
+                evidence.description = f"Verified dispute deduction ({evidence.currency} {Decimal(evidence.amount_cents)/100})"
     db.add(models.AuditEvent(tenant_id=identity.tenant_id, actor=identity.actor,
         action="uploaded_invoice_confirmed", entity_type="invoice",
         entity_id=str(invoice.id), details=f"upload_id={job_id}"))

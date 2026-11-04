@@ -19,6 +19,11 @@ class InvoiceFields:
     amount: Optional[Decimal] = None
     tax_amount: Optional[Decimal] = None
     total_amount: Optional[Decimal] = None
+    disputed_amount: Optional[Decimal] = None
+    undisputed_amount: Optional[Decimal] = None
+    paid_amount: Optional[Decimal] = None
+    debit_note_ref: Optional[str] = None
+    dispute_reason: Optional[str] = None
     po_number: Optional[str] = None
     description: Optional[str] = None
     currency: str = "INR"
@@ -256,6 +261,37 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
         if candidate_name:
             fields.counterparty_name = candidate_name
             fields.confidence_scores["counterparty_name"] = 0.70
+
+        # Disputed amount, undisputed balance, paid amount, and debit note references
+        dm = re.search(r'\b(?:Disputed\s*(?:Hold\s*Amount|Amount|Hold|Balance)|Dispute\s*(?:Amount|Hold|Claim)|Amount\s*on\s*Hold)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', raw_text, re.IGNORECASE)
+        if dm:
+            fields.disputed_amount = clean_amount(dm.group(1))
+            fields.confidence_scores["disputed_amount"] = 0.90
+
+        um = re.search(r'\b(?:Undisputed\s*(?:Balance|Amount|Payable)?)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', raw_text, re.IGNORECASE)
+        if um:
+            fields.undisputed_amount = clean_amount(um.group(1))
+            fields.confidence_scores["undisputed_amount"] = 0.90
+
+        pm = re.search(r'\b(?:Paid\s*to\s*Date|Amount\s*Paid|Total\s*Paid)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', raw_text, re.IGNORECASE)
+        if pm:
+            fields.paid_amount = clean_amount(pm.group(1))
+
+        dnm = re.search(r'\bDebit\s*Note\s*(?:Ref|Reference|No|Number)?\s*[:\-]\s*([A-Za-z0-9\-]+)', raw_text, re.IGNORECASE)
+        if dnm:
+            fields.debit_note_ref = dnm.group(1).strip()
+
+        rm = re.search(r'\"(DISPUTE FILED[^\"]+)\"', raw_text, re.IGNORECASE) or \
+             re.search(r'\((Short\s*Delivery[^)]+)\)', raw_text, re.IGNORECASE) or \
+             re.search(r'\b(?:Dispute\s*(?:Reason|Status)?|Reason)\s*[:\-]\s*([^\n\r]+)', raw_text, re.IGNORECASE) or \
+             re.search(r'\b(Short\s*Delivery\s*[:\-]?[^\n\r]+)', raw_text, re.IGNORECASE)
+        if rm:
+            fields.dispute_reason = re.sub(r'\s+', ' ', rm.group(1)).strip()
+
+        if fields.disputed_amount is None and fields.undisputed_amount and fields.total_amount:
+            diff = fields.total_amount - (fields.paid_amount or Decimal(0)) - fields.undisputed_amount
+            if diff > Decimal(0):
+                fields.disputed_amount = diff
 
     except Exception as e:
         logging.error(f"OCR Extraction failed: {e}")

@@ -247,13 +247,29 @@ def _process_vision(db, job):
                     return
             raise ValueError("Invoice already exists; review potential duplicate")
         amount_cents = cents(validated["total"])
+        disputed_cents = 0
+        if getattr(document, "disputed_amount", None):
+            try:
+                disputed_cents = cents(Decimal(document.disputed_amount))
+            except Exception:
+                disputed_cents = 0
+        elif getattr(document, "undisputed_amount", None):
+            try:
+                undisp_cents = cents(Decimal(document.undisputed_amount))
+                disputed_cents = max(0, amount_cents - undisp_cents)
+            except Exception:
+                disputed_cents = 0
+
         invoice = models.Invoice(tenant_id=job.tenant_id,
             invoice_number=document.invoice_number, invoice_type="AR",
             counterparty_name=document.customer_name, issue_date=issue, due_date=due,
             amount=validated["total"], total_amount=validated["total"],
             face_amount_cents=amount_cents, currency=document.currency,
             source="vision_upload", source_path=job.source_path,
-            status="pending_review", requires_human_review=True)
+            status="disputed" if disputed_cents > 0 else "pending_review",
+            dispute_open=disputed_cents > 0,
+            disputed_cents=disputed_cents,
+            requires_human_review=True)
         db.add(invoice)
         db.flush()
         job.cases_created = 1
@@ -263,6 +279,28 @@ def _process_vision(db, job):
             source_type="uploaded_invoice", source_reference=f"/api/v1/intake/uploads/{job.id}/file",
             amount_cents=amount_cents, verified=False, trust_state="extracted",
             currency=document.currency))
+        if disputed_cents > 0:
+            dn_ref = getattr(document, "debit_note_ref", None) or "Active Dispute"
+            reason = getattr(document, "dispute_reason", None) or "Active dispute on hold recorded on invoice/receiving ledger"
+            disp_title = f"Dispute Record ({dn_ref})" if dn_ref else "Disputed Amount (On Hold)"
+            db.add(models.CaseEvidence(tenant_id=job.tenant_id, invoice_id=invoice.id,
+                claim_type="dispute_item", title=disp_title,
+                description=f"Invoice documents active dispute on hold: {reason}",
+                source_type="invoice_dispute_annotation",
+                source_reference=f"/api/v1/intake/uploads/{job.id}/file",
+                source_snippet=reason[:250],
+                amount_cents=disputed_cents, verified=False, trust_state="extracted",
+                currency=document.currency or "INR"))
+        if getattr(document, "paid_amount", None):
+            try:
+                paid_cents = cents(Decimal(document.paid_amount))
+                if paid_cents > 0:
+                    from app.services import receivables
+                    receivables.post_entry(db, invoice, kind="payment", amount=Decimal(paid_cents)/100,
+                        source="invoice_ledger", reference=f"PAID-{document.invoice_number}",
+                        actor="intake_agent", note="Paid amount documented on invoice")
+            except Exception:
+                pass
         document_records.persist_invoice_lines(db, invoice, document, job.id)
         _audit(db, job, "Matched", "New invoice; no receipt match inferred")
         _advance(db, job, invoice)
