@@ -155,3 +155,33 @@ def test_labelled_invoice_pdf_requires_reconciled_total(monkeypatch):
     assert result["document"].invoice_number == "SYN-INV-1"
     with pytest.raises(ValueError, match="reconcile"):
         vision_extraction.extract(_labelled_invoice_pdf(total="119.00"), "application/pdf")
+
+
+def test_normalize_vision_dict_unwraps_nested_model_values():
+    raw_payload = {
+        "document_type": {"value": "invoice", "confidence": 0.99},
+        "invoice_number": {"value": "INV-2026-TEST", "confidence": 0.99},
+        "buyer_name": {"value": "Acme Retail Ltd", "confidence": 0.95},
+        "invoice_date": {"value": "2026-10-15", "confidence": 0.98},
+        "due_date": {"value": "2026-11-14 (Net 30)", "confidence": 0.98},
+        "total_amount": {"value": "INR 59,000.00", "confidence": 0.99},
+        "tax_amount": {"value": "9,000.00", "confidence": 0.95},
+        "currency": {"value": "INR", "confidence": 0.99},
+        "line_items": [
+            {
+                "description": {"value": "Industrial Valves", "confidence": 0.99},
+                "quantity": {"value": "50", "confidence": 0.99},
+                "rate": {"value": "1,000.00", "confidence": 0.99},
+                "amount": {"value": "50,000.00", "confidence": 0.99}
+            }
+        ]
+    }
+    norm = vision_extraction._normalize_vision_dict(raw_payload)
+    doc = vision_extraction.VisionDocument(**norm)
+    res = vision_extraction.validate_document(doc)
+    assert res["total"] == Decimal("59000.00")
+    assert doc.invoice_number == "INV-2026-TEST"
+    assert doc.customer_name == "Acme Retail Ltd"
+    assert doc.due_date == "2026-11-14"
+    assert len(doc.line_items) == 1
+    assert doc.line_items[0].unit_price == "1000.00"

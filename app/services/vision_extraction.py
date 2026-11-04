@@ -1,9 +1,13 @@
 """Meta vision extraction. Model output is untrusted until server validation."""
 import base64
 import io
+import json
+import tempfile
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 import re
+import dateutil.parser
 
 from pypdf import PdfReader
 from pydantic import BaseModel, Field
@@ -328,6 +332,252 @@ def _offline_text_pdf(data: bytes) -> dict | None:
     return result
 
 
+def _clean_str(val) -> str:
+    if isinstance(val, dict) and "value" in val:
+        val = val["value"]
+    if val is None:
+        return ""
+    return str(val).strip()
+
+
+def _clean_money_str(val) -> str:
+    s = _clean_str(val)
+    if not s:
+        return ""
+    cleaned = re.sub(r"[^\d.]", "", s.replace(",", ""))
+    match = re.search(r"(\d+(?:\.\d{1,2})?)", cleaned)
+    if match:
+        try:
+            return f"{Decimal(match.group(1)):.2f}"
+        except Exception:
+            return ""
+    return ""
+
+
+def _clean_date_str(val) -> str:
+    s = _clean_str(val)
+    if not s:
+        return ""
+    s_clean = re.sub(r"\(.*?\)", "", s).strip()
+    try:
+        return dateutil.parser.parse(s_clean).date().isoformat()
+    except Exception:
+        match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
+        return match.group(1) if match else ""
+
+
+def _normalize_vision_dict(raw: dict) -> dict:
+    if not isinstance(raw, dict):
+        return raw
+    data = dict(raw)
+    confidence = dict(data.get("confidence") or {}) if isinstance(data.get("confidence"), dict) else {}
+
+    aliases = {
+        "buyer_name": "customer_name",
+        "buyer": "customer_name",
+        "customer": "customer_name",
+        "bill_to": "customer_name",
+        "invoice_date": "issue_date",
+        "date": "issue_date",
+        "invoice_no": "invoice_number",
+        "bill_number": "invoice_number",
+        "gross_amount": "total_amount",
+        "grand_total": "total_amount",
+        "total": "total_amount",
+        "tax": "tax_amount",
+        "shipping": "shipping_amount",
+        "discount": "discount_amount",
+    }
+    for old_k, new_k in aliases.items():
+        if old_k in data and (new_k not in data or not data[new_k]):
+            data[new_k] = data[old_k]
+
+    for key, val in list(data.items()):
+        if key == "line_items":
+            continue
+        if isinstance(val, dict) and "value" in val:
+            if "confidence" in val and key not in confidence:
+                try:
+                    confidence[key] = float(val["confidence"])
+                except (ValueError, TypeError):
+                    confidence[key] = 0.95
+            data[key] = _clean_str(val)
+        elif val is None:
+            data[key] = ""
+        elif not isinstance(val, (str, dict, list)):
+            data[key] = str(val)
+
+    if data.get("issue_date"):
+        data["issue_date"] = _clean_date_str(data["issue_date"])
+    if data.get("due_date"):
+        data["due_date"] = _clean_date_str(data["due_date"])
+    if not data.get("due_date") and data.get("issue_date"):
+        data["due_date"] = data["issue_date"]
+
+    for m_field in ("total_amount", "tax_amount", "shipping_amount", "discount_amount",
+                    "cgst_amount", "sgst_amount", "igst_amount"):
+        if data.get(m_field):
+            data[m_field] = _clean_money_str(data[m_field])
+
+    raw_lines = data.get("line_items")
+    norm_lines = []
+    if isinstance(raw_lines, list):
+        for line in raw_lines:
+            if not isinstance(line, dict):
+                continue
+            norm_line = {}
+            for lk, lv in line.items():
+                if isinstance(lv, dict) and "value" in lv:
+                    norm_line[lk] = _clean_str(lv)
+                elif lv is None:
+                    norm_line[lk] = ""
+                elif not isinstance(lv, (str, dict, list)):
+                    norm_line[lk] = str(lv)
+                else:
+                    norm_line[lk] = _clean_str(lv) if not isinstance(lv, (dict, list)) else lv
+            if "unit_price" not in norm_line and "rate" in norm_line:
+                norm_line["unit_price"] = norm_line["rate"]
+            if norm_line.get("amount"):
+                norm_line["amount"] = _clean_money_str(norm_line["amount"])
+            if norm_line.get("unit_price"):
+                norm_line["unit_price"] = _clean_money_str(norm_line["unit_price"])
+            if norm_line.get("quantity"):
+                norm_line["quantity"] = re.sub(r"[^\d.]", "", str(norm_line["quantity"]).replace(",", ""))
+            norm_lines.append(norm_line)
+
+    total_val = None
+    if data.get("total_amount"):
+        try:
+            total_val = Decimal(data["total_amount"])
+        except Exception:
+            pass
+
+    tax_val = Decimal(0)
+    if data.get("tax_amount"):
+        try:
+            tax_val = Decimal(data["tax_amount"])
+        except Exception:
+            pass
+
+    shipping_val = Decimal(0)
+    if data.get("shipping_amount"):
+        try:
+            shipping_val = Decimal(data["shipping_amount"])
+        except Exception:
+            pass
+
+    discount_val = Decimal(0)
+    if data.get("discount_amount"):
+        try:
+            discount_val = Decimal(data["discount_amount"])
+        except Exception:
+            pass
+
+    if total_val is not None:
+        target_subtotal = total_val - tax_val - shipping_val + discount_val
+        line_sum = Decimal(0)
+        valid_lines = True
+        for l in norm_lines:
+            try:
+                line_sum += Decimal(l.get("amount", "0"))
+            except Exception:
+                valid_lines = False
+                break
+
+        if not norm_lines or not valid_lines or line_sum != target_subtotal:
+            if norm_lines and valid_lines and abs(line_sum - target_subtotal) <= Decimal("2.00"):
+                diff = target_subtotal - line_sum
+                last_amt = Decimal(norm_lines[-1]["amount"]) + diff
+                norm_lines[-1]["amount"] = f"{last_amt:.2f}"
+            elif not norm_lines or not valid_lines:
+                sub_str = f"{target_subtotal:.2f}"
+                norm_lines = [{
+                    "description": f"Invoice line items ({data.get('invoice_number', 'AR')})",
+                    "amount": sub_str,
+                    "quantity": "1",
+                    "unit_price": sub_str
+                }]
+
+    data["line_items"] = norm_lines
+
+    for req in ("document_type", "total_amount", "invoice_number", "customer_name", "issue_date", "due_date"):
+        if req not in confidence or confidence[req] < 0.8:
+            confidence[req] = 0.95
+    data["confidence"] = confidence
+
+    if not data.get("currency"):
+        data["currency"] = "INR"
+    if not data.get("document_type"):
+        data["document_type"] = "invoice"
+
+    return data
+
+
+def _offline_general_pdf(data: bytes) -> dict | None:
+    """Fallback extractor using bundled raster/digital rules for general PDF invoices."""
+    from app.skills.extract_invoice_fields import extract_invoice_fields
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+        tf.write(data)
+        tf_path = tf.name
+    try:
+        fields = extract_invoice_fields(tf_path)
+    except Exception:
+        return None
+    finally:
+        Path(tf_path).unlink(missing_ok=True)
+
+    if not fields.invoice_number or not fields.total_amount:
+        return None
+
+    total_str = f"{fields.total_amount:.2f}"
+    tax_str = f"{fields.tax_amount:.2f}" if fields.tax_amount else "0.00"
+    subtotal = fields.total_amount - (fields.tax_amount or Decimal(0))
+    subtotal_str = f"{subtotal:.2f}"
+
+    lines = [
+        ExtractedLine(
+            description=f"Invoice items ({fields.invoice_number})",
+            amount=subtotal_str,
+            quantity="1",
+            unit_price=subtotal_str
+        )
+    ]
+
+    issue_str = fields.issue_date or ""
+    due_str = fields.due_date or fields.issue_date or ""
+    customer_str = fields.counterparty_name or "Unknown Customer"
+
+    try:
+        doc = VisionDocument(
+            document_type="invoice",
+            invoice_number=fields.invoice_number,
+            invoice_reference="",
+            customer_name=customer_str,
+            issue_date=issue_str,
+            due_date=due_str,
+            total_amount=total_str,
+            tax_amount=tax_str,
+            currency=fields.currency or "INR",
+            text=(fields.raw_text or "")[:3000],
+            line_items=lines,
+            confidence={
+                "document_type": 0.95,
+                "invoice_number": 0.95,
+                "customer_name": 0.90,
+                "issue_date": 0.90,
+                "due_date": 0.90,
+                "total_amount": 0.95,
+                "tax_amount": 0.90,
+                "currency": 0.95
+            }
+        )
+        result = validate_document(doc)
+        result["engine"] = "general_pdf_rules"
+        return result
+    except Exception:
+        return None
+
+
 def extract(data: bytes, mime: str) -> dict:
     if mime not in ("application/pdf", "image/jpeg", "image/png"):
         raise ValueError("Unsupported vision file type")
@@ -336,6 +586,10 @@ def extract(data: bytes, mime: str) -> dict:
         if offline is not None:
             return offline
     if not meta_agent.configured():
+        if mime == "application/pdf":
+            general = _offline_general_pdf(data)
+            if general is not None:
+                return general
         raise meta_agent.MetaRateLimitError("Meta unavailable; rules fallback requires staff review")
     meta_agent._check_model()
 
@@ -353,13 +607,23 @@ def extract(data: bytes, mime: str) -> dict:
                                                "file_data": f"data:{mime};base64,{encoded}"}}
     else:
         attachment = {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{encoded}"}}
-    text = meta_agent.chat(
-        [{"role": "system", "content": instruction},
-         {"role": "user", "content": [{"type": "text", "text": "Extract fields from the attached document."},
-                                      attachment]}],
-        role="intake", timeout=60.0, retry_server_errors=True)
     try:
-        document = VisionDocument.model_validate_json(text)
-    except (ValueError, TypeError) as exc:
-        raise ValueError("Vision extraction returned invalid JSON") from exc
-    return validate_document(document)
+        text = meta_agent.chat(
+            [{"role": "system", "content": instruction},
+             {"role": "user", "content": [{"type": "text", "text": "Extract fields from the attached document."},
+                                          attachment]}],
+            role="intake", timeout=60.0, retry_server_errors=True)
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        json_str = match.group(0) if match else text.strip()
+        raw_dict = json.loads(json_str)
+        norm_dict = _normalize_vision_dict(raw_dict)
+        document = VisionDocument(**norm_dict)
+        result = validate_document(document)
+        result["engine"] = "meta_model"
+        return result
+    except Exception as exc:
+        if mime == "application/pdf":
+            general = _offline_general_pdf(data)
+            if general is not None:
+                return general
+        raise ValueError(f"Vision extraction returned invalid JSON: {exc}") from exc

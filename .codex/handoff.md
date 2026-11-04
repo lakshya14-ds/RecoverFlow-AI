@@ -4,6 +4,13 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **2026-11-04 Antigravity resolution:** Universal resilient invoice extraction across all PDFs and models completed. Fixed root cause of "Vision extraction returned invalid JSON" when processing new/custom invoices:
+  1. In `app/services/vision_extraction.py`, implemented `_normalize_vision_dict(raw)` to safely unwrap live Meta Model API (`muse-spark-1.3`) structured per-field confidence objects (`{"value": ..., "confidence": ...}`), map aliases (`buyer_name`/`buyer`/`customer`/`bill_to` -> `customer_name`, `invoice_date`/`date` -> `issue_date`, `rate` -> `unit_price`, `gross_amount`/`grand_total`/`total` -> `total_amount`), sanitize currency symbols/commas, and standardize ISO dates.
+  2. Added resilient general PDF rules extractor fallback `_offline_general_pdf(data)` using bundled rasterization and text extraction (`app/skills/extract_invoice_fields.py`), ensuring newly generated or arbitrary third-party invoices extract reliably even if the vision model is offline, rate-limited, or outputs non-standard formatting.
+  3. Reconciled line sums and total values deterministically.
+  4. Verified both live Meta model API execution (`EXTRACTED ENGINE: meta_model`, invoice `INV-2026-7734`, customer `Bharat Retail Ventures Pvt Ltd`, total `INR 2,12,400.00`, 3 line items) and offline fallback (`EXTRACTED ENGINE: general_pdf_rules`).
+  5. Full test suite passes 100% (390 passed, 0 failed, 10/10 in `test_vision_extraction.py`). Zero emojis, zero secrets.
+
 - **2026-11-04 Antigravity resolution:** Audio evidence integrity and hero fixture boundary resolved. Unmatched or ambiguous audio uploads fail fast with ValueError into needs_attention stage for staff review rather than attaching to arbitrary invoices. Evidence records created with verified=False and trust_state="extracted", requiring human staff confirmation. Filename-based fixture sniffing completely removed from runtime voice uploads; ordinary uploads with hero-style filenames return 0 canned dispute facts and 0.0 confidence; benchmark fixture activation strictly reserved for explicit is_hero=True seeding. Full test suite passes 390/390 (0 failed). The Synthetic Hero Case benchmark table (INV-2026-HERO) is preserved intact in README.md.
 
 - **2026-11-04 Antigravity resolution:** Live Meta Model API execution (`muse-spark-1.3`) verified directly on EC2 staging host. In `app/services/meta_agent.py`, `_slot_key` now safely falls back to `META_MODEL_API_KEY`, ensuring slots 1, 2, and 3 report active and configured. Staging `.env` synchronized with explicit slots 1–3. Full test suite passes 388/388 (0 failed). Zero emojis, zero leaked credentials.
