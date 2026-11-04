@@ -30,7 +30,7 @@ class ManualInvoice(BaseModel):
     issue_date: date
     due_date: date
     total_amount: Decimal = Field(gt=0, decimal_places=2)
-    currency: str = Field(default="USD", min_length=3, max_length=3)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
 
     @model_validator(mode="after")
     def valid_dates(self):
@@ -145,6 +145,7 @@ def process_invoice_pipeline(job_id: str) -> None:
                 counterparty_name=data["counterparty_name"],
                 issue_date=issue_date, due_date=due_date,
                 amount=amount, total_amount=amount, face_amount_cents=amount_cents,
+                currency=data.get("currency") or "INR",
                 source="api_upload", source_path=file_path,
                 ocr_raw_text=data.get("raw_text"),
                 ocr_confidence=result.get("extracted_confidence", 0.0),

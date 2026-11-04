@@ -505,8 +505,13 @@ def _normalize_vision_dict(raw: dict) -> dict:
             confidence[req] = 0.95
     data["confidence"] = confidence
 
-    if not data.get("currency"):
-        data["currency"] = "INR"
+    curr = str(data.get("currency") or "").strip().upper()
+    full_text = " ".join([str(data.get(k) or "") for k in ("text", "customer_name", "invoice_number")])
+    if any(k in full_text for k in ("₹", "INR", "Rs", "GSTIN", "IGST", "CGST", "SGST", "Lakh")):
+        curr = "INR"
+    elif curr in ("", "USD") and not re.search(r"\$|\bUSD\b", full_text, re.IGNORECASE):
+        curr = "INR"
+    data["currency"] = curr or "INR"
     if not data.get("document_type"):
         data["document_type"] = "invoice"
 
@@ -557,7 +562,7 @@ def _offline_general_pdf(data: bytes) -> dict | None:
             due_date=due_str,
             total_amount=total_str,
             tax_amount=tax_str,
-            currency=fields.currency or "INR",
+            currency="INR" if any(k in (fields.raw_text or "") for k in ("₹", "INR", "Rs", "GSTIN", "IGST", "CGST", "SGST", "Lakh")) else (fields.currency or "INR"),
             text=(fields.raw_text or "")[:3000],
             line_items=lines,
             confidence={

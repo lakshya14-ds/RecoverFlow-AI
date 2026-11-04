@@ -21,7 +21,7 @@ class InvoiceFields:
     total_amount: Optional[Decimal] = None
     po_number: Optional[str] = None
     description: Optional[str] = None
-    currency: str = "USD"
+    currency: str = "INR"
     bank_routing: Optional[str] = None      # For bank-detail validation
     bank_account: Optional[str] = None      # Last four digits only
     confidence_scores: dict = field(default_factory=dict)
@@ -124,6 +124,14 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
             if numeric_amounts:
                 fields.total_amount = numeric_amounts[0]
                 fields.confidence_scores["total_amount"] = 0.90
+        # Currency: default INR for Indian MSME documents, or detect explicitly
+        if re.search(r'₹|\bINR\b|\bRs\.?\b', raw_text, re.IGNORECASE):
+            fields.currency = "INR"
+        elif re.search(r'\$|\bUSD\b', raw_text, re.IGNORECASE) and not re.search(r'₹|\bINR\b|\bRs\.?\b|\bGSTIN\b', raw_text, re.IGNORECASE):
+            fields.currency = "USD"
+        else:
+            fields.currency = "INR"
+
         
         # Due date and issue date.
         dates = re.findall(r'(\b\d{4}-\d{2}-\d{2}\b|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4})', raw_text, re.IGNORECASE)

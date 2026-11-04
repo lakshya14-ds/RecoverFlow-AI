@@ -4,6 +4,13 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **2026-11-04 Antigravity resolution:** Fixed currency defaulting to USD for Indian invoices.
+  1. In `app/skills/extract_invoice_fields.py`, changed default `currency` to `"INR"` and added currency symbol / keyword detection (`₹`, `INR`, `Rs.`, `GSTIN` -> `INR`, explicit `$` -> `USD`).
+  2. In `app/services/vision_extraction.py`, enhanced `_normalize_vision_dict` and `_offline_general_pdf` to guarantee currency is `"INR"` for Indian GST invoices, counteracting inadvertent USD defaults.
+  3. In `app/api/invoices.py`, `app/api/dunning.py`, and `app/skills/generate_dunning_email.py`, corrected fallback currency from `"USD"` to `"INR"`.
+  4. Updated existing `INV-2026-7734` record on EC2 staging database from `USD` to `INR`.
+  5. Verified targeted test suites pass 100% (22/22 in `test_vision_extraction.py` and `test_audio_and_pdf_fixes.py`). Zero emojis, zero secrets.
+
 - **2026-11-04 Antigravity resolution:** Universal resilient invoice extraction across all PDFs and models completed. Fixed root cause of "Vision extraction returned invalid JSON" when processing new/custom invoices:
   1. In `app/services/vision_extraction.py`, implemented `_normalize_vision_dict(raw)` to safely unwrap live Meta Model API (`muse-spark-1.3`) structured per-field confidence objects (`{"value": ..., "confidence": ...}`), map aliases (`buyer_name`/`buyer`/`customer`/`bill_to` -> `customer_name`, `invoice_date`/`date` -> `issue_date`, `rate` -> `unit_price`, `gross_amount`/`grand_total`/`total` -> `total_amount`), sanitize currency symbols/commas, and standardize ISO dates.
   2. Added resilient general PDF rules extractor fallback `_offline_general_pdf(data)` using bundled rasterization and text extraction (`app/skills/extract_invoice_fields.py`), ensuring newly generated or arbitrary third-party invoices extract reliably even if the vision model is offline, rate-limited, or outputs non-standard formatting.

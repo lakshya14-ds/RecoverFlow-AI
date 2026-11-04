@@ -69,7 +69,7 @@ def generate_dunning_email(
         try:
             prompt = ChatPromptTemplate.from_messages([
                 ("system", f"You are an accounts receivable agent for {company_name}. Generate a {tone} dunning email."),
-                ("human", f"Client Name: {client.get('name', 'Client')}\nInvoice Number: {invoice.get('invoice_number', 'UNKNOWN')}\nAmount: {invoice.get('currency', 'USD')} {invoice.get('total_amount', 0.0):.2f}\nDue Date: {invoice.get('due_date', 'UNKNOWN')}\nDays Overdue: {days_overdue}\nStage: {stage}")
+                ("human", f"Client Name: {client.get('name', 'Client')}\nInvoice Number: {invoice.get('invoice_number', 'UNKNOWN')}\nAmount: {invoice.get('currency', 'INR')} {invoice.get('total_amount', 0.0):.2f}\nDue Date: {invoice.get('due_date', 'UNKNOWN')}\nDays Overdue: {days_overdue}\nStage: {stage}")
             ])
             prompt_value = prompt.invoke({})
             
@@ -89,7 +89,7 @@ def generate_dunning_email(
         client_name=client.get("name", "Client"),
         invoice_number=invoice.get("invoice_number", "UNKNOWN"),
         amount=invoice.get("total_amount", 0.0),
-        currency=invoice.get("currency", "USD"),
+        currency=invoice.get("currency", "INR"),
         due_date=invoice.get("due_date", "UNKNOWN"),
         days_overdue=days_overdue,
         company_name=company_name
