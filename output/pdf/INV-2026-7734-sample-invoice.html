@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TAX INVOICE - INV-2026-7734</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 12mm 10mm 10mm 10mm;
+        }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1a1a1a;
+            margin: 0;
+            padding: 0;
+            font-size: 8.5pt;
+            line-height: 1.3;
+            background-color: #ffffff;
+        }
+        .invoice-container {
+            width: 100%;
+            max-width: 190mm;
+            margin: 0 auto;
+            position: relative;
+        }
+        /* Header styling */
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 5px;
+        }
+        .header-title {
+            background-color: #0d233a;
+            color: white;
+            text-align: center;
+            padding: 8px;
+        }
+        .header-title h1 {
+            margin: 0;
+            font-size: 16pt;
+            letter-spacing: 1px;
+            font-weight: bold;
+        }
+        .header-title p {
+            margin: 2px 0 0 0;
+            font-size: 7.5pt;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        /* Borders & tables */
+        .border-box {
+            border: 1px solid #333333;
+            margin-bottom: 5px;
+        }
+        table.meta-table, table.parties-table, table.items-table, table.summary-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table.meta-table td, table.parties-table td {
+            border: 1px solid #333333;
+            padding: 5px;
+            vertical-align: top;
+        }
+        .section-title {
+            font-weight: bold;
+            font-size: 8pt;
+            background-color: #f2f2f2;
+            border-bottom: 1px solid #333333;
+            padding: 3px 5px;
+            text-transform: uppercase;
+        }
+        .party-box {
+            width: 50%;
+        }
+        /* Items Table */
+        table.items-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            font-size: 8pt;
+            border: 1px solid #333333;
+            padding: 4px;
+            text-align: center;
+        }
+        table.items-table td {
+            border: 1px solid #333333;
+            padding: 5px 4px;
+            vertical-align: top;
+            font-size: 8pt;
+        }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        /* Financial & Sign-off Layout */
+        .grid-footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+        }
+        .left-footer {
+            width: 58%;
+        }
+        .right-footer {
+            width: 40%;
+        }
+        table.summary-table td {
+            border: 1px solid #333333;
+            padding: 4px;
+            font-size: 8pt;
+        }
+        .amount-words {
+            font-style: italic;
+            margin-top: 5px;
+            font-size: 7.5pt;
+            border: 1px dashed #555555;
+            padding: 4px;
+            background-color: #fafafa;
+        }
+        /* Bank Remittance Styles */
+        .bank-details {
+            border: 1px solid #333333;
+            padding: 6px;
+            background-color: #fcfcfc;
+            margin-top: 5px;
+        }
+        .bank-details h3 {
+            margin: 0 0 4px 0;
+            font-size: 8.5pt;
+            text-transform: uppercase;
+            border-bottom: 1px solid #333333;
+            padding-bottom: 2px;
+        }
+        /* Perceptual Elements */
+        .perceptual-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            align-items: flex-end;
+            position: relative;
+        }
+        .discrepancy-note {
+            width: 55%;
+            border: 2px dashed #900;
+            background-color: #fff6f6;
+            padding: 6px;
+            font-size: 7.5pt;
+            color: #800;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+        }
+        .discrepancy-note strong {
+            color: #b00;
+            text-transform: uppercase;
+        }
+        .stamp-and-sign {
+            width: 42%;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            position: relative;
+        }
+        /* Stamp SVG Overlay effect */
+        .rubber-stamp {
+            margin-bottom: 15px;
+            margin-right: 15px;
+        }
+        .signature-area {
+            text-align: right;
+            border-top: 1px solid #333333;
+            padding-top: 35px;
+            width: 100%;
+            font-size: 8pt;
+            position: relative;
+        }
+        .stamp-overlay {
+            position: absolute;
+            bottom: 40px;
+            left: -80px;
+            pointer-events: none;
+            opacity: 0.85;
+            transform: rotate(-4deg);
+        }
+    </style>
+</head>
+<body>
+
+<div class="invoice-container">
+    <!-- Main Compliance Header -->
+    <div class="border-box" style="margin-bottom: 3px;">
+        <div class="header-title">
+            <h1>TAX INVOICE</h1>
+            <p>ORIGINAL FOR RECIPIENT</p>
+        </div>
+    </div>
+
+    <!-- Meta Details Grid -->
+    <table class="meta-table border-box">
+        <tr>
+            <td style="width: 33.33%;">
+                <strong>Invoice Number:</strong> INV-2026-7734<br>
+                <strong>Invoice Date:</strong> 2026-10-12<br>
+                <strong>Due Date:</strong> 2026-11-11 (Net 30)
+            </td>
+            <td style="width: 33.33%;">
+                <strong>Place of Supply:</strong> Uttar Pradesh (09)<br>
+                <strong>State Code:</strong> 09<br>
+                <strong>Reverse Charge Applicable:</strong> No
+            </td>
+            <td style="width: 33.33%;">
+                <strong>Transport Mode:</strong> Road<br>
+                <strong>Vehicle / Waybill No:</strong> SafeXpress #998241<br>
+                <strong>Date of Dispatch:</strong> 2026-10-12
+            </td>
+        </tr>
+    </table>
+
+    <!-- Parties Grid -->
+    <table class="parties-table border-box" style="margin-bottom: 5px;">
+        <tr>
+            <td class="party-box">
+                <div class="section-title">SUPPLIER:</div>
+                <div style="padding-top: 3px;">
+                    <strong>Apex Enterprises Pvt Ltd</strong><br>
+                    Plot 42, Okhla Industrial Area, Phase-III,<br>
+                    New Delhi - 110020<br>
+                    <strong>GSTIN:</strong> 07AAACA1234F1Z9<br>
+                    <strong>PAN:</strong> AAACA1234F<br>
+                    <strong>State:</strong> Delhi (07)<br>
+                    <strong>Email:</strong> billing@apexdistributors.in
+                </div>
+            </td>
+            <td class="party-box">
+                <div class="section-title">BUYER:</div>
+                <div style="padding-top: 3px;">
+                    <strong>Bharat Retail Ventures Pvt Ltd</strong><br>
+                    B-14, Sector 62, Noida,<br>
+                    Uttar Pradesh - 201309<br>
+                    <strong>GSTIN:</strong> 09AABCB5678G1Z3<br>
+                    <strong>PAN:</strong> AABCB5678G<br>
+                    <strong>State:</strong> Uttar Pradesh (09)<br>
+                    <strong>Contact:</strong> accounts@bharatretail.in
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Line Items Table -->
+    <table class="items-table border-box" style="margin-bottom: 5px;">
+        <thead>
+            <tr>
+                <th style="width: 5%;">S.No</th>
+                <th style="width: 45%; text-align: left;">Description of Goods / Services</th>
+                <th style="width: 10%;">HSN Code</th>
+                <th style="width: 8%;">Qty</th>
+                <th style="width: 8%;">Unit</th>
+                <th style="width: 11%; text-align: right;">Rate (₹)</th>
+                <th style="width: 13%; text-align: right;">Amount (₹)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td class="text-center">1</td>
+                <td>Precision Hydraulic Control Valve Set - Series A</td>
+                <td class="text-center">8481</td>
+                <td class="text-center">40</td>
+                <td class="text-center">Nos</td>
+                <td class="text-right">3,500.00</td>
+                <td class="text-right">1,40,000.00</td>
+            </tr>
+            <tr>
+                <td class="text-center">2</td>
+                <td>High-Pressure Brass Couplings (Industrial Grade)</td>
+                <td class="text-center">7412</td>
+                <td class="text-center">20</td>
+                <td class="text-center">Nos</td>
+                <td class="text-right">1,500.00</td>
+                <td class="text-right">30,000.00</td>
+            </tr>
+            <tr>
+                <td class="text-center">3</td>
+                <td>Reinforced Synthetic Rubber O-Ring Kits</td>
+                <td class="text-center">4016</td>
+                <td class="text-center">10</td>
+                <td class="text-center">Kits</td>
+                <td class="text-right">1,000.00</td>
+                <td class="text-right">10,000.00</td>
+            </tr>
+            <!-- Empty Row for space/height styling, common in commercial grids -->
+            <tr style="height: 15px;">
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Financial Reconciliation Section -->
+    <div class="grid-footer">
+        <div class="left-footer">
+            <div class="bank-details">
+                <h3>Bank Remittance Instructions (NEFT/RTGS)</h3>
+                <strong>Bank Name:</strong> HDFC Bank Ltd<br>
+                <strong>Branch:</strong> Okhla Phase-III Branch<br>
+                <strong>Account Number:</strong> 50200088992144 (Current Account)<br>
+                <strong>IFSC Code:</strong> HDFC0000128<br>
+                <span style="font-weight: bold; color: #b30000;">Payment Note:</span> Please quote invoice "INV-2026-7734" in the NEFT/RTGS UTR/remittance details.
+            </div>
+            <div class="amount-words">
+                <strong>Amount Chargeable (in words):</strong> Two Lakh Twelve Thousand Four Hundred Rupees Only.
+            </div>
+        </div>
+        <div class="right-footer">
+            <table class="summary-table">
+                <tr>
+                    <td style="width: 50%;"><strong>Taxable Value</strong></td>
+                    <td class="text-right" style="width: 50%;">1,80,000.00</td>
+                </tr>
+                <tr>
+                    <td><strong>IGST @ 18%</strong></td>
+                    <td class="text-right">32,400.00</td>
+                </tr>
+                <tr>
+                    <td>CGST @ 0%</td>
+                    <td class="text-right">0.00</td>
+                </tr>
+                <tr>
+                    <td>SGST @ 0%</td>
+                    <td class="text-right">0.00</td>
+                </tr>
+                <tr>
+                    <td>Round Off</td>
+                    <td class="text-right">0.00</td>
+                </tr>
+                <tr style="background-color: #f2f2f2; font-weight: bold; font-size: 9pt;">
+                    <td>Total Invoice Value</td>
+                    <td class="text-right">₹2,12,400.00</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+
+    <!-- Multimodal Perceptual Block -->
+    <div class="perceptual-container">
+        <!-- Shaded Receiving Annotation styled as manual logistics intake log -->
+        <div class="discrepancy-note">
+            <strong>★ METRO WAREHOUSE RECEIVING NOTE & DISCREPANCY:</strong><br>
+            <span style="font-family: monospace; font-size: 8pt;">
+                "Box #3 arrived unsealed. Inspection confirms 10 Units of 'Precision Hydraulic Control Valve Set' missing from shipment (Received 30/40 units). 
+                Retention deduction of ₹35,000 + applicable GST applied pending supplier dispute validation & short-supply reconciliation."
+            </span>
+            <div style="margin-top: 4px; font-weight: bold; text-align: right; font-size: 7pt;">— INTAKE OFFICER (BAY 4)</div>
+        </div>
+
+        <!-- Authorized Signatory and SAM 3.1 Targeted Rubber Stamp Overlay -->
+        <div class="stamp-and-sign">
+            <!-- Simulated Ink Rubber Stamp (using nested inline SVG with distress features) -->
+            <div class="stamp-overlay">
+                <svg width="180" height="75" viewBox="0 0 180 75" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Distressed, semi-transparent double-border ink look -->
+                    <rect x="3" y="3" width="174" height="69" rx="8" fill="none" stroke="#2a4193" stroke-width="2.5" stroke-dasharray="100 1 80 1 120 1" opacity="0.85" />
+                    <rect x="8" y="8" width="164" height="59" rx="5" fill="none" stroke="#2a4193" stroke-width="1.2" stroke-dasharray="60 1 30 1" opacity="0.85" />
+                    <!-- Rounded inner stamp texts -->
+                    <text x="90" y="24" font-family="'Courier New', Courier, monospace" font-size="10" font-weight="900" fill="#2a4193" text-anchor="middle" letter-spacing="0.5" opacity="0.9">METRO LOGISTICS & RECEIVING</text>
+                    <text x="90" y="38" font-family="'Courier New', Courier, monospace" font-size="8.5" font-weight="900" fill="#2a4193" text-anchor="middle" letter-spacing="0.2" opacity="0.9">GOODS RECEIVED & VERIFIED - BAY 4</text>
+                    <text x="90" y="52" font-family="'Courier New', Courier, monospace" font-size="11" font-weight="900" fill="#2a4193" text-anchor="middle" opacity="0.95" decoration="underline">DATE: 2026-10-15</text>
+                    <!-- Noise pattern overlay to challenge visual thresholding & segmentation models -->
+                    <path d="M 5 15 L 12 12 M 160 50 L 164 55 M 30 65 L 35 63 M 120 10 L 125 14" stroke="#2a4193" stroke-width="0.8" opacity="0.5" />
+                </svg>
+            </div>
+
+            <div class="signature-area">
+                For <strong>Apex Enterprises Pvt Ltd</strong>
+                <div style="margin-top: 15px; font-size: 7pt; color: #555555;">[Digitally Authenticated / Authorized Signatory]</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
