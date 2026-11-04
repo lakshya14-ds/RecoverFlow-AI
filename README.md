@@ -32,7 +32,7 @@ Gross Invoiced Amount
   = Actionable Undisputed Balance (Eligible for Recovery)
 ```
 
-### The Synthetic Hero Case
+### For example (The Synthetic Hero invoice Case)
 
 The system's core mechanics are demonstrated through a realistic synthetic benchmark case (`INV-2026-HERO`):
 
