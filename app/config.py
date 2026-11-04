@@ -126,7 +126,7 @@ class Settings(BaseSettings):
     META_GRAPH_API_VERSION: str = ""
 
     class Config:
-        env_file = ".env"
+        env_file = str(Path(__file__).resolve().parent.parent / ".env")
         env_file_encoding = "utf-8"
         extra = "ignore"
 

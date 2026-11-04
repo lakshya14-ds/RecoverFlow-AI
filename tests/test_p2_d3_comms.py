@@ -208,7 +208,9 @@ def test_expired_window_needs_template(commdb):
     assert _reply(client, message_id).status_code == 409
 
 
-def test_template_reply_after_expiry(commdb):
+def test_template_reply_after_expiry(commdb, monkeypatch):
+    from app.services import comms
+    monkeypatch.setattr(comms, "now_ist", lambda: datetime(2026, 11, 4, 12, 0, tzinfo=IST))
     client = commdb["client"]
     invoice = commdb["invoice"]
     old = datetime.now(timezone.utc) - timedelta(hours=25)

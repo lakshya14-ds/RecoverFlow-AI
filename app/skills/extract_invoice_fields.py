@@ -157,9 +157,17 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
                     if i + offset < len(lines):
                         nxt = lines[i + offset].strip()
                         nxt_lower = nxt.lower()
-                        if nxt_lower not in HEADER_TITLES and not any(s in nxt_lower for s in SELLER_NAMES) and "plot" not in nxt_lower and "shop" not in nxt_lower and len(nxt) > 3:
+                        if (nxt_lower not in HEADER_TITLES
+                                and not nxt_lower.startswith(("invoice ", "invoice:", "inv-"))
+                                and not re.search(r"\d{1,4}[/-]\d{1,2}[/-]\d{2,4}", nxt)
+                                and not re.match(r"^(?:INR|Rs\.?|₹|\$)\s*\d", nxt, re.I)
+                                and not any(s in nxt_lower for s in SELLER_NAMES)
+                                and "plot" not in nxt_lower and "shop" not in nxt_lower
+                                and len(nxt) > 3):
                             candidate_name = nxt
                             break
+                if not candidate_name and lower_line == "customer":
+                    candidate_name = line
                 if candidate_name:
                     break
             elif any(lower_line.startswith(prefix) for prefix in ("bill to:", "customer:", "buyer:", "to:")):

@@ -151,7 +151,7 @@ def _role_slot(role: str) -> int:
 
 
 def _slot_key(slot: int) -> str:
-    return getattr(settings, f"META_API_KEY_{slot}")
+    return getattr(settings, f"META_API_KEY_{slot}", "") or getattr(settings, "META_MODEL_API_KEY", "")
 
 
 def _candidate_slots(role: str) -> list[int]:
