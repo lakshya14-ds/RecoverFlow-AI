@@ -328,7 +328,7 @@ async def upload_voice_note(invoice_id: int,
         filename=filename,
         tenant_id=identity.tenant_id,
         invoice_id=invoice.id,
-        is_hero=(invoice.invoice_number == "INV-2026-HERO")
+        is_hero=False
     )
 
     # 1. Create or link CaseEvidence
@@ -342,9 +342,9 @@ async def upload_voice_note(invoice_id: int,
         source_reference=f"docs/audio/{result['stored_filename']}",
         source_snippet=result["transcript_text"][:240],
         amount_cents=result["extracted_dispute_amount_cents"],
-        verified=True,
-        trust_state="verified",
-        decided_by="voice_agent",
+        verified=False,
+        trust_state="extracted",
+        decided_by=None,
         currency=invoice.currency or "INR"
     )
     db.add(evidence)

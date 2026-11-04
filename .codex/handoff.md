@@ -4,6 +4,8 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **2026-11-04 Antigravity resolution:** Audio evidence integrity and hero fixture boundary resolved. Unmatched or ambiguous audio uploads fail fast with ValueError into needs_attention stage for staff review rather than attaching to arbitrary invoices. Evidence records created with verified=False and trust_state="extracted", requiring human staff confirmation. Filename-based fixture sniffing completely removed from runtime voice uploads; ordinary uploads with hero-style filenames return 0 canned dispute facts and 0.0 confidence; benchmark fixture activation strictly reserved for explicit is_hero=True seeding. Full test suite passes 390/390 (0 failed). The Synthetic Hero Case benchmark table (INV-2026-HERO) is preserved intact in README.md.
+
 - **2026-11-04 Antigravity resolution:** Live Meta Model API execution (`muse-spark-1.3`) verified directly on EC2 staging host. In `app/services/meta_agent.py`, `_slot_key` now safely falls back to `META_MODEL_API_KEY`, ensuring slots 1, 2, and 3 report active and configured. Staging `.env` synchronized with explicit slots 1–3. Full test suite passes 388/388 (0 failed). Zero emojis, zero leaked credentials.
 
 - **Submission QA, Codex (2026-11-04):** README now includes 13 live screenshots, tested coverage, and submission blockers. Staging reports rules_only; actual Meta execution unverified. Audio first-invoice matching/automatic trust remains unsafe. Concurrent 0a0ac06 partially fixes fixture filenames/PDF parsing; latest Codex entry supersedes blanket 100% readiness claims.
@@ -1569,3 +1571,21 @@ ode --check).
   - Live staging endpoint `/api/v1/system/config`: returns `EXECUTION_MODE: "live_model_assisted"`, `MODELS_CONFIGURED.agent.active_engine: "meta_api"`.
   - Zero emojis across all code, tests, and documentation. No secrets logged or committed.
 - **Next:** Deploy latest master commit to EC2, restart systemd services (`recoverflow-api` and `recoverflow-worker`), verify UI Diagnostics reflects all slots active and ready, and conduct final demo rehearsal.
+
+
+### 2026-11-04 - Antigravity - Audio evidence integrity and hero fixture boundary resolution
+
+- **Objective:** Resolve audio evidence integrity vulnerabilities (unmatched audio attaching to arbitrary open invoices and auto-verifying without staff review) and audio fixture boundary vulnerabilities (hero-style filenames triggering canned facts on ordinary uploads), and ensure the canonical Synthetic Hero Case benchmark table is preserved intact in README.md.
+- **Changed:**
+  - `app/services/voice_transcribe_agent.py`: Removed filename sniffing (`"VOICENOTE-2026-HERO" in name_upper or "INV-2026-HERO" in name_upper`). Bound fixture triggering exclusively to explicit parameter `is_hero=True`. Ordinary uploads named after hero fixtures (e.g., `INV-2026-HERO-unrelated.wav`) run standard pipeline, returning 0 canned dispute cents and 0.0 confidence.
+  - `app/api/cases.py`: In `upload_voice_note`, set `is_hero=False` for all user uploads. Swapped evidence creation from `verified=True, trust_state="verified", decided_by="voice_agent"` to `verified=False, trust_state="extracted", decided_by=None`, ensuring staff review is required before evidence can be trusted.
+  - `app/services/intake_pipeline.py`: In `_process_audio`, removed fallback to arbitrary first open AR invoice (`open_invoices[0]`). Implemented strict unique invoice matching against open AR invoices based on filename. If unmatched or ambiguous (>1 matches), raises `ValueError`, moving the intake job cleanly to `needs_attention` stage for staff triage. Created evidence record as unverified (`verified=False, trust_state="extracted", decided_by=None`).
+  - `scripts/seed_hero_case.py`: Set `is_hero=True` explicitly in benchmark hero case seeding to preserve the canonical benchmark audio transcript and diarization.
+  - `README.md`: Kept Section 1 "The Synthetic Hero Case" benchmark table (`INV-2026-HERO`) intact and prominent at lines 35-51. Updated submission readiness table rows for Audio evidence integrity and Audio fixture boundary to `verified`, and regression suite to `390 passed, 0 failed`.
+  - `tests/test_audio_and_pdf_fixes.py` & `tests/test_voice_transcribe.py`: Updated tests and added regression tests for unique audio matching, staff triage on unmatched audio, and zero canned facts on hero-named ordinary uploads.
+- **Verification:**
+  - Full application test suite `python -m pytest tests -q`: 390 passed, 0 failed, 12 warnings in 135.14s.
+  - `tests/test_audio_and_pdf_fixes.py`: 12/12 passed.
+  - `tests/test_voice_transcribe.py`: 4/4 passed.
+  - Zero emojis across all modified files, tests, and documentation. No secrets in logs or handoff.
+- **Next:** Deploy latest master commit to EC2 staging, pull fast-forward updates, restart systemd services (`recoverflow-api` and `recoverflow-worker`), verify UI Diagnostics and intake behavior on staging, and conduct final demo rehearsal.

@@ -163,4 +163,5 @@ def test_voice_api_endpoints():
     up_data = upload_res.json()
     assert up_data["id"] is not None
     assert "audio_url" in up_data
-    assert up_data["confidence"] >= 0.90
+    assert up_data["confidence"] >= 0.0
+    assert up_data["extracted_dispute_amount_cents"] == 0

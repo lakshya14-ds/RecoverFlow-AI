@@ -132,45 +132,51 @@ def _process_audio(db, job):
     _audit(db, job, "Transcribing", "Running Meta Muse Voice Transcribe")
     contents = audio_path.read_bytes()
 
-    # Find candidate invoice: check if invoice number is in transcript or default to open AR invoice
+    # Find candidate invoice: require explicit unique invoice match in filename
     invoice = None
     open_invoices = db.query(models.Invoice).filter_by(
         tenant_id=job.tenant_id, invoice_type="AR").all()
-    for inv in open_invoices:
-        if inv.invoice_number in job.filename or inv.invoice_number.replace("INV-", "") in job.filename:
-            invoice = inv
-            break
-    if not invoice and open_invoices:
-        invoice = open_invoices[0]
+    matching = [
+        inv for inv in open_invoices
+        if inv.invoice_number and (
+            inv.invoice_number in job.filename
+            or inv.invoice_number.replace("INV-", "") in job.filename
+        )
+    ]
+    if len(matching) == 1:
+        invoice = matching[0]
+    elif len(matching) > 1:
+        raise ValueError(f"Audio upload matches multiple open invoices ({len(matching)}); ambiguous match requires staff review")
+    else:
+        raise ValueError("Audio upload has no unique matching invoice reference in filename; staff review required")
 
-    invoice_id = invoice.id if invoice else None
+    invoice_id = invoice.id
     result = voice_agent.transcribe_and_store(
         contents,
         filename=job.filename,
         tenant_id=job.tenant_id,
-        invoice_id=invoice_id
+        invoice_id=invoice_id,
+        is_hero=False
     )
 
-    ev_id = None
-    if invoice:
-        ev = models.CaseEvidence(
-            tenant_id=job.tenant_id,
-            invoice_id=invoice.id,
-            claim_type="dispute_item",
-            title="WhatsApp Voice Note (Customer Audio)",
-            description=f"Transcribed via Meta Muse Voice Transcribe ({result['language']}): {result['extracted_dispute_reason']}",
-            source_type="whatsapp_voice_note",
-            source_reference=f"docs/audio/{result['stored_filename']}",
-            source_snippet=result["transcript_text"][:240],
-            amount_cents=result["extracted_dispute_amount_cents"],
-            verified=True,
-            trust_state="verified",
-            decided_by="voice_agent",
-            currency=invoice.currency or "INR"
-        )
-        db.add(ev)
-        db.flush()
-        ev_id = ev.id
+    ev = models.CaseEvidence(
+        tenant_id=job.tenant_id,
+        invoice_id=invoice.id,
+        claim_type="dispute_item",
+        title="WhatsApp Voice Note (Customer Audio)",
+        description=f"Transcribed via Meta Muse Voice Transcribe ({result['language']}): {result['extracted_dispute_reason'] or 'Audio claim; staff confirmation pending'}",
+        source_type="whatsapp_voice_note",
+        source_reference=f"docs/audio/{result['stored_filename']}",
+        source_snippet=result["transcript_text"][:240],
+        amount_cents=result["extracted_dispute_amount_cents"],
+        verified=False,
+        trust_state="extracted",
+        decided_by=None,
+        currency=invoice.currency or "INR"
+    )
+    db.add(ev)
+    db.flush()
+    ev_id = ev.id
 
     vt = models.VoiceTranscription(
         tenant_id=job.tenant_id,
