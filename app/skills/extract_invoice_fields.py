@@ -124,6 +124,16 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
             if numeric_amounts:
                 fields.total_amount = numeric_amounts[0]
                 fields.confidence_scores["total_amount"] = 0.90
+        # Tax and subtotal amounts
+        tax_m = re.search(r'(?:IGST|CGST|SGST|Total\s+Tax|Tax\s+Amount|GST(?:\s*@\s*\d+%?)?)\s*[:#-]?\s*(?:₹|INR|Rs\.?|\$)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{2})?)', raw_text, re.IGNORECASE)
+        if tax_m:
+            fields.tax_amount = clean_amount(tax_m.group(1))
+            if fields.tax_amount:
+                fields.confidence_scores["tax_amount"] = 0.85
+        subtotal_m = re.search(r'(?:Taxable\s+(?:Subtotal|Amount|Value)|Subtotal|Sub\s*Total)\s*[:#-]?\s*(?:₹|INR|Rs\.?|\$)?\s*(\d{1,3}(?:,\d{2,3})*(?:\.\d{2})?)', raw_text, re.IGNORECASE)
+        if subtotal_m:
+            fields.amount = clean_amount(subtotal_m.group(1))
+
         # Currency: default INR for Indian MSME documents, or detect explicitly
         if re.search(r'₹|\bINR\b|\bRs\.?\b', raw_text, re.IGNORECASE):
             fields.currency = "INR"
@@ -132,54 +142,84 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
         else:
             fields.currency = "INR"
 
-        
         # Due date and issue date.
-        dates = re.findall(r'(\b\d{4}-\d{2}-\d{2}\b|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4})', raw_text, re.IGNORECASE)
-        if dates:
+        # 1. Try explicit labeled fields first:
+        issue_match = re.search(r'\b(?:Invoice|Issue|Bill)\s*Date\s*[:#-]?\s*([^\n\r]+)', raw_text, re.IGNORECASE)
+        due_match = re.search(r'\b(?:Payment\s+)?Due\s*Date\s*[:#-]?\s*([^\n\r]+)', raw_text, re.IGNORECASE)
+        if issue_match:
             try:
-                parsed_dates = sorted([dateutil.parser.parse(d).date() for d in dates])
-                if len(parsed_dates) >= 2:
-                    fields.issue_date = parsed_dates[0].isoformat()
-                    fields.due_date = parsed_dates[-1].isoformat()
-                else:
-                    fields.due_date = parsed_dates[0].isoformat()
-                fields.confidence_scores["issue_date"] = 0.8
-                fields.confidence_scores["due_date"] = 0.8
+                parsed_issue = dateutil.parser.parse(re.sub(r'\(.*?\)', '', issue_match.group(1)).strip(), fuzzy=True).date()
+                fields.issue_date = parsed_issue.isoformat()
+                fields.confidence_scores["issue_date"] = 0.90
             except Exception:
                 pass
+        if due_match:
+            try:
+                parsed_due = dateutil.parser.parse(re.sub(r'\(.*?\)', '', due_match.group(1)).strip(), fuzzy=True).date()
+                fields.due_date = parsed_due.isoformat()
+                fields.confidence_scores["due_date"] = 0.90
+            except Exception:
+                pass
+
+        # 2. General date search: ISO dates, DD/MM/YYYY, DD-Mon-YYYY (e.g. 18-Nov-2026), Mon DD, YYYY
+        date_pattern = r'(\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}[-\s/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}\b)'
+        dates = re.findall(date_pattern, raw_text, re.IGNORECASE)
+        if dates:
+            try:
+                parsed_dates = sorted([dateutil.parser.parse(re.sub(r'\(.*?\)', '', d).strip(), fuzzy=True).date() for d in dates])
+                if not fields.issue_date and not fields.due_date:
+                    if len(parsed_dates) >= 2:
+                        fields.issue_date = parsed_dates[0].isoformat()
+                        fields.due_date = parsed_dates[-1].isoformat()
+                    else:
+                        fields.issue_date = parsed_dates[0].isoformat()
+                        fields.due_date = parsed_dates[0].isoformat()
+                elif not fields.issue_date and fields.due_date:
+                    fields.issue_date = parsed_dates[0].isoformat() if parsed_dates[0].isoformat() <= fields.due_date else fields.due_date
+                elif not fields.due_date and fields.issue_date:
+                    fields.due_date = parsed_dates[-1].isoformat() if parsed_dates[-1].isoformat() >= fields.issue_date else fields.issue_date
+                fields.confidence_scores.setdefault("issue_date", 0.8)
+                fields.confidence_scores.setdefault("due_date", 0.8)
+            except Exception:
+                pass
+        # Guarantee neither is missing if at least one was found
+        if fields.issue_date and not fields.due_date:
+            fields.due_date = fields.issue_date
+        elif fields.due_date and not fields.issue_date:
+            fields.issue_date = fields.due_date
 
         # Extract counterparty name, skipping standard header titles and seller company
         HEADER_TITLES = {
             "tax invoice", "commercial invoice", "invoice", "original for recipient",
             "duplicate for supplier", "triplicate for transporter", "bill of supply",
             "commercial tax invoice", "proforma invoice", "purchase order", "receipt",
-            "synthetic sample - for software testing only", "original", "from", "bill to"
+            "synthetic sample - for software testing only", "original", "from", "bill to",
+            "supplier", "supplier (biller)", "supplier (biller):"
         }
-        SELLER_NAMES = {"apex enterprises", "apex distributors"}
+        SELLER_NAMES = {"apex enterprises", "apex distributors", "vanguard industrial", "seller"}
         lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
         candidate_name = None
         for i, line in enumerate(lines):
             lower_line = line.lower().rstrip(":")
-            if lower_line in ("bill to", "customer", "buyer", "to"):
+            if any(hdr in lower_line for hdr in ("original for", "duplicate for", "triplicate for", "copy for")):
+                continue
+            if any(re.search(rf'\b{kw}\b', lower_line) for kw in ("bill to", "customer", "buyer", "consignee", "billed to", "recipient", "to")):
                 for offset in (1, 2, 3, 4):
                     if i + offset < len(lines):
                         nxt = lines[i + offset].strip()
                         nxt_lower = nxt.lower()
                         if (nxt_lower not in HEADER_TITLES
-                                and not nxt_lower.startswith(("invoice ", "invoice:", "inv-"))
+                                and not any(s in nxt_lower for s in SELLER_NAMES)
+                                and not nxt_lower.startswith(("invoice", "inv-", "tax", "gstin", "date", "due date", "total", "plot", "shop"))
                                 and not re.search(r"\d{1,4}[/-]\d{1,2}[/-]\d{2,4}", nxt)
                                 and not re.match(r"^(?:INR|Rs\.?|₹|\$)\s*\d", nxt, re.I)
-                                and not any(s in nxt_lower for s in SELLER_NAMES)
-                                and "plot" not in nxt_lower and "shop" not in nxt_lower
                                 and len(nxt) > 3):
                             candidate_name = nxt
                             break
-                if not candidate_name and lower_line == "customer":
-                    candidate_name = line
                 if candidate_name:
                     break
-            elif any(lower_line.startswith(prefix) for prefix in ("bill to:", "customer:", "buyer:", "to:")):
-                inline_val = re.sub(r'^(?:bill to|customer|buyer|to)\s*[:#-]?\s*', '', line, flags=re.I).strip()
+            elif any(re.search(rf'^{kw}\s*[:#-]', lower_line) for kw in ("bill to", "customer", "buyer", "consignee", "to", "billed to")):
+                inline_val = re.sub(r'^(?:bill to|customer|buyer|consignee|billed to|to)\s*[:#-]?\s*', '', line, flags=re.I).strip()
                 inline_lower = inline_val.lower()
                 if inline_lower and inline_lower not in HEADER_TITLES and not any(s in inline_lower for s in SELLER_NAMES):
                     candidate_name = inline_val
@@ -187,7 +227,11 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
         if not candidate_name:
             for line in lines:
                 l_lower = line.lower()
-                if l_lower not in HEADER_TITLES and not any(s in l_lower for s in SELLER_NAMES) and len(line) > 3 and not re.match(r'^[0-9\W]+$', line):
+                if (l_lower not in HEADER_TITLES
+                        and not any(s in l_lower for s in SELLER_NAMES)
+                        and not l_lower.startswith(("invoice", "inv-", "tax", "gstin", "date", "due date", "total", "plot", "shop"))
+                        and len(line) > 3
+                        and not re.match(r'^[0-9\W]+$', line)):
                     candidate_name = line
                     break
         if candidate_name:

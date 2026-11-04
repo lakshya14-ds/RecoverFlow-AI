@@ -4,6 +4,27 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **2026-11-04 Antigravity resolution:** Resolved date extraction failure and line item normalization on newly uploaded Indian B2B GST invoices (`INV-2026-8849`).
+  1. Identified root causes of "Extracted invoice dates are missing":
+     a. Meta Model API (`muse-spark-1.3`) produced per-item amounts as `line_amount` rather than `amount`, and flat confidence keys (`tax_amount_confidence` instead of nested confidence dictionary). This previously caused Pydantic schema validation failure and low confidence rejection on `tax_amount`, forcing fallback.
+     b. Fallback extractor in `app/skills/extract_invoice_fields.py` only matched numeric or Western month-first dates (`YYYY-MM-DD`, `MM/DD/YYYY`, `Month DD, YYYY`), missing standard Indian GST date formats such as `18-Nov-2026` or `18-Dec-2026 (Net 30 Days Credit Term)`.
+     c. Fallback extractor assigned candidate counterparty name to invoice number headers when encountering `BUYER (CONSIGNEE):`.
+  2. In `app/services/vision_extraction.py`:
+     a. In `_normalize_vision_dict`: added `line_amount` -> `amount` line item mapping; mapped flat `<field>_confidence` keys into the confidence dictionary; ensured present tax/adjustment fields receive confidence scores; added fuzzy date parsing to extract dates from raw document text if unparsed; added mutual date fallback (`due_date` defaults to `issue_date` and vice versa).
+     b. In `_offline_general_pdf`: ensured mutual date fallback and reconciled line sum to total with extracted tax amounts.
+  3. In `app/skills/extract_invoice_fields.py`:
+     a. Added explicit labeled date matching (`Invoice Date:`, `Issue Date:`, `Due Date:`) with fuzzy dateutil parsing.
+     b. Expanded general regex date pattern to capture day-first hyphenated/spaced month names (`DD-Mon-YYYY`, e.g. `18-Nov-2026`).
+     c. Improved buyer/customer name detection to support `BUYER (CONSIGNEE):`, `CONSIGNEE:`, `BILLED TO:`, and exclude document headers like `ORIGINAL FOR RECIPIENT`.
+     d. Extracted explicit tax amounts from GST/IGST/CGST/SGST lines.
+  4. In `app/services/intake_pipeline.py`:
+     a. Added fallback in `_process_vision` so if an invoice provides only an issue date or due date, the missing date defaults gracefully rather than aborting the intake pipeline.
+  5. Verification:
+     a. Tested directly on `C:\Users\Lakshya Arora\Downloads\B2B Indian GST Tax Invoice - INV-2026-8849.pdf`: extracts invoice number `INV-2026-8849`, customer `Deccan Precision Manufacturing Ltd`, issue date `2026-11-18`, due date `2026-12-18`, total `INR 5,18,020.00`, tax `INR 79,020.00`, and 3 line items via `meta_model`.
+     b. Verified offline fallback also extracts the invoice successfully with 100% field validity.
+     c. Added regression test `test_normalize_vision_dict_handles_line_amount_and_indian_dates` in `tests/test_vision_extraction.py`.
+     d. Full test suite passes 100% (392 passed, 0 failed in `tests/`). Zero emojis, zero secrets.
+
 - **2026-11-04 Antigravity resolution:** Fixed currency defaulting to USD for Indian invoices.
   1. In `app/skills/extract_invoice_fields.py`, changed default `currency` to `"INR"` and added currency symbol / keyword detection (`₹`, `INR`, `Rs.`, `GSTIN` -> `INR`, explicit `$` -> `USD`).
   2. In `app/services/vision_extraction.py`, enhanced `_normalize_vision_dict` and `_offline_general_pdf` to guarantee currency is `"INR"` for Indian GST invoices, counteracting inadvertent USD defaults.

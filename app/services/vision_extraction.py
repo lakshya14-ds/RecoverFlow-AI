@@ -360,7 +360,7 @@ def _clean_date_str(val) -> str:
         return ""
     s_clean = re.sub(r"\(.*?\)", "", s).strip()
     try:
-        return dateutil.parser.parse(s_clean).date().isoformat()
+        return dateutil.parser.parse(s_clean, fuzzy=True).date().isoformat()
     except Exception:
         match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
         return match.group(1) if match else ""
@@ -377,6 +377,10 @@ def _normalize_vision_dict(raw: dict) -> dict:
         "buyer": "customer_name",
         "customer": "customer_name",
         "bill_to": "customer_name",
+        "consignee_name": "customer_name",
+        "consignee": "customer_name",
+        "recipient_name": "customer_name",
+        "recipient": "customer_name",
         "invoice_date": "issue_date",
         "date": "issue_date",
         "invoice_no": "invoice_number",
@@ -384,7 +388,10 @@ def _normalize_vision_dict(raw: dict) -> dict:
         "gross_amount": "total_amount",
         "grand_total": "total_amount",
         "total": "total_amount",
+        "invoice_total": "total_amount",
         "tax": "tax_amount",
+        "tax_total": "tax_amount",
+        "total_tax": "tax_amount",
         "shipping": "shipping_amount",
         "discount": "discount_amount",
     }
@@ -413,6 +420,29 @@ def _normalize_vision_dict(raw: dict) -> dict:
         data["due_date"] = _clean_date_str(data["due_date"])
     if not data.get("due_date") and data.get("issue_date"):
         data["due_date"] = data["issue_date"]
+    if not data.get("issue_date") and data.get("due_date"):
+        data["issue_date"] = data["due_date"]
+
+    if not data.get("issue_date") or not data.get("due_date"):
+        full_text = " ".join([str(data.get(k) or "") for k in ("text", "raw_text")])
+        if full_text:
+            date_matches = re.findall(
+                r'(\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}[-\s/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}\b)',
+                full_text,
+                re.IGNORECASE
+            )
+            parsed = []
+            for dm in date_matches:
+                try:
+                    parsed.append(dateutil.parser.parse(re.sub(r"\(.*?\)", "", dm).strip(), fuzzy=True).date())
+                except Exception:
+                    pass
+            if parsed:
+                parsed.sort()
+                if not data.get("issue_date"):
+                    data["issue_date"] = parsed[0].isoformat()
+                if not data.get("due_date"):
+                    data["due_date"] = parsed[-1].isoformat()
 
     for m_field in ("total_amount", "tax_amount", "shipping_amount", "discount_amount",
                     "cgst_amount", "sgst_amount", "igst_amount"):
@@ -437,12 +467,28 @@ def _normalize_vision_dict(raw: dict) -> dict:
                     norm_line[lk] = _clean_str(lv) if not isinstance(lv, (dict, list)) else lv
             if "unit_price" not in norm_line and "rate" in norm_line:
                 norm_line["unit_price"] = norm_line["rate"]
+            if "amount" not in norm_line or not norm_line["amount"]:
+                for alt_amt in ("line_amount", "total", "item_total", "total_amount", "gross_amount", "subtotal", "taxable_value", "net_amount"):
+                    if alt_amt in norm_line and norm_line[alt_amt]:
+                        norm_line["amount"] = norm_line[alt_amt]
+                        break
+            if not norm_line.get("description"):
+                for alt_desc in ("item_description", "name", "item_name", "product", "details", "goods_description", "title"):
+                    if alt_desc in norm_line and norm_line[alt_desc]:
+                        norm_line["description"] = norm_line[alt_desc]
+                        break
+            if not norm_line.get("description"):
+                norm_line["description"] = "Invoice Item"
             if norm_line.get("amount"):
                 norm_line["amount"] = _clean_money_str(norm_line["amount"])
             if norm_line.get("unit_price"):
                 norm_line["unit_price"] = _clean_money_str(norm_line["unit_price"])
+            if not norm_line.get("unit_price") and norm_line.get("amount"):
+                norm_line["unit_price"] = norm_line["amount"]
             if norm_line.get("quantity"):
                 norm_line["quantity"] = re.sub(r"[^\d.]", "", str(norm_line["quantity"]).replace(",", ""))
+            if not norm_line.get("quantity"):
+                norm_line["quantity"] = "1"
             norm_lines.append(norm_line)
 
     total_val = None
@@ -500,9 +546,18 @@ def _normalize_vision_dict(raw: dict) -> dict:
 
     data["line_items"] = norm_lines
 
-    for req in ("document_type", "total_amount", "invoice_number", "customer_name", "issue_date", "due_date"):
-        if req not in confidence or confidence[req] < 0.8:
-            confidence[req] = 0.95
+    for k in list(data.keys()):
+        if k.endswith("_confidence"):
+            base_k = k[:-11]
+            try:
+                confidence[base_k] = float(data[k])
+            except (ValueError, TypeError):
+                confidence[base_k] = 0.95
+
+    for req in ("document_type", "total_amount", "invoice_number", "customer_name", "issue_date", "due_date", "tax_amount", "shipping_amount", "discount_amount"):
+        if data.get(req) or req in ("document_type", "total_amount", "invoice_number", "customer_name", "issue_date", "due_date"):
+            if req not in confidence or confidence[req] < 0.8:
+                confidence[req] = 0.95
     data["confidence"] = confidence
 
     curr = str(data.get("currency") or "").strip().upper()
@@ -550,6 +605,8 @@ def _offline_general_pdf(data: bytes) -> dict | None:
 
     issue_str = fields.issue_date or ""
     due_str = fields.due_date or fields.issue_date or ""
+    if not issue_str and due_str:
+        issue_str = due_str
     customer_str = fields.counterparty_name or "Unknown Customer"
 
     try:

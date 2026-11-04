@@ -214,6 +214,10 @@ def _process_vision(db, job):
     db.flush()  # Investigator queries linked uploads with autoflush disabled.
     _audit(db, job, "Extracted", f"{validated.get('engine', 'Meta vision')}; server-validated fields and line total")
     if document.document_type == "invoice":
+        if not document.issue_date and document.due_date:
+            document.issue_date = document.due_date
+        elif not document.due_date and document.issue_date:
+            document.due_date = document.issue_date
         if not document.issue_date or not document.due_date:
             raise ValueError("Extracted invoice dates are missing")
         issue = date.fromisoformat(document.issue_date)

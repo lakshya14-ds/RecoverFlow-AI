@@ -185,3 +185,49 @@ def test_normalize_vision_dict_unwraps_nested_model_values():
     assert doc.due_date == "2026-11-14"
     assert len(doc.line_items) == 1
     assert doc.line_items[0].unit_price == "1000.00"
+
+
+def test_normalize_vision_dict_handles_line_amount_and_indian_dates():
+    raw_payload = {
+        "document_type": "invoice",
+        "invoice_number": "INV-2026-8849",
+        "invoice_date": "18-Nov-2026",
+        "due_date": "18-Dec-2026 (Net 30 Days Credit Term)",
+        "buyer_name": "Deccan Precision Manufacturing Ltd",
+        "tax_amount": "79020.00",
+        "tax_amount_confidence": 0.99,
+        "total_amount": "518020.00",
+        "total_amount_confidence": 0.99,
+        "line_items": [
+            {
+                "description": "CNC Brushless Servo Spindle Motor - 5.5kW",
+                "quantity": "25",
+                "rate": "12400.00",
+                "line_amount": "310000.00"
+            },
+            {
+                "description": "Programmable Logic Controller (PLC) I/O Expansion Module",
+                "quantity": "15",
+                "rate": "6800.00",
+                "line_amount": "102000.00"
+            },
+            {
+                "description": "Shielded Industrial Ethernet Cat6A Patch Cables (10m)",
+                "quantity": "30",
+                "rate": "900.00",
+                "line_amount": "27000.00"
+            }
+        ]
+    }
+    norm = vision_extraction._normalize_vision_dict(raw_payload)
+    doc = vision_extraction.VisionDocument(**norm)
+    res = vision_extraction.validate_document(doc)
+    assert res["total"] == Decimal("518020.00")
+    assert doc.invoice_number == "INV-2026-8849"
+    assert doc.customer_name == "Deccan Precision Manufacturing Ltd"
+    assert doc.issue_date == "2026-11-18"
+    assert doc.due_date == "2026-12-18"
+    assert doc.currency == "INR"
+    assert len(doc.line_items) == 3
+    assert doc.line_items[0].amount == "310000.00"
+    assert doc.line_items[0].unit_price == "12400.00"
