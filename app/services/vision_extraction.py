@@ -360,10 +360,15 @@ def _clean_date_str(val) -> str:
         return ""
     s_clean = re.sub(r"\(.*?\)", "", s).strip()
     try:
-        return dateutil.parser.parse(s_clean, fuzzy=True).date().isoformat()
+        return dateutil.parser.parse(s_clean, fuzzy=True, dayfirst=True).date().isoformat()
     except Exception:
-        match = re.search(r"\b(\d{4}-\d{2}-\d{2})\b", s)
-        return match.group(1) if match else ""
+        match = re.search(r"\b(\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}|\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4})\b", s)
+        if match:
+            try:
+                return dateutil.parser.parse(match.group(1), fuzzy=True, dayfirst=True).date().isoformat()
+            except Exception:
+                pass
+        return ""
 
 
 def _normalize_vision_dict(raw: dict) -> dict:
@@ -427,14 +432,14 @@ def _normalize_vision_dict(raw: dict) -> dict:
         full_text = " ".join([str(data.get(k) or "") for k in ("text", "raw_text")])
         if full_text:
             date_matches = re.findall(
-                r'(\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}[-\s/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}\b)',
+                r'(\b\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}\b|\b\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4}\b|\b\d{1,2}(?:st|nd|rd|th)?[-\s/\.](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/\.,]*\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b)',
                 full_text,
                 re.IGNORECASE
             )
             parsed = []
             for dm in date_matches:
                 try:
-                    parsed.append(dateutil.parser.parse(re.sub(r"\(.*?\)", "", dm).strip(), fuzzy=True).date())
+                    parsed.append(dateutil.parser.parse(re.sub(r"\(.*?\)", "", dm).strip(), fuzzy=True, dayfirst=True).date())
                 except Exception:
                     pass
             if parsed:

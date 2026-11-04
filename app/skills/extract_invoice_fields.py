@@ -144,29 +144,48 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
 
         # Due date and issue date.
         # 1. Try explicit labeled fields first:
-        issue_match = re.search(r'\b(?:Invoice|Issue|Bill)\s*Date\s*[:#-]?\s*([^\n\r]+)', raw_text, re.IGNORECASE)
-        due_match = re.search(r'\b(?:Payment\s+)?Due\s*Date\s*[:#-]?\s*([^\n\r]+)', raw_text, re.IGNORECASE)
+        issue_match = re.search(
+            r'(?<!Due\s)(?<!Due)(?<!Payment\s)\b(?:Date\s+of\s+(?:Invoice|Bill|Issue)|(?:Invoice|Issue|Bill|Billing|Inv)\s*(?:Date|Dt)|Date)\s*[:#-]?\s*([^\n\r]+)',
+            raw_text, re.IGNORECASE
+        )
+        due_match = re.search(
+            r'\b(?:Payment\s+Due\s*(?:Date|Dt)?|Due\s*(?:Date|Dt|By|On)|Pay\s*(?:By|Before))\s*[:#-]?\s*([^\n\r]+)',
+            raw_text, re.IGNORECASE
+        )
         if issue_match:
             try:
-                parsed_issue = dateutil.parser.parse(re.sub(r'\(.*?\)', '', issue_match.group(1)).strip(), fuzzy=True).date()
+                parsed_issue = dateutil.parser.parse(re.sub(r'\(.*?\)', '', issue_match.group(1)).strip(), fuzzy=True, dayfirst=True).date()
                 fields.issue_date = parsed_issue.isoformat()
                 fields.confidence_scores["issue_date"] = 0.90
             except Exception:
                 pass
         if due_match:
             try:
-                parsed_due = dateutil.parser.parse(re.sub(r'\(.*?\)', '', due_match.group(1)).strip(), fuzzy=True).date()
+                parsed_due = dateutil.parser.parse(re.sub(r'\(.*?\)', '', due_match.group(1)).strip(), fuzzy=True, dayfirst=True).date()
                 fields.due_date = parsed_due.isoformat()
                 fields.confidence_scores["due_date"] = 0.90
             except Exception:
                 pass
 
-        # 2. General date search: ISO dates, DD/MM/YYYY, DD-Mon-YYYY (e.g. 18-Nov-2026), Mon DD, YYYY
-        date_pattern = r'(\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b\d{1,2}[-\s/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}\b)'
+        # If issue date found but no due date, check for credit terms (e.g. Net 30, 30 Days)
+        if fields.issue_date and not fields.due_date:
+            terms_match = re.search(r'\b(?:Net\s*(\d{1,3})|(\d{1,3})\s*Days?\s*(?:Credit\s*Term|Net)?)\b', raw_text, re.IGNORECASE)
+            if terms_match:
+                try:
+                    days = int(terms_match.group(1) or terms_match.group(2))
+                    if 0 < days <= 365:
+                        from datetime import datetime, timedelta
+                        fields.due_date = (datetime.fromisoformat(fields.issue_date) + timedelta(days=days)).date().isoformat()
+                        fields.confidence_scores["due_date"] = 0.85
+                except Exception:
+                    pass
+
+        # 2. General date search: ISO dates, DD/MM/YYYY, DD.MM.YYYY, DD-Mon-YYYY (e.g. 18-Nov-2026), Mon DD, YYYY
+        date_pattern = r'(\b\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}\b|\b\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4}\b|\b\d{1,2}(?:st|nd|rd|th)?[-\s/\.](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/\.,]*\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b)'
         dates = re.findall(date_pattern, raw_text, re.IGNORECASE)
         if dates:
             try:
-                parsed_dates = sorted([dateutil.parser.parse(re.sub(r'\(.*?\)', '', d).strip(), fuzzy=True).date() for d in dates])
+                parsed_dates = sorted([dateutil.parser.parse(re.sub(r'\(.*?\)', '', d).strip(), fuzzy=True, dayfirst=True).date() for d in dates])
                 if not fields.issue_date and not fields.due_date:
                     if len(parsed_dates) >= 2:
                         fields.issue_date = parsed_dates[0].isoformat()

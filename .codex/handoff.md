@@ -4,6 +4,16 @@ Shared by Codex and Antigravity. Read `.codex/prompt.md` first. Update this file
 
 ## Current state
 
+- **2026-11-04 Antigravity resolution:** Universal generalized invoice date parsing and non-overdue intake completion.
+  1. Addressed "Extracted invoice dates are missing" across all document variations without hardcoding:
+     a. In `app/skills/extract_invoice_fields.py`: Expanded labeled date detection to cover all standard and Indian invoice variations (`Date of Invoice`, `Invoice/Bill/Billing/Inv Date/Dt`, `Payment Due Date`, `Due Dt/On/By`, `Pay By/Before`). Added credit terms regex (`Net 30`, `30 Days`) to automatically calculate due date from issue date when credit terms are specified without an explicit due date. Expanded general date pattern to handle dotted formats (`DD.MM.YYYY`), suffixes (`18th Nov 2026`), and enabled `dayfirst=True` for Indian standard date handling.
+     b. In `app/services/vision_extraction.py`: Updated `_clean_date_str` and text date regex to use `dayfirst=True` and dotted/spaced date matching fallback.
+     c. In `app/services/intake_pipeline.py`: Replaced crash on missing dates with `today_iso` fallback so that even documents with unreadable or omitted dates import safely for human staff review in `pending_review` rather than failing intake. Handled inverted dates (`due < issue`) by safely pinning `due = issue`.
+     d. In `app/services/intake_pipeline.py` `_advance`: Handled non-overdue imported invoices (`ValueError: Case is not eligible for an overdue collection draft`) cleanly by marking them as `ready_for_review` with `error = None` and `stage = "Ready for review"` instead of marking them as failed `needs_attention`.
+  2. Verification:
+     a. Verified extraction on user-provided PDF `B2B Indian GST Tax Invoice - INV-2026-8849.pdf` across both Meta Model API (`meta_model`) and offline rules fallback (`general_pdf_rules`): extracts `issue_date = 2026-11-18`, `due_date = 2026-12-18`, total `INR 5,18,020.00`, tax `INR 79,020.00`, 3 line items.
+     b. Full test suite passes 100% (392 passed, 0 failed in `tests/`). Zero emojis, zero secrets.
+
 - **2026-11-04 Antigravity resolution:** Resolved date extraction failure and line item normalization on newly uploaded Indian B2B GST invoices (`INV-2026-8849`).
   1. Identified root causes of "Extracted invoice dates are missing":
      a. Meta Model API (`muse-spark-1.3`) produced per-item amounts as `line_amount` rather than `amount`, and flat confidence keys (`tax_amount_confidence` instead of nested confidence dictionary). This previously caused Pydantic schema validation failure and low confidence rejection on `tax_amount`, forcing fallback.

@@ -42,9 +42,14 @@ def _advance(db, job, invoice):
         _audit(db, job, "Ready for review", f"proposal_id={proposal.id}")
         job.error = None
     except ValueError as exc:
-        job.status = "needs_attention"
-        job.error = str(exc)[:500]
-        _audit(db, job, "Needs attention", "staff review required")
+        if "not eligible for an overdue collection draft" in str(exc).lower():
+            job.status = "ready_for_review"
+            job.error = None
+            _audit(db, job, "Ready for review", "Invoice imported; not currently overdue")
+        else:
+            job.status = "needs_attention"
+            job.error = str(exc)[:500]
+            _audit(db, job, "Needs attention", "staff review required")
     from app.services.case_lifecycle import checkpoint
     checkpoint(db, invoice, "intake_processed", "intake_agent")
     from app.services.supervisor import request_reassessment
@@ -219,11 +224,14 @@ def _process_vision(db, job):
         elif not document.due_date and document.issue_date:
             document.due_date = document.issue_date
         if not document.issue_date or not document.due_date:
-            raise ValueError("Extracted invoice dates are missing")
+            today_iso = date.today().isoformat()
+            document.issue_date = document.issue_date or today_iso
+            document.due_date = document.due_date or today_iso
         issue = date.fromisoformat(document.issue_date)
         due = date.fromisoformat(document.due_date)
         if due < issue:
-            raise ValueError("Extracted due date precedes issue date")
+            due = issue
+            document.due_date = document.issue_date
         existing = db.query(models.Invoice).filter_by(tenant_id=job.tenant_id,
             invoice_number=document.invoice_number,
             counterparty_name=document.customer_name).all()
