@@ -283,8 +283,7 @@ def extract_invoice_fields(pdf_path: str) -> InvoiceFields:
 
         rm = re.search(r'\"(DISPUTE FILED[^\"]+)\"', raw_text, re.IGNORECASE) or \
              re.search(r'\((Short\s*Delivery[^)]+)\)', raw_text, re.IGNORECASE) or \
-             re.search(r'\b(?:Dispute\s*(?:Reason|Status)?|Reason)\s*[:\-]\s*([^\n\r]+)', raw_text, re.IGNORECASE) or \
-             re.search(r'\b(Short\s*Delivery\s*[:\-]?[^\n\r]+)', raw_text, re.IGNORECASE)
+             re.search(r'\b(?:Dispute\s*(?:Reason|Status)|Short\s*Delivery)\s*[:\-]?\s*([^\n\r]+)', raw_text, re.IGNORECASE)
         if rm:
             fields.dispute_reason = re.sub(r'\s+', ' ', rm.group(1)).strip()
 

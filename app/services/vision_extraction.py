@@ -382,7 +382,7 @@ def _clean_date_str(val) -> str:
         return ""
 
 
-def _normalize_vision_dict(raw: dict, fallback_text: str = "") -> dict:
+def _normalize_vision_dict(raw: dict) -> dict:
     if not isinstance(raw, dict):
         return raw
     data = dict(raw)
@@ -448,9 +448,6 @@ def _normalize_vision_dict(raw: dict, fallback_text: str = "") -> dict:
         elif not isinstance(val, (str, dict, list)):
             data[key] = str(val)
 
-    if not data.get("text") and fallback_text:
-        data["text"] = fallback_text[:3000]
-
     if data.get("issue_date"):
         data["issue_date"] = _clean_date_str(data["issue_date"])
     if data.get("due_date"):
@@ -462,8 +459,6 @@ def _normalize_vision_dict(raw: dict, fallback_text: str = "") -> dict:
 
     if not data.get("issue_date") or not data.get("due_date"):
         full_text = " ".join([str(data.get(k) or "") for k in ("text", "raw_text")])
-        if not full_text and fallback_text:
-            full_text = fallback_text
         if full_text:
             date_matches = re.findall(
                 r'(\b\d{4}[-/\.]\d{1,2}[-/\.]\d{1,2}\b|\b\d{1,2}[-/\.]\d{1,2}[-/\.]\d{2,4}\b|\b\d{1,2}(?:st|nd|rd|th)?[-\s/\.](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s/\.,]*\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b)',
@@ -491,8 +486,6 @@ def _normalize_vision_dict(raw: dict, fallback_text: str = "") -> dict:
 
     # Extract dispute, hold, and debit note references from text if omitted by model
     full_text = " ".join([str(data.get(k) or "") for k in ("text", "raw_text")])
-    if not full_text and fallback_text:
-        full_text = fallback_text
     if full_text:
         if not data.get("disputed_amount"):
             dm = re.search(r'\b(?:Disputed\s*(?:Hold\s*Amount|Amount|Hold|Balance)|Dispute\s*(?:Amount|Hold|Claim)|Amount\s*on\s*Hold)[^\n\r\d]*?(\d[\d,]*(?:\.\d{1,2})?)', full_text, re.IGNORECASE)
@@ -513,8 +506,7 @@ def _normalize_vision_dict(raw: dict, fallback_text: str = "") -> dict:
         if not data.get("dispute_reason"):
             rm = re.search(r'\"(DISPUTE FILED[^\"]+)\"', full_text, re.IGNORECASE) or \
                  re.search(r'\((Short\s*Delivery[^)]+)\)', full_text, re.IGNORECASE) or \
-                 re.search(r'\b(?:Dispute\s*(?:Reason|Status)?|Reason)\s*[:\-]\s*([^\n\r]+)', full_text, re.IGNORECASE) or \
-                 re.search(r'\b(Short\s*Delivery\s*[:\-]?[^\n\r]+)', full_text, re.IGNORECASE)
+                 re.search(r'\b(?:Dispute\s*(?:Reason|Status)|Short\s*Delivery)\s*[:\-]?\s*([^\n\r]+)', full_text, re.IGNORECASE)
             if rm:
                 data["dispute_reason"] = re.sub(r'\s+', ' ', rm.group(1)).strip()
 
@@ -747,8 +739,7 @@ def extract(data: bytes, mime: str) -> dict:
                    "Put those adjustments in tax_amount, shipping_amount, and discount_amount as strings; "
                    "use empty strings when absent. The server will verify line sum + tax + shipping - discount = total. "
                    "Use empty strings for missing text and 0 confidence for missing fields. "
-                   "Classify invoice, receipt, purchase_order, message, delivery_note, return_note, discount_agreement, credit_note, debit_note, delivery_challan, freight_bill, or scheme_letter. Extract explicit SKU and unit when printed; never invent aliases. Extract per-line HSN, tax rate, and CGST/SGST/IGST amounts when printed, and invoice-level CGST/SGST/IGST amounts when printed. "
-                   "Extract disputed_amount, undisputed_amount, paid_amount, debit_note_ref, and dispute_reason if printed (e.g. debit note hold, dispute hold, amount on hold, undisputed balance). Return JSON only.")
+                   "Classify invoice, receipt, purchase_order, message, delivery_note, return_note, discount_agreement, credit_note, debit_note, delivery_challan, freight_bill, or scheme_letter. Extract explicit SKU and unit when printed; never invent aliases. Extract per-line HSN, tax rate, and CGST/SGST/IGST amounts when printed, and invoice-level CGST/SGST/IGST amounts when printed. Return JSON only.")
     encoded = base64.b64encode(data).decode("ascii")
     if mime == "application/pdf":
         attachment = {"type": "file", "file": {"filename": "document.pdf",
@@ -764,16 +755,7 @@ def extract(data: bytes, mime: str) -> dict:
         match = re.search(r"\{.*\}", text, re.DOTALL)
         json_str = match.group(0) if match else text.strip()
         raw_dict = json.loads(json_str)
-
-        pdf_text = ""
-        if mime == "application/pdf":
-            try:
-                pages = PdfReader(io.BytesIO(data)).pages
-                pdf_text = "\n".join(page.extract_text() or "" for page in pages)
-            except Exception:
-                pdf_text = ""
-
-        norm_dict = _normalize_vision_dict(raw_dict, fallback_text=pdf_text)
+        norm_dict = _normalize_vision_dict(raw_dict)
         document = VisionDocument(**norm_dict)
         result = validate_document(document)
         result["engine"] = "meta_model"
